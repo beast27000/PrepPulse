@@ -1,0 +1,36 @@
+[project]
+name = "preppulse-ocr"
+version = "0.1.0"
+description = "Provenance-preserving OCR pipeline for PrepPulse clinical document packs."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pymupdf>=1.24,<2",
+  "pydantic>=2.7,<3",
+  "pillow>=10,<12",
+  "pytesseract>=0.3.10,<0.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "ruff>=0.6,<1",
+]
+
+[project.scripts]
+preppulse-ocr = "preppulse_ocr.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/preppulse_ocr"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
