@@ -3,6 +3,13 @@
 Sprint 1 foundation for extracting auditable clinical-document content from digital PDFs,
 scanned PDFs, PNGs, and JPEGs.
 
+## Project status
+
+The OCR foundation is implemented and tested. The synthetic dataset archives are available
+locally but are not yet integrated. RAG, agents, API, and UI are intentionally out of scope
+until the OCR/backend base is stable. See [TO_DO.md](TO_DO.md) for the live delivery tracker
+and [AGENTS.md](AGENTS.md) for the repository working agreement.
+
 ## Guarantees
 
 - Every token and reconstructed line has a normalized `[0, 1000]` bounding box.
@@ -19,6 +26,8 @@ src/preppulse_ocr/    Pipeline and output contract
 tests/                Contract, coordinate, routing, and table tests
 data/fixtures/        Safe, synthetic test inputs only
 docs/                 Design and dataset contracts
+TO_DO.md              Living delivery tracker
+AGENTS.md             Planning and version-control agreement
 ```
 
 ## Local setup
