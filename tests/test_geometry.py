@@ -1,5 +1,4 @@
-from preppulse_ocr.geometry import normalize_box
-from preppulse_ocr.models import SourceBoundingBox
+from preppulse_ocr.engine import SourceBoundingBox, normalize_box
 
 
 def test_normalizes_to_1000_space() -> None:

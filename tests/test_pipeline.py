@@ -2,8 +2,7 @@ from pathlib import Path
 
 import fitz
 
-from preppulse_ocr.models import DocumentMetadata, DocumentType
-from preppulse_ocr.pipeline import OcrPipeline
+from preppulse_ocr.engine import DocumentMetadata, DocumentType, OcrPipeline
 
 
 def test_digital_pdf_tokens_lines_and_required_metadata(tmp_path: Path) -> None:

@@ -1,6 +1,57 @@
 """PrepPulse provenance-preserving OCR pipeline."""
 
-from .models import DocumentMetadata, DocumentType, ParsedDocument
-from .pipeline import OcrPipeline, PipelineConfig
+from .database import (
+    ManifestDocument,
+    SqliteStore,
+    build_pack,
+    ingest_cohort,
+    ingest_document,
+    load_manifest,
+    select_complete_packs,
+    selected_documents,
+)
+from .engine import (
+    BoundingBox,
+    DocumentMetadata,
+    DocumentType,
+    ExtractedTable,
+    Line,
+    OcrPipeline,
+    PageDimensions,
+    ParsedDocument,
+    ParsedPage,
+    PipelineConfig,
+    SourceBoundingBox,
+    TableCell,
+    Token,
+    normalize_box,
+    reconstruct_table,
+    union_source_boxes,
+)
 
-__all__ = ["DocumentMetadata", "DocumentType", "OcrPipeline", "ParsedDocument", "PipelineConfig"]
+__all__ = [
+    "BoundingBox",
+    "DocumentMetadata",
+    "DocumentType",
+    "ExtractedTable",
+    "Line",
+    "ManifestDocument",
+    "OcrPipeline",
+    "PageDimensions",
+    "ParsedDocument",
+    "ParsedPage",
+    "PipelineConfig",
+    "SourceBoundingBox",
+    "SqliteStore",
+    "TableCell",
+    "Token",
+    "build_pack",
+    "ingest_cohort",
+    "ingest_document",
+    "load_manifest",
+    "normalize_box",
+    "reconstruct_table",
+    "select_complete_packs",
+    "selected_documents",
+    "union_source_boxes",
+]

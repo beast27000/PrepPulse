@@ -1,6 +1,10 @@
-from preppulse_ocr.geometry import normalize_box
-from preppulse_ocr.models import PageDimensions, SourceBoundingBox, Token
-from preppulse_ocr.table_reconstruction import reconstruct_table
+from preppulse_ocr.engine import (
+    PageDimensions,
+    SourceBoundingBox,
+    Token,
+    normalize_box,
+    reconstruct_table,
+)
 
 
 def make_token(identifier: str, text: str, x0: int, y0: int, x1: int, y1: int) -> Token:
