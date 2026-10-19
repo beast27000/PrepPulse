@@ -3,6 +3,32 @@
 Sprint 1 foundation for extracting auditable clinical-document content from digital PDFs,
 scanned PDFs, PNGs, and JPEGs.
 
+## Teammate setup and verification
+
+Use these commands from the repository root after cloning the project:
+
+```powershell
+git clone https://github.com/beast27000/PrepPulse.git
+cd PrepPulse
+uv sync --extra dev
+uv run pytest
+```
+
+`uv sync --extra dev` creates or updates the project-local `.venv` and installs the locked
+runtime and development dependencies. `uv run pytest` runs the OCR contract tests using that
+environment, so manually activating a virtual environment is optional.
+
+To activate it for an interactive shell on Windows, use:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Install the Tesseract desktop binary separately and ensure `tesseract` is available on your
+`PATH`; it is required to process scanned PDFs and images. Digital PDFs can be tested without
+Tesseract. This section is the canonical team setup guide and will be updated whenever a new
+required prerequisite, command, or service is introduced.
+
 ## Project status
 
 The OCR foundation is implemented and tested. The LITE synthetic corpus is extracted locally
@@ -17,9 +43,11 @@ dataset context in Git, but do not commit ZIP archives or extracted documents. T
 test corpus is extracted from `preppulse_synthetic_LITE.zip` into
 `data/raw/preppulse_synthetic_lite/`.
 
-LITE provides 720 synthetic patient records and 100 rendered sample documents. The sample
-documents, their manifest, and the OCR output are the first test path. See
-[`datasets/dataset_context.md`](datasets/dataset_context.md) for the verified inventory.
+LITE provides 720 synthetic patient records and 100 rendered sample documents. The full
+documents manifest describes 4,156 rendered documents across 300 patients; 93 patients have
+all four required core document types. The sample documents, their manifest, and the OCR output
+are the first test path. See [`datasets/dataset_context.md`](datasets/dataset_context.md) for
+the verified inventory.
 
 ## Guarantees
 
@@ -41,15 +69,14 @@ TO_DO.md              Living delivery tracker
 AGENTS.md             Planning and version-control agreement
 ```
 
-## Local setup
+## Environment details
 
 ```powershell
-uv venv
 uv sync --extra dev
 ```
 
-Install the Tesseract desktop binary separately and ensure `tesseract` is available on your
-`PATH`; it is only required for scanned PDFs and images. Digital PDFs work without it.
+`uv sync` is the supported setup command; it creates `.venv` automatically. Run the tests with
+`uv run pytest` after dependency changes or before sharing OCR changes.
 
 ## Run
 

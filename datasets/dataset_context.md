@@ -85,6 +85,24 @@ The original four-document patient-pack requirement is covered by the corpus:
 The corpus also includes imaging reports, medication lists, and handwritten notes. Those are
 useful robustness cases but are not required for the first acceptance run.
 
+### Verified document coverage
+
+The local `documents_manifest.jsonl` contains 4,156 rendered documents for **300** patients.
+The remaining 420 of the 720 structured patient records are represented by the separate
+metadata-only manifest and have no rendered OCR source files. Coverage for the four required
+types is:
+
+| Required kind | Rendered documents | Patients represented |
+|---|---:|---:|
+| `clinic_note` | 1,207 | 299 |
+| `discharge_summary` | 115 | 115 |
+| `lab_report` | 1,527 | 300 |
+| `referral_letter` | 480 | 230 |
+
+**93 patients** have all four kinds, so those 93 are the valid ready-made complete packs for
+the initial end-to-end Sprint 1 acceptance test. The 100 LITE sample documents are only a
+small OCR smoke-test subset, not a 100-patient pack.
+
 ## Agreed first-use path (no code implemented yet)
 
 1. Extract **only** `preppulse_synthetic_LITE.zip` into
