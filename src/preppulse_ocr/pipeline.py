@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,6 +33,16 @@ class PipelineConfig:
 class OcrPipeline:
     def __init__(self, config: PipelineConfig | None = None) -> None:
         self.config = config or PipelineConfig()
+        self._configure_tesseract()
+
+    @staticmethod
+    def _configure_tesseract() -> None:
+        """Use the standard Windows installer path when PATH has not refreshed yet."""
+        if shutil.which("tesseract"):
+            return
+        windows_binary = Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe")
+        if windows_binary.is_file():
+            pytesseract.pytesseract.tesseract_cmd = str(windows_binary)
 
     def parse(self, input_path: Path, metadata: DocumentMetadata) -> ParsedDocument:
         path = Path(input_path)

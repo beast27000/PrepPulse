@@ -12,6 +12,7 @@ build/
 
 # Local source documents and pipeline artefacts may contain sensitive data.
 data/raw/
+data/active/
 data/processed/
 data/outputs/
 

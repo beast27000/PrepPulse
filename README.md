@@ -29,6 +29,10 @@ Install the Tesseract desktop binary separately and ensure `tesseract` is availa
 Tesseract. This section is the canonical team setup guide and will be updated whenever a new
 required prerequisite, command, or service is introduced.
 
+On Windows, the pipeline also detects the standard installation at
+`C:\Program Files\Tesseract-OCR\tesseract.exe` when a freshly installed binary has not yet
+appeared in the current shell's `PATH`.
+
 ## Project status
 
 The OCR foundation is implemented and tested. The LITE synthetic corpus is extracted locally
@@ -89,6 +93,61 @@ uv run preppulse-ocr path/to/document.pdf `
 ```
 
 The output JSON is the contract future RAG, agents, and the source-highlighting UI consume.
+
+## Approved Sprint 1 local workflow
+
+The active test corpus is deliberately separate from the delivered archives. Running the
+following creates a Git-ignored `data/active/pack93/` containing exactly four selected source
+documents for each of the 93 patients with complete packs. It labels the first 75 patients as
+the automatic cohort and the remaining 18 as the manual-review cohort.
+
+```powershell
+uv run preppulse-pack `
+  --manifest data/raw/preppulse_synthetic_lite/datasets/documents_manifest.jsonl `
+  --records-dir data/raw/preppulse_synthetic_lite/records `
+  --archives-dir datasets `
+  --output data/active/pack93
+```
+
+Ingest the automatic 75-patient cohort (300 documents) into SQLite and write durable OCR JSON:
+
+```powershell
+uv run preppulse-ingest `
+  --selection data/active/pack93/selected_manifest.jsonl `
+  --corpus-root data/active/pack93 `
+  --output-root data/outputs/ocr_json `
+  --database data/outputs/preppulse_ocr.sqlite
+```
+
+Open the local Tkinter reviewer to inspect original source pages, OCR lines/table cells, and
+their normalized-box highlights. It can process the reserved 18 manual patients one patient at
+a time.
+
+```powershell
+uv run preppulse-review `
+  --selection data/active/pack93/selected_manifest.jsonl `
+  --corpus-root data/active/pack93 `
+  --output-root data/outputs/ocr_json `
+  --database data/outputs/preppulse_ocr.sqlite
+```
+
+The delivery ZIPs and original LITE extraction are retained as immutable local sources. Only
+the active `pack93` folder is used for this Sprint 1 test; no raw archive is deleted or added to Git.
+
+### Current local Sprint 1 result
+
+The active pack has been built successfully: 93 patients, 372 selected source documents, and
+exactly four document types per patient. The automatic cohort has completed: **75 patients / 300
+documents** are persisted in `data/outputs/preppulse_ocr.sqlite`, with **34,797** token, line,
+and table-cell evidence anchors. Their durable OCR JSON is in `data/outputs/ocr_json/`.
+
+The 18 intentionally unprocessed manual-review patients are:
+
+`b6d482911a`, `b7a53f9a59`, `b81a0d569a`, `c212fde59d`, `ca56ccbf0b`, `ca7c820419`, `cf3bb2a6f0`, `d123a26a0a`, `d16f595190`, `d4c966a125`, `d91b46cd87`, `d92e869072`, `dbaa5f2643`, `dc7b81b7c9`, `dc9ce68574`, `e9c0e51370`, `fa2cdb4535`, and `fda098fcfd`.
+
+Start `preppulse-review` using the command above, select a `[MANUAL]` patient, and click
+**Process selected patient**. Then select a document and an OCR evidence row to see its red
+normalized-coordinate highlight over the source page.
 
 ## Target architecture
 

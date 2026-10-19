@@ -19,6 +19,9 @@ dev = [
 
 [project.scripts]
 preppulse-ocr = "preppulse_ocr.cli:main"
+preppulse-pack = "preppulse_ocr.pack_builder:main"
+preppulse-ingest = "preppulse_ocr.ingestion:main"
+preppulse-review = "preppulse_ocr.review_ui:main"
 
 [build-system]
 requires = ["hatchling>=1.25"]

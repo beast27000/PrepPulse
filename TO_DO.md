@@ -23,7 +23,7 @@ state changes.
 - [x] Dataset delivery guide and verified dataset context tracked in Git.
 - [x] LITE synthetic corpus extracted locally under `data/raw/preppulse_synthetic_lite/`
   (720 patient records, 100 sample documents, and sample manifest; never committed).
-- [ ] Dataset manifest, labels, and rendered-document corpus integrated with the OCR runner.
+- [x] Dataset manifest, labels, and the selected rendered-document corpus integrated with the OCR runner.
 
 ## To build — OCR foundation completion
 
@@ -37,18 +37,17 @@ state changes.
 - [ ] Define clear acceptance thresholds for routing, OCR text quality, and table preservation.
 - [ ] Confirm local Tesseract installation and run end-to-end scanned-document verification.
 
-## Next proposed build — local data + OCR backend
+## Active build — local data + OCR backend
 
-This is the next scoped build and requires an explicit approved plan before code changes.
+This scope is approved: build a clean 93-patient/four-document active corpus, automatically
+ingest 75 patients, and manually review the remaining 18 through a local-only Tkinter tool.
 
-- [ ] Add a read-only manifest loader for `sample_documents_manifest.jsonl`.
-- [ ] Map authoritative manifest metadata into OCR document metadata.
-- [ ] Add a batch ingestion runner for the 100 sample documents.
-- [ ] Persist ingestion results in an initial SQLite database.
-- [ ] Create relational records for patients, documents, pages, and evidence anchors.
-- [ ] Store OCR JSON as the durable extraction artifact and link it to document/page records.
-- [ ] Produce a routing/evaluation report against `text_extractable` and `requires_ocr`.
+- [x] Define a manifest-to-four-document-pack selection strategy (one latest document per kind).
+- [x] Run the pack builder to create the Git-ignored active 93-patient corpus (372 selected files).
+- [x] Run automatic ingestion of 75 selected patients (300 documents) into SQLite (34,797 evidence anchors).
+- [ ] Use the Tkinter local reviewer to ingest and inspect the remaining 18 patients.
 - [ ] Verify scanned-document OCR using local Tesseract and record environment prerequisites.
+- [ ] Produce a routing/evaluation report against `text_extractable` and `requires_ocr`.
 
 ## Planned backend data model
 
