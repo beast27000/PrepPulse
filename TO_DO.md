@@ -20,8 +20,10 @@ state changes.
 
 ## Available but not yet integrated
 
-- [ ] Synthetic dataset archives in `datasets/`.
-- [ ] Dataset manifest, labels, and rendered-document corpus.
+- [x] Dataset delivery guide and verified dataset context tracked in Git.
+- [x] LITE synthetic corpus extracted locally under `data/raw/preppulse_synthetic_lite/`
+  (720 patient records, 100 sample documents, and sample manifest; never committed).
+- [ ] Dataset manifest, labels, and rendered-document corpus integrated with the OCR runner.
 
 ## To build — OCR foundation completion
 
@@ -34,6 +36,30 @@ state changes.
 - [ ] Add OCR accuracy, table-cell integrity, rotation, low-resolution, and multi-column tests.
 - [ ] Define clear acceptance thresholds for routing, OCR text quality, and table preservation.
 - [ ] Confirm local Tesseract installation and run end-to-end scanned-document verification.
+
+## Next proposed build — local data + OCR backend
+
+This is the next scoped build and requires an explicit approved plan before code changes.
+
+- [ ] Add a read-only manifest loader for `sample_documents_manifest.jsonl`.
+- [ ] Map authoritative manifest metadata into OCR document metadata.
+- [ ] Add a batch ingestion runner for the 100 sample documents.
+- [ ] Persist ingestion results in an initial SQLite database.
+- [ ] Create relational records for patients, documents, pages, and evidence anchors.
+- [ ] Store OCR JSON as the durable extraction artifact and link it to document/page records.
+- [ ] Produce a routing/evaluation report against `text_extractable` and `requires_ocr`.
+- [ ] Verify scanned-document OCR using local Tesseract and record environment prerequisites.
+
+## Planned backend data model
+
+- [ ] `patients`: patient identity and synthetic demographic references.
+- [ ] `documents`: source path, type, date, hash, patient relationship, and ingestion status.
+- [ ] `pages`: document page geometry and extraction method.
+- [ ] `evidence_anchors`: tokens, lines, table cells, and later paragraph/multi-box regions.
+- [ ] `chunks`: RAG-ready text with evidence-anchor references.
+- [ ] `findings` and `finding_evidence`: validated future outputs and their citations.
+- [ ] `review_actions`: accept/edit/dismiss audit trail.
+- [ ] `caregiver_items`: English/Hindi text and checklist state.
 
 ## To build — after the OCR/backend base is stable
 
@@ -48,10 +74,22 @@ before a reviewed merge into PrepPulse.
 - [ ] Consultation-brief API/backend.
 - [ ] Dual-pane web UI with PDF.js source highlighting and audit controls.
 
+## Planned test UI
+
+After the local OCR/database path is stable and an implementation plan is approved:
+
+- [ ] Build a local-only mock source-proof UI against a small LITE sample.
+- [ ] List patients/documents and show OCR-derived evidence records.
+- [ ] Select a finding/evidence item and open the correct document/page.
+- [ ] Draw token, line, table-cell, and multi-line highlight overlays from normalized boxes.
+- [ ] Use it as an OCR/provenance test harness before building the production UI.
+
 ## Known limitations
 
 - Current table reconstruction is a conservative geometry heuristic, not a production-grade
   table-layout model.
 - Hybrid PDFs are not yet processed as text-plus-embedded-figure inputs.
 - No dataset manifest loader, RAG system, agents, API, or UI exists yet.
-- The dataset zip archives are local and untracked; they have not been unpacked or processed.
+- Raw dataset ZIP archives are local and untracked. Only the LITE archive has been extracted;
+  its records and documents have not yet been processed by the OCR pipeline.
+- No database, RAG index, agent service, API, or mock UI has been implemented yet.

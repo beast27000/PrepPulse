@@ -14,3 +14,6 @@ build/
 data/raw/
 data/processed/
 data/outputs/
+
+# Keep delivered raw datasets local; track only their documentation/context.
+datasets/*.zip
