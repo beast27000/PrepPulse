@@ -25,17 +25,17 @@ state changes.
   (720 patient records, 100 sample documents, and sample manifest; never committed).
 - [x] Dataset manifest, labels, and the selected rendered-document corpus integrated with the OCR runner.
 
-## To build — OCR foundation completion
+## Remaining work — OCR foundation completion
 
-- [ ] Unpack a safe sample of the synthetic corpus outside Git-tracked source files.
-- [ ] Build a manifest loader for document metadata and routing ground truth.
-- [ ] Build a batch runner for patient packs and document manifests.
+- [x] Create a Git-ignored active corpus outside tracked source files (93 complete packs).
+- [x] Build a manifest loader for authoritative document metadata.
+- [x] Build a batch runner for selected patient packs and document manifests.
 - [ ] Evaluate router decisions against `text_extractable` and `requires_ocr` labels.
 - [ ] Add hybrid-PDF support: retain native text and OCR embedded figures/regions when required.
 - [ ] Improve table detection for multi-table, multi-page, degraded, and handwritten lab panels.
 - [ ] Add OCR accuracy, table-cell integrity, rotation, low-resolution, and multi-column tests.
 - [ ] Define clear acceptance thresholds for routing, OCR text quality, and table preservation.
-- [ ] Confirm local Tesseract installation and run end-to-end scanned-document verification.
+- [x] Confirm local Tesseract installation and run end-to-end scanned-document ingestion.
 
 ## Active build — local data + OCR backend
 
@@ -49,12 +49,12 @@ ingest 75 patients, and manually review the remaining 18 through a local-only Tk
 - [ ] Verify scanned-document OCR using local Tesseract and record environment prerequisites.
 - [ ] Produce a routing/evaluation report against `text_extractable` and `requires_ocr`.
 
-## Planned backend data model
+## Backend data model
 
-- [ ] `patients`: patient identity and synthetic demographic references.
-- [ ] `documents`: source path, type, date, hash, patient relationship, and ingestion status.
-- [ ] `pages`: document page geometry and extraction method.
-- [ ] `evidence_anchors`: tokens, lines, table cells, and later paragraph/multi-box regions.
+- [x] `patients`: patient identity and synthetic demographic references.
+- [x] `documents`: source path, type, date, hash, patient relationship, and ingestion status.
+- [x] `pages`: document page geometry and extraction method.
+- [x] `evidence_anchors`: tokens, lines, and table cells (paragraph/multi-box regions remain future work).
 - [ ] `chunks`: RAG-ready text with evidence-anchor references.
 - [ ] `findings` and `finding_evidence`: validated future outputs and their citations.
 - [ ] `review_actions`: accept/edit/dismiss audit trail.
@@ -73,15 +73,13 @@ before a reviewed merge into PrepPulse.
 - [ ] Consultation-brief API/backend.
 - [ ] Dual-pane web UI with PDF.js source highlighting and audit controls.
 
-## Planned test UI
+## Local OCR test UI
 
-After the local OCR/database path is stable and an implementation plan is approved:
-
-- [ ] Build a local-only mock source-proof UI against a small LITE sample.
-- [ ] List patients/documents and show OCR-derived evidence records.
-- [ ] Select a finding/evidence item and open the correct document/page.
-- [ ] Draw token, line, table-cell, and multi-line highlight overlays from normalized boxes.
-- [ ] Use it as an OCR/provenance test harness before building the production UI.
+- [x] Build a local-only Tkinter OCR-review UI against the selected 93-patient corpus.
+- [x] List patients/documents and show stored OCR evidence records.
+- [x] Select a document and evidence item, then render page 1 of the original source.
+- [x] Draw normalized token, line, and table-cell highlight overlays.
+- [ ] Use it to manually ingest and inspect the remaining 18 patients.
 
 ## Known limitations
 
@@ -89,6 +87,7 @@ After the local OCR/database path is stable and an implementation plan is approv
   table-layout model.
 - Hybrid PDFs are not yet processed as text-plus-embedded-figure inputs.
 - No dataset manifest loader, RAG system, agents, API, or UI exists yet.
-- Raw dataset ZIP archives are local and untracked. Only the LITE archive has been extracted;
-  its records and documents have not yet been processed by the OCR pipeline.
-- No database, RAG index, agent service, API, or mock UI has been implemented yet.
+- Raw dataset ZIP archives are local and untracked. The active 93-patient corpus is extracted
+  locally; 75 of those patients are already processed. The original full corpus remains zipped.
+- SQLite and a local-only OCR review UI are implemented. RAG, agents, API, and production UI
+  are not implemented.
