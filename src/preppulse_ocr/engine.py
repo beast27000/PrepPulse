@@ -244,6 +244,8 @@ def reconstruct_table(tokens: list[Token], dimensions: PageDimensions) -> Extrac
 class PipelineConfig:
     """Extraction tuning parameters."""
     native_word_threshold: int = 8
+    min_image_area_ratio: float = 0.02
+    full_page_image_threshold: float = 0.70
     render_dpi: int = 300
     tesseract_config: str = "--oem 1 --psm 6"
 
@@ -288,16 +290,82 @@ class OcrPipeline:
             pdf.close()
 
     def _parse_pdf_page(self, pdf: fitz.Document, index: int, document_type: DocumentType) -> ParsedPage:
-        # /3 prefer native digital text when word yield exceeds threshold, fallback to OCR
+        # /3 inspect digital words and embedded image regions for structural routing
         page = pdf[index]
         words = page.get_text("words", sort=True)
-        if len(words) >= self.config.native_word_threshold:
-            dimensions = PageDimensions(width=page.rect.width, height=page.rect.height, unit="pdf_point")
-            tokens = self._native_tokens(words, dimensions)
-            return self._build_page(index + 1, dimensions, "native_pdf_text", tokens, document_type)
-        pixmap = page.get_pixmap(dpi=self.config.render_dpi, alpha=False)
+        images = page.get_image_info(xrefs=True)
+        page_area = max(1.0, page.rect.width * page.rect.height)
+
+        # /3 check for full-page background scan
+        has_full_scan = any(
+            (fitz.Rect(img["bbox"]).width * fitz.Rect(img["bbox"]).height) / page_area >= self.config.full_page_image_threshold
+            for img in images
+        )
+        if len(words) == 0 or (has_full_scan and len(words) < 15):
+            pixmap = page.get_pixmap(dpi=self.config.render_dpi, alpha=False)
+            image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+            return self._ocr_image(image, index + 1, document_type)
+
+        dimensions = PageDimensions(width=page.rect.width, height=page.rect.height, unit="pdf_point")
+        tokens = self._native_tokens(words, dimensions)
+        hybrid_tokens: list[Token] = []
+
+        # /3 crop and OCR embedded image regions within the page
+        for img_idx, img in enumerate(images):
+            rect = fitz.Rect(img["bbox"]) & page.rect
+            area_ratio = (rect.width * rect.height) / page_area
+            if area_ratio < self.config.min_image_area_ratio or rect.width < 30 or rect.height < 30:
+                continue
+            region_tokens = self._ocr_image_region(page, rect, dimensions, img_idx)
+            for rt in region_tokens:
+                if not any(self._boxes_overlap(rt.bbox, nt.bbox) for nt in tokens):
+                    hybrid_tokens.append(rt)
+
+        extraction_method = "hybrid" if hybrid_tokens else "native_pdf_text"
+        tokens.extend(hybrid_tokens)
+        return self._build_page(index + 1, dimensions, extraction_method, tokens, document_type)
+
+    def _ocr_image_region(
+        self, page: fitz.Page, rect: fitz.Rect, dimensions: PageDimensions, image_index: int,
+    ) -> list[Token]:
+        # /3 crop and OCR embedded image region, mapping coordinates back to page points
+        pixmap = page.get_pixmap(clip=rect, dpi=self.config.render_dpi, alpha=False)
         image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
-        return self._ocr_image(image, index + 1, document_type)
+        data = pytesseract.image_to_data(image, config=self.config.tesseract_config, output_type=pytesseract.Output.DICT)
+        scale_x = rect.width / max(1, image.width)
+        scale_y = rect.height / max(1, image.height)
+        tokens: list[Token] = []
+        for idx, text in enumerate(data["text"]):
+            if not text.strip() or int(float(data["conf"][idx])) < 0:
+                continue
+            left, top = data["left"][idx], data["top"][idx]
+            w, h = data["width"][idx], data["height"][idx]
+            source_box = SourceBoundingBox(
+                x0=rect.x0 + (left * scale_x),
+                y0=rect.y0 + (top * scale_y),
+                x1=rect.x0 + ((left + w) * scale_x),
+                y1=rect.y0 + ((top + h) * scale_y),
+            )
+            tokens.append(Token(
+                id=f"img-{image_index}-token-{len(tokens) + 1}", text=text,
+                bbox=normalize_box(source_box, dimensions.width, dimensions.height),
+                source_bbox=source_box, confidence=float(data["conf"][idx]) / 100,
+                block_index=200 + image_index, line_index=data["line_num"][idx],
+            ))
+        return tokens
+
+    @staticmethod
+    def _boxes_overlap(b1: BoundingBox, b2: BoundingBox, threshold: float = 0.5) -> bool:
+        # /3 test if two bounding boxes overlap significantly
+        x_left = max(b1.x0, b2.x0)
+        y_top = max(b1.y0, b2.y0)
+        x_right = min(b1.x1, b2.x1)
+        y_bottom = min(b1.y1, b2.y1)
+        if x_right <= x_left or y_bottom <= y_top:
+            return False
+        intersection = (x_right - x_left) * (y_bottom - y_top)
+        min_area = min((b1.x1 - b1.x0) * (b1.y1 - b1.y0), (b2.x1 - b2.x0) * (b2.y1 - b2.y0))
+        return (intersection / min_area) >= threshold if min_area > 0 else False
 
     def _parse_image(self, path: Path, page_number: int, document_type: DocumentType) -> ParsedPage:
         # /3 parse standalone image via OCR

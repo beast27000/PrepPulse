@@ -14,13 +14,13 @@ Implementation status and backlog.
 - [x] Pack builder creating active 93-patient 4-document packs.
 - [x] Batch ingestion pipeline: 75 patients (300 documents, 34,797 anchors) ingested into SQLite.
 - [x] Desktop test UI in `temp_ui/mock_ui_ocr_testing.py` with document preview and bounding-box highlighting.
-- [x] Full test suite (5 passing tests) and Ruff linting passing cleanly.
+- [x] Hybrid-PDF support: same-page extraction combining native digital text and embedded image region OCR.
+- [x] Full test suite (6 passing tests) and Ruff linting passing cleanly.
 
 ## Active Backlog
 
 - [ ] Use `temp_ui/mock_ui_ocr_testing.py` to process the remaining 18 manual patients.
 - [ ] Evaluate routing decisions against `text_extractable` and `requires_ocr` ground-truth labels.
-- [ ] Add hybrid-PDF support (retaining native text while running OCR on embedded image regions).
 - [ ] Enhance table detection for degraded and multi-page lab reports.
 
 ## Post-OCR Foundation (Future Sprints)
