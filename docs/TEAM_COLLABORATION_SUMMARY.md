@@ -1,72 +1,96 @@
-# PrepPulse Team Collaboration Quick Summary
+# PrepPulse: 3-Stage Pipeline Breakdown & Team Collaboration
 
-Hey team! Here is the quick breakdown of how we are collaborating on PrepPulse and who owns what.
-
----
-
-### 1. The Big Picture
-We are processing longitudinal medical records (lab reports, doctor prescriptions, consultation notes).
-- **Core Team (Us):** Converts PDFs/scans into raw text & bounding boxes via OCR, and stores it in local MongoDB (**Stage 1**).
-- **Teammate A (Chunker):** Reads raw OCR and splits it into clean, labeled sections with bounding boxes preserved.
-- **Teammate B (Extractor):** Reads the chunks and uses a local LLM (Qwen) to separate clinical facts (labs, medications, diagnoses) from doctor notes/theory (**Stage 2**).
+PrepPulse uses a **3-Stage Pipeline** stored in MongoDB to process patient medical records. Here is what happens in each stage and who owns it:
 
 ---
 
-### 2. How to Set Up on Your Machine (Option 1: Git + Local Mongo)
-Everyone runs their own MongoDB locally (`mongodb://localhost:27017/preppulse`). No cloud database needed.
+```
+┌────────────────────────────────────────────────────────┐
+│ STAGE 1: Raw OCR & Spatial Ingestion (CORE TEAM / US)  │
+│ - Scans & PDFs ➔ OCR Engine                            │
+│ - Outputs full text, word tokens, bboxes [0, 1000]     │
+│ - Populates: patient_documents.stage_1_raw_ocr         │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ STAGE 2: Pre-Processing & Fact Extraction (TEAMMATES)  │
+│                                                        │
+│ • Teammate A (Chunker):                                │
+│   - Splits stage_1 text into clinical sections         │
+│   - Writes to: document_chunks                         │
+│                                                        │
+│ • Teammate B (Extractor):                              │
+│   - Consumes document_chunks                           │
+│   - Runs local Qwen LLM to extract facts vs notes      │
+│   - Maps LOINC / RxNorm / ICD-10 codes                 │
+│   - Populates: patient_documents.stage_2_structured_   │
+│                entities                                │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ STAGE 3: FHIR R4 Standard Output (CORE TEAM / US)      │
+│ - Reads stage_2 structured facts                       │
+│ - Maps to standard FHIR R4 resources:                  │
+│   - Labs ➔ Observation                                 │
+│   - Meds ➔ MedicationRequest                           │
+│   - Diagnoses ➔ Condition                              │
+│   - Patient Info ➔ Patient                             │
+│ - Populates: patient_documents.stage_3_fhir_output     │
+└────────────────────────────────────────────────────────┘
+```
 
-1. **Pull the latest code:**
+---
+
+## Stage-by-Stage Breakdown
+
+### STAGE 1 (Owned by Core Team / Us)
+* **What happens:** We run our frozen OCR engine over all patient files (PDFs, scans, handwritten notes).
+* **What it produces:** Text, tokens, normalized bounding boxes `[0, 1000]`, and table grids.
+* **Where it is stored:** MongoDB `patient_documents` collection under `stage_1_raw_ocr`.
+* **State of Stage 2 & 3 at this point:** Initialized as `null`.
+
+---
+
+### STAGE 2 (Owned by Teammates A & B)
+* **What happens:** Transform raw, noisy OCR text and doctor consultation notes into clean clinical facts.
+* **Teammate A:**
+  - Reads `stage_1_raw_ocr`.
+  - Splits text by clinical sections (`medications`, `labs`, `doctor_notes`, `plans`).
+  - Preserves exact bounding boxes.
+  - Writes records to `document_chunks`.
+* **Teammate B:**
+  - Reads `document_chunks`.
+  - Runs local Qwen LLM (Ollama) to extract concrete entities (test names, results, dosages) and separates out doctor theory/advice.
+  - Maps to LOINC (labs), RxNorm (drugs), and ICD-10 (diagnoses).
+  - Writes the final structured JSON back to `stage_2_structured_entities`.
+
+---
+
+### STAGE 3 (Owned by Core Team / Us)
+* **What happens:** Standardize the extracted clinical facts into FHIR R4 format for hospital EHR compatibility.
+* **What it produces:** An official FHIR R4 Transaction Bundle.
+  - Maps `stage_2.labs` ➔ FHIR `Observation`
+  - Maps `stage_2.medications` ➔ FHIR `MedicationRequest`
+  - Maps `stage_2.diagnoses` ➔ FHIR `Condition`
+  - Maps `stage_2.patient` ➔ FHIR `Patient`
+* **Where it is stored:** MongoDB `patient_documents` collection under `stage_3_fhir_output`.
+
+---
+
+## How to Set Up & Run (Option 1: Local Mongo via Git)
+
+1. **Pull the code:**
    ```bash
    git pull origin main
    ```
-2. **Install dependencies:**
+2. **Install requirements:**
    ```bash
    pip install -r requirements.txt
    ```
-3. **Seed your local MongoDB with the 10 mock patients:**
+3. **Run Stage 1 seed script on your machine:**
    ```bash
    python ingest_mock_patients.py
    ```
-   *(This populates your local `patient_documents` collection with `stage_1_raw_ocr` data).*
-
----
-
-### 3. Clear Responsibilities
-
-#### **Teammate A — Structural Chunker (`chunker.py`)**
-* **Input:** Reads from `patient_documents` (field: `stage_1_raw_ocr`).
-* **Task:** Detect section boundaries (`medications`, `labs`, `doctor_notes`, `plans`) and keep bounding boxes `[x0, y0, x1, y1]` intact.
-* **Output:** Writes to MongoDB collection `document_chunks`.
-  ```json
-  {
-    "document_id": "patient_01_doc_1",
-    "patient_id": "patient_01",
-    "section": "medications",
-    "text": "Empagliflozin 10mg once daily",
-    "source_page": 1,
-    "source_bbox": [120, 340, 180, 360]
-  }
-  ```
-
-#### **Teammate B — LLM Fact Extractor (`extractor.py`)**
-* **Input:** Reads from `document_chunks`.
-* **Task:** Run local Qwen (via Ollama) to extract concrete entities from messy doctor notes:
-  - Labs ➔ test name, numerical value, unit, reference range
-  - Meds ➔ drug name, dosage, frequency
-  - Doctor's theory/instructions ➔ save under `advice` / `notes`
-* **Output:** Updates `patient_documents` in MongoDB under `stage_2_structured_entities`.
-  ```json
-  {
-    "stage_2_structured_entities": {
-      "labs": [{ "test_name": "HbA1c", "value": 8.9, "unit": "%", "loinc_code": "4548-4" }],
-      "medications": [{ "name": "Empagliflozin", "dosage": "10mg", "frequency": "once daily" }],
-      "advice": "Strict carbohydrate restriction, 30 mins brisk walking daily."
-    }
-  }
-  ```
-
----
-
-### 4. Ground Truth Verification
-In each patient folder (`data/active/v2_patients/patient_XX/`), there is a `ground_truth.json`.
-Compare your extracted values against this file to verify extraction accuracy.
+   This populates your local MongoDB with all 10 mock patients in **Stage 1**, ready for your **Stage 2** scripts to consume.
