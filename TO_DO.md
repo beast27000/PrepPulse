@@ -20,13 +20,12 @@ Implementation status and backlog.
 
 ## Active Roadmap (Updated Priorities)
 
-### Phase 1: Local MongoDB Database Architecture (Active Priority 1)
-- [x] Received initial 10-patient longitudinal dataset (`Updated_Data_Set/PrepPulse_10_patients.zip`, 115 documents).
-- [ ] Define local MongoDB schemas (`patients`, `patient_documents`, `document_chunks`) in `src/preppulse_db/schemas.py`.
-- [ ] Implement `MongoStore` in `src/preppulse_db/mongo_store.py` (Local MongoDB `localhost:27017`, `pymongo`).
-- [ ] Ingest the 10 longitudinal patient packs (115 files) using the frozen OCR engine into MongoDB `stage_1_raw_ocr`.
-- [ ] Verify Stage 1 persistence, geometry preservation `[0, 1000]`, and audit integrity.
-- [ ] Implement on-demand FHIR R4 Bundle builder (`fhir_builder.py`).
+### Phase 1: Local MongoDB & Mock Ingest Testing (Active Priority 1)
+- [x] Received initial 10-patient mock testing dataset (`data/active/v2_patients/`, 115 files) for pipeline validation.
+- [ ] Implement `src/preppulse_db/` (`mongo_store.py` and `schemas.py`) for local MongoDB (`mongodb://localhost:27017/preppulse`).
+- [ ] Create `ingest_mock_patients.py`: batch ingest the 10 mock patients via the frozen OCR engine into `stage_1_raw_ocr`.
+- [ ] Verify Stage 1 persistence and `[0, 1000]` bounding-box preservation in local MongoDB.
+- [ ] Provide seed script and docs to teammates so they can run mock data locally.
 
 ### Phase 2: Teammate Pre-Processing & Compilation Track (Parallel)
 - [ ] **Teammate A (Chunking):** Ingest `stage_1_raw_ocr` -> section detection -> write to `document_chunks` collection with normalized bboxes.
