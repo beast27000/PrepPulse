@@ -20,15 +20,17 @@ Implementation status and backlog.
 
 ## Active Roadmap (Updated Priorities)
 
-### Phase 1: Scalable & Secure Database Architecture (Active Priority 1)
+### Phase 1: Local MongoDB Database Architecture (Active Priority 1)
 - [x] Received initial 10-patient longitudinal dataset (`Updated_Data_Set/PrepPulse_10_patients.zip`, 115 documents).
-- [ ] Design and implement modernized, secure, and scalable database schema for structured text storage and high-performance retrieval.
-- [ ] Ingest the 10 longitudinal patient packs into the new database using the frozen OCR engine.
-- [ ] Verify Stage 1 data integrity and audit trails against `ground_truth.json`.
+- [ ] Define local MongoDB schemas (`patients`, `patient_documents`, `document_chunks`) in `src/preppulse_db/schemas.py`.
+- [ ] Implement `MongoStore` in `src/preppulse_db/mongo_store.py` (Local MongoDB `localhost:27017`, `pymongo`).
+- [ ] Ingest the 10 longitudinal patient packs (115 files) using the frozen OCR engine into MongoDB `stage_1_raw_ocr`.
+- [ ] Verify Stage 1 persistence, geometry preservation `[0, 1000]`, and audit integrity.
+- [ ] Implement on-demand FHIR R4 Bundle builder (`fhir_builder.py`).
 
-### Phase 2: Clinical Pre-Processing, Data Minimization & Confidentiality Layer (Active Priority 2)
-- [ ] Relevance & Noise Reduction: Implement temporal filtering, encounter relevance scoring, and redundant/obsolete history pruning to prevent LLM hallucination from 10+ years of raw logs.
-- [ ] Confidentiality & Privacy Guardrails: Implement secure medical data handling, PHI/PII redaction/masking, and strict access isolation prior to any downstream AI consumption.
+### Phase 2: Teammate Pre-Processing & Compilation Track (Parallel)
+- [ ] **Teammate A (Chunking):** Ingest `stage_1_raw_ocr` -> section detection -> write to `document_chunks` collection with normalized bboxes.
+- [ ] **Teammate B (Extraction):** Ingest `document_chunks` -> local Qwen LLM fact extraction -> LOINC/RxNorm/ICD-10 mapping -> write back to `stage_2_structured_entities`.
 
 ### Phase 3: Hybrid RAG System (LangChain Ensemble: BM25 + Dense Vectors)
 - [ ] Build provenance-preserving chunker linking chunks to exact evidence anchors and `[0, 1000]` bounding boxes.
