@@ -4,20 +4,22 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 # ==============================================================================
-# HANDOFF TO PRE-PROCESSING TEAM:
+# PIPELINE SETUP & STAGE 2/3 HANDOFF:
 #
-# 1. WHAT WE HAVE DONE (STAGE 1):
-#    - We completed the OCR ingestion pipeline.
-#    - Raw text, word tokens, normalized [0, 1000] bounding boxes, and table
-#      structures from patient documents (PDFs, scans, prescriptions) are
-#      processed and stored in MongoDB under `stage_1_raw_ocr`.
+# 1. STEP 0: SEED YOUR LOCAL MONGODB WITH STAGE 1 TEST DATA:
+#    - Since MongoDB runs locally, your local database starts empty.
+#    - First, ensure local MongoDB is running (`localhost:27017`).
+#    - Run our ingestion script to process the test documents and populate your
+#      local `patient_documents` collection with `stage_1_raw_ocr`:
+#         python ingest_mock_patients.py
 #
-# 2. WHAT YOU NEED TO DO (STAGE 2):
-#    - Read `stage_1_raw_ocr` from MongoDB.
-#    - Extract clean, structured clinical facts (medications, lab values,
-#      diagnoses, and doctor notes/advice) from the raw text.
-#    - Update the document in MongoDB under `stage_2_structured_entities` using
-#      `MongoStore.write_stage2(document_id, data)`.
+# 2. WHAT YOU NEED TO DO (STAGE 2 & STAGE 3):
+#    - Read `stage_1_raw_ocr` JSON from your local MongoDB using
+#      `store.get_document(doc_id)` or `store.list_documents(patient_id)`.
+#    - Stage 2: Extract clean clinical facts (medications, labs, diagnoses, advice)
+#      from the OCR text and call `store.write_stage2(doc_id, stage_2_dict)`.
+#    - Stage 3: Convert those facts into a FHIR R4 Bundle and call
+#      `store.write_stage3(doc_id, fhir_bundle_dict)`.
 #
 # 3. SCHEMA FLEXIBILITY & LLM DECISION-MAKING:
 #    - The default schema defines common clinical entities (labs, medications, diagnoses),

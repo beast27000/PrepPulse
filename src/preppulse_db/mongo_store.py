@@ -5,27 +5,27 @@ from pymongo import ASCENDING, MongoClient
 from preppulse_db.schemas import DocumentChunk, PatientDocument, Stage2StructuredEntities
 
 # ==============================================================================
-# HANDOFF TO PRE-PROCESSING TEAM:
+# PIPELINE SETUP & STAGE 2/3 HANDOFF:
 #
-# 1. WHAT WE HAVE DONE (STAGE 1):
-#    - We completed the OCR ingestion pipeline.
-#    - Raw text, word tokens, normalized [0, 1000] bounding boxes, and table
-#      structures from patient documents (PDFs, scans, prescriptions) are
-#      processed and stored in MongoDB under `stage_1_raw_ocr`.
+# 1. STEP 0: SEED YOUR LOCAL MONGODB WITH STAGE 1 TEST DATA:
+#    - Since MongoDB runs locally, your local database starts empty.
+#    - First, ensure local MongoDB is running (`localhost:27017`).
+#    - Run our ingestion script to process the test documents and populate your
+#      local `patient_documents` collection with `stage_1_raw_ocr`:
+#         python ingest_mock_patients.py
 #
-# 2. WHAT YOU NEED TO DO (STAGE 2):
-#    - Read `stage_1_raw_ocr` from MongoDB using `store.get_document(doc_id)`
+# 2. WHAT YOU NEED TO DO (STAGE 2 & STAGE 3):
+#    - Read `stage_1_raw_ocr` JSON from local MongoDB using `store.get_document(doc_id)`
 #      or `store.list_documents(patient_id)`.
-#    - Extract clean clinical facts from the raw text using your extraction pipeline.
-#    - Update the document with your extracted facts by calling:
-#      `store.write_stage2(document_id, extracted_data)`
+#    - Stage 2: Extract clean clinical facts from the OCR text and update the document:
+#      `store.write_stage2(document_id, stage_2_dict)`
+#    - Stage 3: Convert facts into a FHIR R4 Bundle and update the document:
+#      `store.write_stage3(document_id, fhir_bundle_dict)`
 #
 # 3. SCHEMA FLEXIBILITY & LLM DECISION-MAKING:
-#    - `write_stage2()` accepts either a `Stage2StructuredEntities` model or a
-#      standard Python `dict`.
-#    - It is designed with flexibility so your LLM can introduce any new or
-#      unexpected fields (e.g. allergies, vitals, history) and persist them
-#      directly to MongoDB without rejection.
+#    - `write_stage2()` accepts any Python dictionary or Pydantic model with `extra="allow"`.
+#    - Your LLM can introduce any new or unexpected fields (e.g. allergies, vitals, history)
+#      and persist them directly to MongoDB without rejection.
 # ==============================================================================
 
 # ---------- master mongo store ----------
