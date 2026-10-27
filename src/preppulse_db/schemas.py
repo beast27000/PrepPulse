@@ -1,13 +1,28 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+# ==============================================================================
+# TEAMMATE HANDOFF NOTES:
+# 1. WHAT IS DONE (STAGE 1):
+#    - Raw OCR text, word tokens, and [0, 1000] bounding boxes are extracted
+#      from patient PDFs/images and stored in MongoDB under `stage_1_raw_ocr`.
+# 2. WHAT YOU NEED TO DO (STAGE 2):
+#    - Teammate A: Split stage_1 raw text into sections with source bounding boxes (DocumentChunk).
+#    - Teammate B: Run local LLM (Qwen via Ollama) on chunks to pull clinical facts (labs, meds, diagnoses).
+# 3. WHY USE AN LLM HERE:
+#    - Hospital documents come in random, unstructured formats with doctor notes and theory.
+#    - An LLM reliably extracts facts from messy text without needing rigid regex rules.
+#    - All Stage 2 models use `extra="allow"` so ANY new clinical field discovered
+#      by the LLM (e.g. allergies, surgical history, vitals) is automatically accepted and preserved.
+# ==============================================================================
 
 # ---------- helpers ----------
 
 
 def _utc_now_iso() -> str:
-    # /3 Returns current UTC timestamp in ISO-8601 format
+    # Returns current UTC timestamp in ISO-8601 format
     return datetime.now(UTC).isoformat()
 
 
@@ -15,7 +30,7 @@ def _utc_now_iso() -> str:
 
 
 class TokenRecord(BaseModel):
-    # /3 Token with text, normalized bbox [0, 1000], and confidence
+    # Token with text, normalized bbox [0, 1000], and confidence
     text: str
     bbox: list[int] = Field(..., min_length=4, max_length=4)
     confidence: float = 1.0
@@ -23,14 +38,14 @@ class TokenRecord(BaseModel):
 
 
 class TableRecord(BaseModel):
-    # /3 Reconstructed table grid with cell rows and outer bbox
+    # Reconstructed table grid with cell rows and outer bbox
     table_id: int
     rows: list[list[str]] = Field(default_factory=list)
     bbox: list[int] | None = None
 
 
 class PageRecord(BaseModel):
-    # /3 Single page record with tokens and reconstructed tables
+    # Single page record with tokens and reconstructed tables
     page_number: int
     extraction_method: str = "native_pdf"
     full_text: str = ""
@@ -39,7 +54,7 @@ class PageRecord(BaseModel):
 
 
 class Stage1RawOcr(BaseModel):
-    # /3 Full Stage 1 OCR container holding all pages and geometry
+    # Full Stage 1 OCR container holding all pages and geometry
     engine_version: str = "1.0.0-frozen"
     processed_at: str = Field(default_factory=_utc_now_iso)
     page_count: int = 1
@@ -50,7 +65,9 @@ class Stage1RawOcr(BaseModel):
 
 
 class LabEntity(BaseModel):
-    # /3 Extracted lab test observation
+    # Extracted lab test observation - permits extra fields dynamically
+    model_config = ConfigDict(extra="allow")
+
     test_name: str
     loinc_code: str | None = None
     value: float | None = None
@@ -65,7 +82,9 @@ class LabEntity(BaseModel):
 
 
 class MedicationEntity(BaseModel):
-    # /3 Extracted medication prescription entity
+    # Extracted medication prescription entity - permits extra fields dynamically
+    model_config = ConfigDict(extra="allow")
+
     name: str
     rxnorm_code: str | None = None
     dosage: str | None = None
@@ -79,7 +98,9 @@ class MedicationEntity(BaseModel):
 
 
 class DiagnosisEntity(BaseModel):
-    # /3 Extracted clinical condition or diagnosis
+    # Extracted clinical condition or diagnosis - permits extra fields dynamically
+    model_config = ConfigDict(extra="allow")
+
     description: str
     icd10_code: str | None = None
     recorded_date: str | None = None
@@ -89,7 +110,9 @@ class DiagnosisEntity(BaseModel):
 
 
 class Stage2StructuredEntities(BaseModel):
-    # /3 Stage 2 container populated by Teammate B extraction pipeline
+    # Stage 2 container populated by LLM extraction pipeline - extra fields allowed dynamically
+    model_config = ConfigDict(extra="allow")
+
     schema_version: str = "1.0"
     compiled_at: str = Field(default_factory=_utc_now_iso)
     compiled_by: str = "preprocessing_layer"
@@ -106,7 +129,9 @@ class Stage2StructuredEntities(BaseModel):
 
 
 class PatientDocument(BaseModel):
-    # /3 Compound MongoDB document holding all 3 stages for one file
+    # Compound MongoDB document holding all 3 stages for one file
+    model_config = ConfigDict(extra="allow")
+
     document_id: str
     patient_id: str
     visit_date: str | None = None
@@ -126,7 +151,9 @@ class PatientDocument(BaseModel):
 
 
 class DocumentChunk(BaseModel):
-    # /3 Intermediate chunk produced by Teammate A for Teammate B
+    # Intermediate chunk produced by Teammate A for Teammate B
+    model_config = ConfigDict(extra="allow")
+
     chunk_id: str
     document_id: str
     patient_id: str

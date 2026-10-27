@@ -27,7 +27,7 @@ DOC_TYPE_MAPPING = {
 
 
 def _parse_date(date_str: str | None) -> date | None:
-    # /3 Parses dates in DD/MM/YYYY or YYYY-MM-DD formats
+    # Parses dates in DD/MM/YYYY or YYYY-MM-DD formats
     if not date_str:
         return None
     for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%Y/%m/%d"):
@@ -48,7 +48,7 @@ def map_parsed_doc_to_mongo(
     requires_ocr: bool = False,
     degradation: str | None = None,
 ) -> PatientDocument:
-    # /3 Transforms OCR engine ParsedDocument into MongoDB PatientDocument
+    # Transforms OCR engine ParsedDocument into MongoDB PatientDocument
     pages: list[PageRecord] = []
     for page in parsed.pages:
         tokens: list[TokenRecord] = [
@@ -112,7 +112,7 @@ def ingest_patient_pack(
     store: MongoStore,
     pipeline: OcrPipeline | None = None,
 ) -> int:
-    # /3 Ingests all documents for a single patient directory using ground_truth manifest
+    # Ingests all documents for a single patient directory using ground_truth manifest
     pipeline = pipeline or OcrPipeline()
     gt_path = patient_dir / "ground_truth.json"
     if not gt_path.is_file():

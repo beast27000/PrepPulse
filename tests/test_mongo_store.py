@@ -18,7 +18,7 @@ from preppulse_db.schemas import (
 
 @pytest.fixture
 def test_store():
-    # /3 Provides an isolated MongoStore using test database
+    # Provides an isolated MongoStore using test database
     store = MongoStore(uri="mongodb://localhost:27017", db_name="preppulse_test")
     try:
         store.connect()
@@ -33,7 +33,7 @@ def test_store():
 
 
 def test_write_and_read_stage1_document(test_store: MongoStore):
-    # /3 Verifies Stage 1 compound document persistence and bounding box integrity
+    # Verifies Stage 1 compound document persistence and bounding box integrity
     page = PageRecord(
         page_number=1,
         extraction_method="native_pdf",
@@ -71,7 +71,7 @@ def test_write_and_read_stage1_document(test_store: MongoStore):
 
 
 def test_update_stage2_structured_entities(test_store: MongoStore):
-    # /3 Verifies Stage 2 structured facts update onto existing document
+    # Verifies Stage 2 structured facts update onto existing document
     page = PageRecord(page_number=1, full_text="Empagliflozin 10mg")
     doc = PatientDocument(
         document_id="TEST_DOC_002",
@@ -121,7 +121,7 @@ def test_update_stage2_structured_entities(test_store: MongoStore):
 
 
 def test_chunk_lifecycle(test_store: MongoStore):
-    # /3 Verifies intermediate chunk write and query operations for Teammate A and B
+    # Verifies intermediate chunk write and query operations for Teammate A and B
     chunk = DocumentChunk(
         chunk_id="CHK_TEST_P1_C1",
         document_id="TEST_DOC_003",
@@ -138,3 +138,35 @@ def test_chunk_lifecycle(test_store: MongoStore):
     assert chunks[0]["chunk_id"] == "CHK_TEST_P1_C1"
     assert chunks[0]["section_type"] == "medications"
     assert chunks[0]["source_bbox"] == [80, 200, 350, 220]
+
+
+def test_stage2_accepts_dynamic_extra_fields(test_store: MongoStore):
+    # Verifies that new clinical fields from LLM are preserved without schema errors
+    doc = PatientDocument(
+        document_id="TEST_DOC_004",
+        patient_id="PATIENT_04",
+        document_type="consultation",
+        source_file="note.pdf",
+        stage_1_raw_ocr=Stage1RawOcr(page_count=1, pages=[]),
+    )
+    test_store.write_stage1(doc)
+
+    dynamic_entities = {
+        "labs": [{"test_name": "HbA1c", "value": 8.1, "unit": "%"}],
+        "medications": [{"name": "Metformin", "dosage": "500mg"}],
+        "allergies": ["Penicillin", "Aspirin"],
+        "surgical_history": ["Appendectomy 2018"],
+        "family_history": "Mother had T2DM",
+        "vitals": {"blood_pressure": "120/80", "pulse": 72},
+    }
+
+    ok = test_store.write_stage2("TEST_DOC_004", dynamic_entities)
+    assert ok is True
+
+    record = test_store.get_document("TEST_DOC_004")
+    stage2 = record["stage_2_structured_entities"]
+    assert stage2["allergies"] == ["Penicillin", "Aspirin"]
+    assert stage2["surgical_history"] == ["Appendectomy 2018"]
+    assert stage2["family_history"] == "Mother had T2DM"
+    assert stage2["vitals"]["blood_pressure"] == "120/80"
+
