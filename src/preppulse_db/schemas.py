@@ -4,18 +4,27 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 # ==============================================================================
-# TEAMMATE HANDOFF NOTES:
-# 1. WHAT IS DONE (STAGE 1):
-#    - Raw OCR text, word tokens, and [0, 1000] bounding boxes are extracted
-#      from patient PDFs/images and stored in MongoDB under `stage_1_raw_ocr`.
+# HANDOFF TO PRE-PROCESSING TEAM:
+#
+# 1. WHAT WE HAVE DONE (STAGE 1):
+#    - We completed the OCR ingestion pipeline.
+#    - Raw text, word tokens, normalized [0, 1000] bounding boxes, and table
+#      structures from patient documents (PDFs, scans, prescriptions) are
+#      processed and stored in MongoDB under `stage_1_raw_ocr`.
+#
 # 2. WHAT YOU NEED TO DO (STAGE 2):
-#    - Teammate A: Split stage_1 raw text into sections with source bounding boxes (DocumentChunk).
-#    - Teammate B: Run local LLM (Qwen via Ollama) on chunks to pull clinical facts (labs, meds, diagnoses).
-# 3. WHY USE AN LLM HERE:
-#    - Hospital documents come in random, unstructured formats with doctor notes and theory.
-#    - An LLM reliably extracts facts from messy text without needing rigid regex rules.
-#    - All Stage 2 models use `extra="allow"` so ANY new clinical field discovered
-#      by the LLM (e.g. allergies, surgical history, vitals) is automatically accepted and preserved.
+#    - Read `stage_1_raw_ocr` from MongoDB.
+#    - Extract clean, structured clinical facts (medications, lab values,
+#      diagnoses, and doctor notes/advice) from the raw text.
+#    - Update the document in MongoDB under `stage_2_structured_entities` using
+#      `MongoStore.write_stage2(document_id, data)`.
+#
+# 3. SCHEMA FLEXIBILITY & LLM DECISION-MAKING:
+#    - The default schema defines common clinical entities (labs, medications, diagnoses),
+#      but it is NOT rigid.
+#    - All Stage 2 models have `extra="allow"` enabled, allowing your LLM to extract
+#      any new or unexpected fields it finds (e.g., allergies, vitals, surgical history,
+#      risk factors) and write them directly into MongoDB without schema validation errors.
 # ==============================================================================
 
 # ---------- helpers ----------

@@ -5,10 +5,27 @@ from pymongo import ASCENDING, MongoClient
 from preppulse_db.schemas import DocumentChunk, PatientDocument, Stage2StructuredEntities
 
 # ==============================================================================
-# TEAMMATE HANDOFF USAGE:
-# 1. Teammate A: Call `store.write_chunk(chunk)` to save section chunks into `document_chunks`.
-# 2. Teammate B: Call `store.get_chunks(document_id)` to read chunks, run LLM extraction,
-#    and then call `store.write_stage2(document_id, extracted_dict)` to update `patient_documents`.
+# HANDOFF TO PRE-PROCESSING TEAM:
+#
+# 1. WHAT WE HAVE DONE (STAGE 1):
+#    - We completed the OCR ingestion pipeline.
+#    - Raw text, word tokens, normalized [0, 1000] bounding boxes, and table
+#      structures from patient documents (PDFs, scans, prescriptions) are
+#      processed and stored in MongoDB under `stage_1_raw_ocr`.
+#
+# 2. WHAT YOU NEED TO DO (STAGE 2):
+#    - Read `stage_1_raw_ocr` from MongoDB using `store.get_document(doc_id)`
+#      or `store.list_documents(patient_id)`.
+#    - Extract clean clinical facts from the raw text using your extraction pipeline.
+#    - Update the document with your extracted facts by calling:
+#      `store.write_stage2(document_id, extracted_data)`
+#
+# 3. SCHEMA FLEXIBILITY & LLM DECISION-MAKING:
+#    - `write_stage2()` accepts either a `Stage2StructuredEntities` model or a
+#      standard Python `dict`.
+#    - It is designed with flexibility so your LLM can introduce any new or
+#      unexpected fields (e.g. allergies, vitals, history) and persist them
+#      directly to MongoDB without rejection.
 # ==============================================================================
 
 # ---------- master mongo store ----------
