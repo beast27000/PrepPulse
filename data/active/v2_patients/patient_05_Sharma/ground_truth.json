@@ -1,0 +1,149 @@
+{
+  "patient_id": "f99382c3",
+  "index": 5,
+  "name": "Yuki Sharma",
+  "mrn": "3025969",
+  "dob": "12/01/1970",
+  "sex": "Female",
+  "age": 56,
+  "diabetes_type": "Type 2 Diabetes Mellitus",
+  "serious": false,
+  "n_visits": 3,
+  "documents": [
+    {
+      "type": "patient_record",
+      "patient_id": "f99382c3",
+      "mrn": "3025969",
+      "facts": {
+        "name": "Yuki Sharma",
+        "dob": "12/01/1970",
+        "diagnosis": "Type 2 Diabetes Mellitus",
+        "n_visits": 3
+      },
+      "file": "patient_05_Sharma/patient_record.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "f99382c3",
+      "mrn": "3025969",
+      "visit_date": "17/01/2025",
+      "facts": {
+        "fasting_glucose": 11.7,
+        "hba1c": 9.0,
+        "random_glucose": 14.1,
+        "creatinine": 80,
+        "egfr": 79
+      },
+      "file": "patient_05_Sharma/lab_report_visit1_20250117.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "f99382c3",
+      "mrn": "3025969",
+      "visit_date": "17/01/2025",
+      "facts": {
+        "medications": [
+          "Empagliflozin 10mg once daily",
+          "Sitagliptin 50mg once daily"
+        ],
+        "advice": "Portion control at meals. Check blood glucose before breakfast daily."
+      },
+      "file": "patient_05_Sharma/prescription_visit1_20250117.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "f99382c3",
+      "mrn": "3025969",
+      "visit_date": "18/02/2025",
+      "facts": {
+        "fasting_glucose": 9.0,
+        "hba1c": 7.6,
+        "random_glucose": 11.7,
+        "creatinine": 89,
+        "egfr": 70
+      },
+      "file": "patient_05_Sharma/lab_report_visit2_20250218.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "f99382c3",
+      "mrn": "3025969",
+      "visit_date": "18/02/2025",
+      "facts": {
+        "medications": [
+          "Empagliflozin 10mg once daily",
+          "Sitagliptin 50mg once daily"
+        ],
+        "advice": "Strict diet compliance advised. Home glucose log to be maintained."
+      },
+      "file": "patient_05_Sharma/prescription_visit2_20250218.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "f99382c3",
+      "mrn": "3025969",
+      "visit_date": "04/04/2025",
+      "facts": {
+        "fasting_glucose": 9.1,
+        "hba1c": 7.6,
+        "random_glucose": 12.9,
+        "creatinine": 84,
+        "egfr": 71
+      },
+      "file": "patient_05_Sharma/lab_report_visit3_20250404.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "light"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "f99382c3",
+      "mrn": "3025969",
+      "visit_date": "04/04/2025",
+      "facts": {
+        "medications": [
+          "Empagliflozin 10mg once daily",
+          "Sitagliptin 100mg once daily"
+        ],
+        "advice": "Continue dietary changes. Add light cardio and reduce evening carbohydrates."
+      },
+      "file": "patient_05_Sharma/prescription_visit3_20250404.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "handwritten_prescription",
+      "patient_id": "f99382c3",
+      "mrn": "3025969",
+      "visit_date": "04/04/2025",
+      "requires_ocr": true,
+      "facts": {
+        "medications": [
+          "Empagliflozin 10mg once daily",
+          "Sitagliptin 100mg once daily"
+        ],
+        "fasting_glucose": 9.1,
+        "hba1c": 7.6
+      },
+      "file": "patient_05_Sharma/handwritten_prescription.jpg",
+      "form": "handwritten_image",
+      "degradation": null
+    }
+  ]
+}

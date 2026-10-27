@@ -1,0 +1,167 @@
+{
+  "patient_id": "cb8a9027",
+  "index": 10,
+  "name": "Hassan Wilson",
+  "mrn": "3179055",
+  "dob": "14/06/1985",
+  "sex": "Male",
+  "age": 41,
+  "diabetes_type": "Type 1 Diabetes Mellitus",
+  "serious": true,
+  "n_visits": 3,
+  "documents": [
+    {
+      "type": "patient_record",
+      "patient_id": "cb8a9027",
+      "mrn": "3179055",
+      "facts": {
+        "name": "Hassan Wilson",
+        "dob": "14/06/1985",
+        "diagnosis": "Type 1 Diabetes Mellitus",
+        "n_visits": 3
+      },
+      "file": "patient_10_Wilson/patient_record.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "cb8a9027",
+      "mrn": "3179055",
+      "visit_date": "25/03/2024",
+      "facts": {
+        "fasting_glucose": 14.6,
+        "hba1c": 10.6,
+        "random_glucose": 17.5,
+        "creatinine": 82,
+        "egfr": 59
+      },
+      "file": "patient_10_Wilson/lab_report_visit1_20240325.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "cb8a9027",
+      "mrn": "3179055",
+      "visit_date": "25/03/2024",
+      "facts": {
+        "medications": [
+          "Glimepiride 1mg once daily",
+          "Sitagliptin 50mg once daily"
+        ],
+        "advice": "Maintain a low-glycaemic diet. Monitor fasting sugar at home twice weekly."
+      },
+      "file": "patient_10_Wilson/prescription_visit1_20240325.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "cb8a9027",
+      "mrn": "3179055",
+      "visit_date": "01/05/2024",
+      "facts": {
+        "fasting_glucose": 12.5,
+        "hba1c": 9.5,
+        "random_glucose": 16.1,
+        "creatinine": 91,
+        "egfr": 76
+      },
+      "file": "patient_10_Wilson/lab_report_visit2_20240501.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "cb8a9027",
+      "mrn": "3179055",
+      "visit_date": "01/05/2024",
+      "facts": {
+        "medications": [
+          "Glimepiride 1mg once daily",
+          "Sitagliptin 50mg once daily"
+        ],
+        "advice": "Continue dietary changes. Add light cardio and reduce evening carbohydrates."
+      },
+      "file": "patient_10_Wilson/prescription_visit2_20240501.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "cb8a9027",
+      "mrn": "3179055",
+      "visit_date": "04/06/2024",
+      "facts": {
+        "fasting_glucose": 12.5,
+        "hba1c": 9.5,
+        "random_glucose": 15.0,
+        "creatinine": 81,
+        "egfr": 58
+      },
+      "file": "patient_10_Wilson/lab_report_visit3_20240604.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "cb8a9027",
+      "mrn": "3179055",
+      "visit_date": "04/06/2024",
+      "facts": {
+        "medications": [
+          "Glimepiride 1mg once daily",
+          "Sitagliptin 100mg once daily"
+        ],
+        "advice": "Reduce refined sugar and carbohydrate intake. Walk 30 minutes daily."
+      },
+      "file": "patient_10_Wilson/prescription_visit3_20240604.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "handwritten_prescription",
+      "patient_id": "cb8a9027",
+      "mrn": "3179055",
+      "visit_date": "04/06/2024",
+      "requires_ocr": true,
+      "facts": {
+        "medications": [
+          "Glimepiride 1mg once daily",
+          "Sitagliptin 100mg once daily"
+        ],
+        "fasting_glucose": 12.5,
+        "hba1c": 9.5
+      },
+      "file": "patient_10_Wilson/handwritten_prescription.jpg",
+      "form": "handwritten_image",
+      "degradation": null
+    },
+    {
+      "type": "discharge_summary",
+      "patient_id": "cb8a9027",
+      "mrn": "3179055",
+      "admit_date": "18/03/2024",
+      "discharge_date": "25/03/2024",
+      "facts": {
+        "admission_fasting": 14.6,
+        "discharge_medications": [
+          "Glimepiride 1mg once daily",
+          "Sitagliptin 50mg once daily"
+        ]
+      },
+      "file": "patient_10_Wilson/discharge_summary.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    }
+  ]
+}

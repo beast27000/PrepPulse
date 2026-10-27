@@ -1,0 +1,148 @@
+{
+  "patient_id": "6b5b6169",
+  "index": 3,
+  "name": "James Wilson",
+  "mrn": "5468007",
+  "dob": "10/10/1963",
+  "sex": "Male",
+  "age": 63,
+  "diabetes_type": "Type 2 Diabetes Mellitus",
+  "serious": false,
+  "n_visits": 3,
+  "documents": [
+    {
+      "type": "patient_record",
+      "patient_id": "6b5b6169",
+      "mrn": "5468007",
+      "facts": {
+        "name": "James Wilson",
+        "dob": "10/10/1963",
+        "diagnosis": "Type 2 Diabetes Mellitus",
+        "n_visits": 3
+      },
+      "file": "patient_03_Wilson/patient_record.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "6b5b6169",
+      "mrn": "5468007",
+      "visit_date": "06/09/2024",
+      "facts": {
+        "fasting_glucose": 11.2,
+        "hba1c": 8.8,
+        "random_glucose": 13.9,
+        "creatinine": 77,
+        "egfr": 90
+      },
+      "file": "patient_03_Wilson/lab_report_visit1_20240906.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "6b5b6169",
+      "mrn": "5468007",
+      "visit_date": "06/09/2024",
+      "facts": {
+        "medications": [
+          "Sitagliptin 50mg once daily"
+        ],
+        "advice": "Strict diet compliance advised. Home glucose log to be maintained."
+      },
+      "file": "patient_03_Wilson/prescription_visit1_20240906.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "6b5b6169",
+      "mrn": "5468007",
+      "visit_date": "10/10/2024",
+      "facts": {
+        "fasting_glucose": 10.7,
+        "hba1c": 8.5,
+        "random_glucose": 12.5,
+        "creatinine": 79,
+        "egfr": 89
+      },
+      "file": "patient_03_Wilson/lab_report_visit2_20241010.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "6b5b6169",
+      "mrn": "5468007",
+      "visit_date": "10/10/2024",
+      "facts": {
+        "medications": [
+          "Sitagliptin 50mg once daily",
+          "Metformin 500mg once daily"
+        ],
+        "advice": "Avoid sugary drinks and fried food. Increase physical activity."
+      },
+      "file": "patient_03_Wilson/prescription_visit2_20241010.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "6b5b6169",
+      "mrn": "5468007",
+      "visit_date": "08/11/2024",
+      "facts": {
+        "fasting_glucose": 8.4,
+        "hba1c": 7.2,
+        "random_glucose": 10.5,
+        "creatinine": 70,
+        "egfr": 80
+      },
+      "file": "patient_03_Wilson/lab_report_visit3_20241108.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "6b5b6169",
+      "mrn": "5468007",
+      "visit_date": "08/11/2024",
+      "facts": {
+        "medications": [
+          "Sitagliptin 50mg once daily",
+          "Metformin 500mg once daily"
+        ],
+        "advice": "Avoid sugary drinks and fried food. Increase physical activity."
+      },
+      "file": "patient_03_Wilson/prescription_visit3_20241108.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "handwritten_prescription",
+      "patient_id": "6b5b6169",
+      "mrn": "5468007",
+      "visit_date": "08/11/2024",
+      "requires_ocr": true,
+      "facts": {
+        "medications": [
+          "Sitagliptin 50mg once daily",
+          "Metformin 500mg once daily"
+        ],
+        "fasting_glucose": 8.4,
+        "hba1c": 7.2
+      },
+      "file": "patient_03_Wilson/handwritten_prescription.jpg",
+      "form": "handwritten_image",
+      "degradation": null
+    }
+  ]
+}

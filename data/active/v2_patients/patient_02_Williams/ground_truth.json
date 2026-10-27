@@ -1,0 +1,195 @@
+{
+  "patient_id": "b2b5967a",
+  "index": 2,
+  "name": "Hassan Williams",
+  "mrn": "4177874",
+  "dob": "28/11/1974",
+  "sex": "Male",
+  "age": 52,
+  "diabetes_type": "Type 2 Diabetes Mellitus",
+  "serious": true,
+  "n_visits": 4,
+  "documents": [
+    {
+      "type": "patient_record",
+      "patient_id": "b2b5967a",
+      "mrn": "4177874",
+      "facts": {
+        "name": "Hassan Williams",
+        "dob": "28/11/1974",
+        "diagnosis": "Type 2 Diabetes Mellitus",
+        "n_visits": 4
+      },
+      "file": "patient_02_Williams/patient_record.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "b2b5967a",
+      "mrn": "4177874",
+      "visit_date": "01/06/2024",
+      "facts": {
+        "fasting_glucose": 11.4,
+        "hba1c": 8.9,
+        "random_glucose": 14.8,
+        "creatinine": 73,
+        "egfr": 85
+      },
+      "file": "patient_02_Williams/lab_report_visit1_20240601.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "b2b5967a",
+      "mrn": "4177874",
+      "visit_date": "01/06/2024",
+      "facts": {
+        "medications": [
+          "Empagliflozin 10mg once daily"
+        ],
+        "advice": "Strict diet compliance advised. Home glucose log to be maintained."
+      },
+      "file": "patient_02_Williams/prescription_visit1_20240601.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "b2b5967a",
+      "mrn": "4177874",
+      "visit_date": "11/07/2024",
+      "facts": {
+        "fasting_glucose": 8.7,
+        "hba1c": 7.4,
+        "random_glucose": 12.3,
+        "creatinine": 87,
+        "egfr": 85
+      },
+      "file": "patient_02_Williams/lab_report_visit2_20240711.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "b2b5967a",
+      "mrn": "4177874",
+      "visit_date": "11/07/2024",
+      "facts": {
+        "medications": [
+          "Empagliflozin 10mg once daily"
+        ],
+        "advice": "Strict diet compliance advised. Home glucose log to be maintained."
+      },
+      "file": "patient_02_Williams/prescription_visit2_20240711.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "b2b5967a",
+      "mrn": "4177874",
+      "visit_date": "22/08/2024",
+      "facts": {
+        "fasting_glucose": 7.1,
+        "hba1c": 6.5,
+        "random_glucose": 8.8,
+        "creatinine": 93,
+        "egfr": 73
+      },
+      "file": "patient_02_Williams/lab_report_visit3_20240822.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "b2b5967a",
+      "mrn": "4177874",
+      "visit_date": "22/08/2024",
+      "facts": {
+        "medications": [
+          "Empagliflozin 10mg once daily"
+        ],
+        "advice": "Strict diet compliance advised. Home glucose log to be maintained."
+      },
+      "file": "patient_02_Williams/prescription_visit3_20240822.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "b2b5967a",
+      "mrn": "4177874",
+      "visit_date": "24/09/2024",
+      "facts": {
+        "fasting_glucose": 8.5,
+        "hba1c": 7.3,
+        "random_glucose": 10.8,
+        "creatinine": 83,
+        "egfr": 92
+      },
+      "file": "patient_02_Williams/lab_report_visit4_20240924.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "b2b5967a",
+      "mrn": "4177874",
+      "visit_date": "24/09/2024",
+      "facts": {
+        "medications": [
+          "Empagliflozin 25mg once daily"
+        ],
+        "advice": "Continue dietary changes. Add light cardio and reduce evening carbohydrates."
+      },
+      "file": "patient_02_Williams/prescription_visit4_20240924.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "handwritten_prescription",
+      "patient_id": "b2b5967a",
+      "mrn": "4177874",
+      "visit_date": "24/09/2024",
+      "requires_ocr": true,
+      "facts": {
+        "medications": [
+          "Empagliflozin 25mg once daily"
+        ],
+        "fasting_glucose": 8.5,
+        "hba1c": 7.3
+      },
+      "file": "patient_02_Williams/handwritten_prescription.jpg",
+      "form": "handwritten_image",
+      "degradation": null
+    },
+    {
+      "type": "discharge_summary",
+      "patient_id": "b2b5967a",
+      "mrn": "4177874",
+      "admit_date": "25/05/2024",
+      "discharge_date": "01/06/2024",
+      "facts": {
+        "admission_fasting": 11.4,
+        "discharge_medications": [
+          "Empagliflozin 10mg once daily"
+        ]
+      },
+      "file": "patient_02_Williams/discharge_summary.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "light"
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+{
+  "patient_id": "dd23df7e",
+  "index": 7,
+  "name": "Zainab Nguyen",
+  "mrn": "8620004",
+  "dob": "26/11/1978",
+  "sex": "Female",
+  "age": 48,
+  "diabetes_type": "Type 2 Diabetes Mellitus",
+  "serious": true,
+  "n_visits": 3,
+  "documents": [
+    {
+      "type": "patient_record",
+      "patient_id": "dd23df7e",
+      "mrn": "8620004",
+      "facts": {
+        "name": "Zainab Nguyen",
+        "dob": "26/11/1978",
+        "diagnosis": "Type 2 Diabetes Mellitus",
+        "n_visits": 3
+      },
+      "file": "patient_07_Nguyen/patient_record.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "dd23df7e",
+      "mrn": "8620004",
+      "visit_date": "24/05/2024",
+      "facts": {
+        "fasting_glucose": 13.6,
+        "hba1c": 10.1,
+        "random_glucose": 15.8,
+        "creatinine": 95,
+        "egfr": 65
+      },
+      "file": "patient_07_Nguyen/lab_report_visit1_20240524.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "dd23df7e",
+      "mrn": "8620004",
+      "visit_date": "24/05/2024",
+      "facts": {
+        "medications": [
+          "Sitagliptin 50mg once daily"
+        ],
+        "advice": "Portion control at meals. Check blood glucose before breakfast daily."
+      },
+      "file": "patient_07_Nguyen/prescription_visit1_20240524.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "dd23df7e",
+      "mrn": "8620004",
+      "visit_date": "23/06/2024",
+      "facts": {
+        "fasting_glucose": 10.6,
+        "hba1c": 8.4,
+        "random_glucose": 13.7,
+        "creatinine": 88,
+        "egfr": 93
+      },
+      "file": "patient_07_Nguyen/lab_report_visit2_20240623.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "heavy"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "dd23df7e",
+      "mrn": "8620004",
+      "visit_date": "23/06/2024",
+      "facts": {
+        "medications": [
+          "Sitagliptin 50mg once daily"
+        ],
+        "advice": "Avoid sugary drinks and fried food. Increase physical activity."
+      },
+      "file": "patient_07_Nguyen/prescription_visit2_20240623.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "heavy"
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "dd23df7e",
+      "mrn": "8620004",
+      "visit_date": "30/07/2024",
+      "facts": {
+        "fasting_glucose": 12.7,
+        "hba1c": 9.6,
+        "random_glucose": 16.0,
+        "creatinine": 81,
+        "egfr": 60
+      },
+      "file": "patient_07_Nguyen/lab_report_visit3_20240730.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "dd23df7e",
+      "mrn": "8620004",
+      "visit_date": "30/07/2024",
+      "facts": {
+        "medications": [
+          "Sitagliptin 100mg once daily"
+        ],
+        "advice": "Continue dietary changes. Add light cardio and reduce evening carbohydrates."
+      },
+      "file": "patient_07_Nguyen/prescription_visit3_20240730.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "handwritten_prescription",
+      "patient_id": "dd23df7e",
+      "mrn": "8620004",
+      "visit_date": "30/07/2024",
+      "requires_ocr": true,
+      "facts": {
+        "medications": [
+          "Sitagliptin 100mg once daily"
+        ],
+        "fasting_glucose": 12.7,
+        "hba1c": 9.6
+      },
+      "file": "patient_07_Nguyen/handwritten_prescription.jpg",
+      "form": "handwritten_image",
+      "degradation": null
+    },
+    {
+      "type": "discharge_summary",
+      "patient_id": "dd23df7e",
+      "mrn": "8620004",
+      "admit_date": "17/05/2024",
+      "discharge_date": "24/05/2024",
+      "facts": {
+        "admission_fasting": 13.6,
+        "discharge_medications": [
+          "Sitagliptin 50mg once daily"
+        ]
+      },
+      "file": "patient_07_Nguyen/discharge_summary.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    }
+  ]
+}

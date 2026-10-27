@@ -1,0 +1,149 @@
+{
+  "patient_id": "29123fde",
+  "index": 9,
+  "name": "Hassan Chen",
+  "mrn": "6878660",
+  "dob": "04/03/1955",
+  "sex": "Male",
+  "age": 71,
+  "diabetes_type": "Type 1 Diabetes Mellitus",
+  "serious": false,
+  "n_visits": 3,
+  "documents": [
+    {
+      "type": "patient_record",
+      "patient_id": "29123fde",
+      "mrn": "6878660",
+      "facts": {
+        "name": "Hassan Chen",
+        "dob": "04/03/1955",
+        "diagnosis": "Type 1 Diabetes Mellitus",
+        "n_visits": 3
+      },
+      "file": "patient_09_Chen/patient_record.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "29123fde",
+      "mrn": "6878660",
+      "visit_date": "07/08/2022",
+      "facts": {
+        "fasting_glucose": 12.6,
+        "hba1c": 9.5,
+        "random_glucose": 15.3,
+        "creatinine": 91,
+        "egfr": 67
+      },
+      "file": "patient_09_Chen/lab_report_visit1_20220807.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "29123fde",
+      "mrn": "6878660",
+      "visit_date": "07/08/2022",
+      "facts": {
+        "medications": [
+          "Sitagliptin 50mg once daily",
+          "Metformin 500mg once daily"
+        ],
+        "advice": "Avoid sugary drinks and fried food. Increase physical activity."
+      },
+      "file": "patient_09_Chen/prescription_visit1_20220807.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "29123fde",
+      "mrn": "6878660",
+      "visit_date": "15/09/2022",
+      "facts": {
+        "fasting_glucose": 11.0,
+        "hba1c": 8.7,
+        "random_glucose": 13.7,
+        "creatinine": 96,
+        "egfr": 92
+      },
+      "file": "patient_09_Chen/lab_report_visit2_20220915.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "29123fde",
+      "mrn": "6878660",
+      "visit_date": "15/09/2022",
+      "facts": {
+        "medications": [
+          "Sitagliptin 50mg once daily",
+          "Metformin 500mg once daily"
+        ],
+        "advice": "Strict diet compliance advised. Home glucose log to be maintained."
+      },
+      "file": "patient_09_Chen/prescription_visit2_20220915.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "29123fde",
+      "mrn": "6878660",
+      "visit_date": "20/10/2022",
+      "facts": {
+        "fasting_glucose": 10.4,
+        "hba1c": 8.3,
+        "random_glucose": 12.3,
+        "creatinine": 84,
+        "egfr": 83
+      },
+      "file": "patient_09_Chen/lab_report_visit3_20221020.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "29123fde",
+      "mrn": "6878660",
+      "visit_date": "20/10/2022",
+      "facts": {
+        "medications": [
+          "Sitagliptin 50mg once daily",
+          "Metformin 500mg twice daily"
+        ],
+        "advice": "Avoid sugary drinks and fried food. Increase physical activity."
+      },
+      "file": "patient_09_Chen/prescription_visit3_20221020.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "handwritten_prescription",
+      "patient_id": "29123fde",
+      "mrn": "6878660",
+      "visit_date": "20/10/2022",
+      "requires_ocr": true,
+      "facts": {
+        "medications": [
+          "Sitagliptin 50mg once daily",
+          "Metformin 500mg twice daily"
+        ],
+        "fasting_glucose": 10.4,
+        "hba1c": 8.3
+      },
+      "file": "patient_09_Chen/handwritten_prescription.jpg",
+      "form": "handwritten_image",
+      "degradation": null
+    }
+  ]
+}

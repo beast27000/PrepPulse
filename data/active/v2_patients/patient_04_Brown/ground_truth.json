@@ -1,0 +1,182 @@
+{
+  "patient_id": "5555c1bf",
+  "index": 4,
+  "name": "Marcus Brown",
+  "mrn": "8809774",
+  "dob": "25/10/1967",
+  "sex": "Male",
+  "age": 59,
+  "diabetes_type": "Type 1 Diabetes Mellitus",
+  "serious": false,
+  "n_visits": 4,
+  "documents": [
+    {
+      "type": "patient_record",
+      "patient_id": "5555c1bf",
+      "mrn": "8809774",
+      "facts": {
+        "name": "Marcus Brown",
+        "dob": "25/10/1967",
+        "diagnosis": "Type 1 Diabetes Mellitus",
+        "n_visits": 4
+      },
+      "file": "patient_04_Brown/patient_record.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "5555c1bf",
+      "mrn": "8809774",
+      "visit_date": "12/09/2022",
+      "facts": {
+        "fasting_glucose": 14.3,
+        "hba1c": 10.5,
+        "random_glucose": 18.1,
+        "creatinine": 98,
+        "egfr": 61
+      },
+      "file": "patient_04_Brown/lab_report_visit1_20220912.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "5555c1bf",
+      "mrn": "8809774",
+      "visit_date": "12/09/2022",
+      "facts": {
+        "medications": [
+          "Glimepiride 1mg once daily"
+        ],
+        "advice": "Portion control at meals. Check blood glucose before breakfast daily."
+      },
+      "file": "patient_04_Brown/prescription_visit1_20220912.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "5555c1bf",
+      "mrn": "8809774",
+      "visit_date": "10/10/2022",
+      "facts": {
+        "fasting_glucose": 14.1,
+        "hba1c": 10.4,
+        "random_glucose": 17.8,
+        "creatinine": 102,
+        "egfr": 81
+      },
+      "file": "patient_04_Brown/lab_report_visit2_20221010.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "5555c1bf",
+      "mrn": "8809774",
+      "visit_date": "10/10/2022",
+      "facts": {
+        "medications": [
+          "Glimepiride 1mg once daily",
+          "Empagliflozin 10mg once daily"
+        ],
+        "advice": "Reduce refined sugar and carbohydrate intake. Walk 30 minutes daily."
+      },
+      "file": "patient_04_Brown/prescription_visit2_20221010.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "heavy"
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "5555c1bf",
+      "mrn": "8809774",
+      "visit_date": "15/11/2022",
+      "facts": {
+        "fasting_glucose": 14.2,
+        "hba1c": 10.4,
+        "random_glucose": 16.3,
+        "creatinine": 73,
+        "egfr": 70
+      },
+      "file": "patient_04_Brown/lab_report_visit3_20221115.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "5555c1bf",
+      "mrn": "8809774",
+      "visit_date": "15/11/2022",
+      "facts": {
+        "medications": [
+          "Glimepiride 1mg once daily",
+          "Empagliflozin 25mg once daily"
+        ],
+        "advice": "Portion control at meals. Check blood glucose before breakfast daily."
+      },
+      "file": "patient_04_Brown/prescription_visit3_20221115.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "5555c1bf",
+      "mrn": "8809774",
+      "visit_date": "17/12/2022",
+      "facts": {
+        "fasting_glucose": 14.1,
+        "hba1c": 10.4,
+        "random_glucose": 15.6,
+        "creatinine": 91,
+        "egfr": 72
+      },
+      "file": "patient_04_Brown/lab_report_visit4_20221217.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "5555c1bf",
+      "mrn": "8809774",
+      "visit_date": "17/12/2022",
+      "facts": {
+        "medications": [
+          "Glimepiride 1mg once daily",
+          "Empagliflozin 25mg once daily"
+        ],
+        "advice": "Maintain a low-glycaemic diet. Monitor fasting sugar at home twice weekly."
+      },
+      "file": "patient_04_Brown/prescription_visit4_20221217.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "handwritten_prescription",
+      "patient_id": "5555c1bf",
+      "mrn": "8809774",
+      "visit_date": "17/12/2022",
+      "requires_ocr": true,
+      "facts": {
+        "medications": [
+          "Glimepiride 1mg once daily",
+          "Empagliflozin 25mg once daily"
+        ],
+        "fasting_glucose": 14.1,
+        "hba1c": 10.4
+      },
+      "file": "patient_04_Brown/handwritten_prescription.jpg",
+      "form": "handwritten_image",
+      "degradation": null
+    }
+  ]
+}

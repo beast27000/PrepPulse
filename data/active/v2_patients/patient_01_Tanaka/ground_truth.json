@@ -1,0 +1,182 @@
+{
+  "patient_id": "d12e7e61",
+  "index": 1,
+  "name": "Arjun Tanaka",
+  "mrn": "1953112",
+  "dob": "03/12/1987",
+  "sex": "Male",
+  "age": 39,
+  "diabetes_type": "Type 2 Diabetes Mellitus",
+  "serious": false,
+  "n_visits": 4,
+  "documents": [
+    {
+      "type": "patient_record",
+      "patient_id": "d12e7e61",
+      "mrn": "1953112",
+      "facts": {
+        "name": "Arjun Tanaka",
+        "dob": "03/12/1987",
+        "diagnosis": "Type 2 Diabetes Mellitus",
+        "n_visits": 4
+      },
+      "file": "patient_01_Tanaka/patient_record.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "d12e7e61",
+      "mrn": "1953112",
+      "visit_date": "01/05/2023",
+      "facts": {
+        "fasting_glucose": 14.8,
+        "hba1c": 10.7,
+        "random_glucose": 17.7,
+        "creatinine": 96,
+        "egfr": 83
+      },
+      "file": "patient_01_Tanaka/lab_report_visit1_20230501.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "d12e7e61",
+      "mrn": "1953112",
+      "visit_date": "01/05/2023",
+      "facts": {
+        "medications": [
+          "Metformin 500mg once daily"
+        ],
+        "advice": "Portion control at meals. Check blood glucose before breakfast daily."
+      },
+      "file": "patient_01_Tanaka/prescription_visit1_20230501.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "d12e7e61",
+      "mrn": "1953112",
+      "visit_date": "13/06/2023",
+      "facts": {
+        "fasting_glucose": 14.2,
+        "hba1c": 10.4,
+        "random_glucose": 16.2,
+        "creatinine": 72,
+        "egfr": 86
+      },
+      "file": "patient_01_Tanaka/lab_report_visit2_20230613.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "d12e7e61",
+      "mrn": "1953112",
+      "visit_date": "13/06/2023",
+      "facts": {
+        "medications": [
+          "Metformin 500mg once daily",
+          "Empagliflozin 10mg once daily"
+        ],
+        "advice": "Reduce refined sugar and carbohydrate intake. Walk 30 minutes daily."
+      },
+      "file": "patient_01_Tanaka/prescription_visit2_20230613.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "heavy"
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "d12e7e61",
+      "mrn": "1953112",
+      "visit_date": "21/07/2023",
+      "facts": {
+        "fasting_glucose": 11.8,
+        "hba1c": 9.1,
+        "random_glucose": 15.0,
+        "creatinine": 77,
+        "egfr": 93
+      },
+      "file": "patient_01_Tanaka/lab_report_visit3_20230721.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "d12e7e61",
+      "mrn": "1953112",
+      "visit_date": "21/07/2023",
+      "facts": {
+        "medications": [
+          "Metformin 500mg once daily",
+          "Empagliflozin 10mg once daily"
+        ],
+        "advice": "Reduce refined sugar and carbohydrate intake. Walk 30 minutes daily."
+      },
+      "file": "patient_01_Tanaka/prescription_visit3_20230721.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "d12e7e61",
+      "mrn": "1953112",
+      "visit_date": "02/09/2023",
+      "facts": {
+        "fasting_glucose": 9.7,
+        "hba1c": 7.9,
+        "random_glucose": 12.6,
+        "creatinine": 81,
+        "egfr": 77
+      },
+      "file": "patient_01_Tanaka/lab_report_visit4_20230902.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "heavy"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "d12e7e61",
+      "mrn": "1953112",
+      "visit_date": "02/09/2023",
+      "facts": {
+        "medications": [
+          "Metformin 500mg once daily",
+          "Empagliflozin 10mg once daily"
+        ],
+        "advice": "Strict diet compliance advised. Home glucose log to be maintained."
+      },
+      "file": "patient_01_Tanaka/prescription_visit4_20230902.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "handwritten_prescription",
+      "patient_id": "d12e7e61",
+      "mrn": "1953112",
+      "visit_date": "02/09/2023",
+      "requires_ocr": true,
+      "facts": {
+        "medications": [
+          "Metformin 500mg once daily",
+          "Empagliflozin 10mg once daily"
+        ],
+        "fasting_glucose": 9.7,
+        "hba1c": 7.9
+      },
+      "file": "patient_01_Tanaka/handwritten_prescription.jpg",
+      "form": "handwritten_image",
+      "degradation": null
+    }
+  ]
+}

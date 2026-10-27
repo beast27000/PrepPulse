@@ -1,0 +1,145 @@
+{
+  "patient_id": "9edf8587",
+  "index": 8,
+  "name": "Maria Hussain",
+  "mrn": "9957400",
+  "dob": "16/03/1975",
+  "sex": "Female",
+  "age": 51,
+  "diabetes_type": "Type 1 Diabetes Mellitus",
+  "serious": false,
+  "n_visits": 3,
+  "documents": [
+    {
+      "type": "patient_record",
+      "patient_id": "9edf8587",
+      "mrn": "9957400",
+      "facts": {
+        "name": "Maria Hussain",
+        "dob": "16/03/1975",
+        "diagnosis": "Type 1 Diabetes Mellitus",
+        "n_visits": 3
+      },
+      "file": "patient_08_Hussain/patient_record.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "9edf8587",
+      "mrn": "9957400",
+      "visit_date": "05/10/2022",
+      "facts": {
+        "fasting_glucose": 12.1,
+        "hba1c": 9.3,
+        "random_glucose": 14.7,
+        "creatinine": 83,
+        "egfr": 65
+      },
+      "file": "patient_08_Hussain/lab_report_visit1_20221005.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "light"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "9edf8587",
+      "mrn": "9957400",
+      "visit_date": "05/10/2022",
+      "facts": {
+        "medications": [
+          "Gliclazide 40mg once daily"
+        ],
+        "advice": "Avoid sugary drinks and fried food. Increase physical activity."
+      },
+      "file": "patient_08_Hussain/prescription_visit1_20221005.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "9edf8587",
+      "mrn": "9957400",
+      "visit_date": "15/11/2022",
+      "facts": {
+        "fasting_glucose": 10.0,
+        "hba1c": 8.1,
+        "random_glucose": 12.4,
+        "creatinine": 92,
+        "egfr": 68
+      },
+      "file": "patient_08_Hussain/lab_report_visit2_20221115.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "light"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "9edf8587",
+      "mrn": "9957400",
+      "visit_date": "15/11/2022",
+      "facts": {
+        "medications": [
+          "Gliclazide 40mg once daily"
+        ],
+        "advice": "Strict diet compliance advised. Home glucose log to be maintained."
+      },
+      "file": "patient_08_Hussain/prescription_visit2_20221115.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "9edf8587",
+      "mrn": "9957400",
+      "visit_date": "26/12/2022",
+      "facts": {
+        "fasting_glucose": 11.9,
+        "hba1c": 9.1,
+        "random_glucose": 15.5,
+        "creatinine": 86,
+        "egfr": 78
+      },
+      "file": "patient_08_Hussain/lab_report_visit3_20221226.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "9edf8587",
+      "mrn": "9957400",
+      "visit_date": "26/12/2022",
+      "facts": {
+        "medications": [
+          "Gliclazide 80mg once daily"
+        ],
+        "advice": "Maintain a low-glycaemic diet. Monitor fasting sugar at home twice weekly."
+      },
+      "file": "patient_08_Hussain/prescription_visit3_20221226.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "medium"
+    },
+    {
+      "type": "handwritten_prescription",
+      "patient_id": "9edf8587",
+      "mrn": "9957400",
+      "visit_date": "26/12/2022",
+      "requires_ocr": true,
+      "facts": {
+        "medications": [
+          "Gliclazide 80mg once daily"
+        ],
+        "fasting_glucose": 11.9,
+        "hba1c": 9.1
+      },
+      "file": "patient_08_Hussain/handwritten_prescription.jpg",
+      "form": "handwritten_image",
+      "degradation": null
+    }
+  ]
+}

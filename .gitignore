@@ -12,17 +12,17 @@ build/
 
 # Local source documents and pipeline artefacts may contain sensitive data.
 data/raw/
-data/active/
 data/processed/
 data/outputs/
+data/active/*
+!data/active/v2_patients/
 
-# Keep delivered raw datasets local; track only their documentation/context.
+# Keep delivered raw datasets local
 datasets/*.zip
 Updated_Data_Set/
-
-# Local-only documentation, scripts, and legacy lock files
 datasets/
-docs/
-ingest_mock_patients.py
 uv.lock
 
+# Local-only documentation (un-ignore shared specifications)
+docs/*
+!docs/STAGE_2_AND_3_SPECIFICATION.md

@@ -1,0 +1,183 @@
+{
+  "patient_id": "368d9750",
+  "index": 6,
+  "name": "Diego Ali",
+  "mrn": "8967752",
+  "dob": "16/07/1952",
+  "sex": "Male",
+  "age": 74,
+  "diabetes_type": "Type 1 Diabetes Mellitus",
+  "serious": false,
+  "n_visits": 4,
+  "documents": [
+    {
+      "type": "patient_record",
+      "patient_id": "368d9750",
+      "mrn": "8967752",
+      "facts": {
+        "name": "Diego Ali",
+        "dob": "16/07/1952",
+        "diagnosis": "Type 1 Diabetes Mellitus",
+        "n_visits": 4
+      },
+      "file": "patient_06_Ali/patient_record.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "368d9750",
+      "mrn": "8967752",
+      "visit_date": "14/09/2022",
+      "facts": {
+        "fasting_glucose": 11.7,
+        "hba1c": 9.0,
+        "random_glucose": 13.3,
+        "creatinine": 97,
+        "egfr": 89
+      },
+      "file": "patient_06_Ali/lab_report_visit1_20220914.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "heavy"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "368d9750",
+      "mrn": "8967752",
+      "visit_date": "14/09/2022",
+      "facts": {
+        "medications": [
+          "Gliclazide 40mg once daily",
+          "Metformin 500mg once daily"
+        ],
+        "advice": "Strict diet compliance advised. Home glucose log to be maintained."
+      },
+      "file": "patient_06_Ali/prescription_visit1_20220914.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "368d9750",
+      "mrn": "8967752",
+      "visit_date": "21/10/2022",
+      "facts": {
+        "fasting_glucose": 9.1,
+        "hba1c": 7.6,
+        "random_glucose": 11.3,
+        "creatinine": 94,
+        "egfr": 72
+      },
+      "file": "patient_06_Ali/lab_report_visit2_20221021.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "light"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "368d9750",
+      "mrn": "8967752",
+      "visit_date": "21/10/2022",
+      "facts": {
+        "medications": [
+          "Gliclazide 40mg once daily",
+          "Metformin 500mg once daily"
+        ],
+        "advice": "Continue dietary changes. Add light cardio and reduce evening carbohydrates."
+      },
+      "file": "patient_06_Ali/prescription_visit2_20221021.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "368d9750",
+      "mrn": "8967752",
+      "visit_date": "28/11/2022",
+      "facts": {
+        "fasting_glucose": 6.6,
+        "hba1c": 6.2,
+        "random_glucose": 9.2,
+        "creatinine": 86,
+        "egfr": 97
+      },
+      "file": "patient_06_Ali/lab_report_visit3_20221128.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "light"
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "368d9750",
+      "mrn": "8967752",
+      "visit_date": "28/11/2022",
+      "facts": {
+        "medications": [
+          "Gliclazide 40mg once daily",
+          "Metformin 500mg once daily"
+        ],
+        "advice": "Avoid sugary drinks and fried food. Increase physical activity."
+      },
+      "file": "patient_06_Ali/prescription_visit3_20221128.pdf",
+      "form": "scanned_pdf",
+      "requires_ocr": true,
+      "degradation": "heavy"
+    },
+    {
+      "type": "lab_report",
+      "patient_id": "368d9750",
+      "mrn": "8967752",
+      "visit_date": "12/01/2023",
+      "facts": {
+        "fasting_glucose": 5.2,
+        "hba1c": 5.5,
+        "random_glucose": 7.9,
+        "creatinine": 96,
+        "egfr": 78
+      },
+      "file": "patient_06_Ali/lab_report_visit4_20230112.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "doctor_prescription",
+      "patient_id": "368d9750",
+      "mrn": "8967752",
+      "visit_date": "12/01/2023",
+      "facts": {
+        "medications": [
+          "Gliclazide 40mg once daily",
+          "Metformin 500mg once daily"
+        ],
+        "advice": "Strict diet compliance advised. Home glucose log to be maintained."
+      },
+      "file": "patient_06_Ali/prescription_visit4_20230112.pdf",
+      "form": "digital_pdf",
+      "requires_ocr": false,
+      "degradation": null
+    },
+    {
+      "type": "handwritten_prescription",
+      "patient_id": "368d9750",
+      "mrn": "8967752",
+      "visit_date": "12/01/2023",
+      "requires_ocr": true,
+      "facts": {
+        "medications": [
+          "Gliclazide 40mg once daily",
+          "Metformin 500mg once daily"
+        ],
+        "fasting_glucose": 5.2,
+        "hba1c": 5.5
+      },
+      "file": "patient_06_Ali/handwritten_prescription.jpg",
+      "form": "handwritten_image",
+      "degradation": null
+    }
+  ]
+}

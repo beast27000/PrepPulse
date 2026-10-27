@@ -1,0 +1,23 @@
+{
+  "patients": 10,
+  "serious_with_discharge": [
+    2,
+    7,
+    10
+  ],
+  "total_documents": 91,
+  "by_type": {
+    "patient_record": 10,
+    "lab_report": 34,
+    "doctor_prescription": 34,
+    "handwritten_prescription": 10,
+    "discharge_summary": 3
+  },
+  "by_form": {
+    "digital_pdf": 51,
+    "scanned_pdf": 30,
+    "handwritten_image": 10
+  },
+  "ocr_required": 40,
+  "digital_text": 51
+}
