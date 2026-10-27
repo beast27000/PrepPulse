@@ -241,3 +241,4 @@ Each patient in `data/active/v2_patients/` has a `ground_truth.json` file.
 After running your pipeline:
 1. Verify that extracted lab values (`hba1c`, `fasting_glucose`, `egfr`) match `ground_truth.json` within $\pm 0.1$.
 2. Verify that extracted medication names match the active prescription list in `ground_truth.json`.
+

@@ -97,3 +97,4 @@ Database Name: `preppulse` (local at `mongodb://localhost:27017`)
 * The real dataset will be delivered later.
 * Current development and testing use the **10-patient mock pack** (`data/active/v2_patients/`) containing 115 files (PDFs, scans, handwritten prescriptions).
 * Testing the pipeline against this mock pack ensures that the database, OCR, chunker, and extractor are working before the real patient dataset arrives.
+

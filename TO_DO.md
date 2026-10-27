@@ -20,12 +20,13 @@ Implementation status and backlog.
 
 ## Active Roadmap (Updated Priorities)
 
-### Phase 1: Local MongoDB & Mock Ingest Testing (Active Priority 1)
+### Phase 1: Local MongoDB & Mock Ingest Testing (COMPLETED)
 - [x] Received initial 10-patient mock testing dataset (`data/active/v2_patients/`, 115 files) for pipeline validation.
-- [ ] Implement `src/preppulse_db/` (`mongo_store.py` and `schemas.py`) for local MongoDB (`mongodb://localhost:27017/preppulse`).
-- [ ] Create `ingest_mock_patients.py`: batch ingest the 10 mock patients via the frozen OCR engine into `stage_1_raw_ocr`.
-- [ ] Verify Stage 1 persistence and `[0, 1000]` bounding-box preservation in local MongoDB.
-- [ ] Provide seed script and docs to teammates so they can run mock data locally.
+- [x] Implement `src/preppulse_db/` (`mongo_store.py` and `schemas.py`) for local MongoDB (`mongodb://localhost:27017/preppulse`).
+- [x] Create `ingest_mock_patients.py`: batch ingest mock patients via frozen OCR engine into `stage_1_raw_ocr`.
+- [x] Verify Stage 1 persistence and `[0, 1000]` bounding-box preservation in local MongoDB.
+- [x] Verified database teardown and data exclusion so no mock patient data is pushed.
+- [x] Provide seed script and docs to teammates so they can run mock data locally (`docs/TEAMMATE_PREPROCESSING_GUIDE.md` and `docs/TEAM_COLLABORATION_SUMMARY.md`).
 
 ### Phase 2: Teammate Pre-Processing & Compilation Track (Parallel)
 - [ ] **Teammate A (Chunking):** Ingest `stage_1_raw_ocr` -> section detection -> write to `document_chunks` collection with normalized bboxes.
