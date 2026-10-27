@@ -163,7 +163,25 @@ def test_stage2_accepts_dynamic_extra_fields(test_store: MongoStore):
     ok = test_store.write_stage2("TEST_DOC_004", dynamic_entities)
     assert ok is True
 
+    fhir_bundle = {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+            {
+                "resource": {
+                    "resourceType": "Observation",
+                    "status": "final",
+                    "valueQuantity": {"value": 8.1, "unit": "%"},
+                }
+            }
+        ],
+    }
+    ok_fhir = test_store.write_stage3("TEST_DOC_004", fhir_bundle)
+    assert ok_fhir is True
+
     record = test_store.get_document("TEST_DOC_004")
+    assert record["status"] == "stage_3_complete"
+    assert record["stage_3_fhir_output"]["resourceType"] == "Bundle"
     stage2 = record["stage_2_structured_entities"]
     assert stage2["allergies"] == ["Penicillin", "Aspirin"]
     assert stage2["surgical_history"] == ["Appendectomy 2018"]

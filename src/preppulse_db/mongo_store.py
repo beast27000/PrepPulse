@@ -125,6 +125,25 @@ class MongoStore:
         )
         return res.matched_count > 0
 
+    # ---------- stage 3: fhir output updates ----------
+
+    def write_stage3(
+        self,
+        document_id: str,
+        stage3_fhir: dict[str, Any],
+    ) -> bool:
+        # Updates Stage 3 FHIR R4 transaction bundle on an existing document
+        res = self.db["patient_documents"].update_one(
+            {"document_id": document_id},
+            {
+                "$set": {
+                    "stage_3_fhir_output": stage3_fhir,
+                    "status": "stage_3_complete",
+                }
+            },
+        )
+        return res.matched_count > 0
+
     # ---------- stage 2 intermediate: chunk operations ----------
 
     def write_chunk(self, chunk: DocumentChunk | dict[str, Any]) -> str:
