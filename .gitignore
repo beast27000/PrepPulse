@@ -20,3 +20,9 @@ data/outputs/
 datasets/*.zip
 Updated_Data_Set/
 
+# Local-only documentation, scripts, and legacy lock files
+datasets/
+docs/
+ingest_mock_patients.py
+uv.lock
+
