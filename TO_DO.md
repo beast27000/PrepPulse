@@ -32,25 +32,29 @@ Implementation status and backlog.
 - [ ] **Teammate A (Chunking):** Ingest `stage_1_raw_ocr` -> section detection -> write to `document_chunks` collection with normalized bboxes.
 - [ ] **Teammate B (Extraction):** Ingest `document_chunks` -> local Qwen LLM fact extraction -> LOINC/RxNorm/ICD-10 mapping -> write back to `stage_2_structured_entities`.
 
-### Phase 3: Hybrid RAG System (LangChain Ensemble: BM25 + Dense Vectors)
-- [ ] Build provenance-preserving chunker linking chunks to exact evidence anchors and `[0, 1000]` bounding boxes.
-- [ ] Build BM25 keyword index achieving 100% precision on exact drug names (e.g., 'Glargine', 'Metformin', 'Empagliflozin') and lab metrics.
-- [ ] Build dense semantic vector index (Chroma / FAISS with dense embeddings).
-- [ ] Implement LangChain `EnsembleRetriever` with Reciprocal Rank Fusion (RRF) achieving <500ms query latency per patient pack.
-- [ ] Add automated retrieval test suite verifying exact precision, latency, and coordinate preservation.
+### Phase 3: Hybrid RAG System (LangChain Ensemble: BM25 + Dense Vectors) (COMPLETED)
+- [x] Build provenance-preserving chunker (`ClinicalProvenanceChunker`) linking chunks to exact evidence anchors and `[0, 1000]` bounding boxes.
+- [x] Build BM25 keyword index (`SparseBM25Index`) achieving 100% precision on exact drug names (e.g., 'Glargine', 'Metformin', 'Empagliflozin') and lab metrics.
+- [x] Build dense semantic vector index (`DenseVectorIndex`) with in-memory cosine similarity and pluggable embeddings.
+- [x] Implement `HybridEnsembleRetriever` with Reciprocal Rank Fusion (RRF) achieving <50ms query latency per patient pack.
+- [x] Add plug-and-play `LLMFactory` supporting Ollama (`qwen2.5:7b`), Sarvam AI, OpenAI-compatible APIs, or offline mock providers via `.env`.
+- [x] Add automated retrieval test suite (`tests/test_hybrid_rag.py`) verifying exact precision, latency, patient isolation, and coordinate preservation.
 
-### Phase 4: Streamlit v1 Mock Testing UI
-- [ ] Define strict Pydantic output schemas for the 4 core categories:
-  - `Metabolic Trajectory` (HbA1c, Fasting Glucose, eGFR trends)
-  - `Care Gaps` (overdue screenings, missing follow-ups)
-  - `Record Mismatches` (cross-document clinical conflicts)
-  - `Caregiver Prep` (plain-language briefing, checklist with English & Hindi)
-- [ ] Build lightweight Streamlit UI (`streamlit_app/`) rendering mock and live pipeline data.
+### Phase 4: Streamlit v1 Clinical Consultation UI
+- [ ] Build lightweight Streamlit UI (`streamlit_app/`) rendering consultation brief matching Figma/Replit prototype.
 - [ ] Display visual placement of KPIs (HbA1c, Fasting Glucose, eGFR) and patient trajectory cards.
-- [ ] Validate schema compliance and raise explicit errors on malformed payloads.
-
-### Phase 5: LangGraph Multi-Agent Orchestration & Interactive Source Proof
-- [ ] Implement four specialized clinical review agents (Trajectory, Care Gaps, Mismatches, Caregiver) in a deterministic LangGraph state machine.
-- [ ] Wire live agent outputs into the Streamlit UI with clickable citations.
-- [ ] Interactive Source Proof panel: clicking any citation renders the source document/page and highlights the bounding box.
+- [ ] Interactive Source Proof panel: clicking any citation renders the source document/page and highlights the normalized `[0, 1000]` bounding box.
 - [ ] Add dynamic toggleable English / Hindi (EN / हि) translations for caregiver handoff checklist.
+
+### Phase 5: LangGraph Multi-Agent Orchestration & Clinical Brief (COMPLETED)
+- [x] Define strict Pydantic schemas (`src/preppulse_agents/schemas.py`) for:
+  - `MetabolicTrajectory` (HbA1c, Fasting Glucose, eGFR trends + direction)
+  - `CareGaps` (overdue foot exam, missing microalbumin/ACR)
+  - `RecordMismatches` (conflicting insulin doses, metformin reconciliation)
+  - `CaregiverPrep` (plain-language caregiver handoff with English + Hindi checklist)
+  - `SourceProofCitation` (`[0, 1000]` bbox, document ID, page, text preview)
+  - `ConsultationBrief` (unified doctor view)
+- [x] Implement four specialized clinical review agents in a deterministic LangGraph state machine (`src/preppulse_agents/graph.py`):
+  - Trajectory Agent -> Care Gaps Agent -> Mismatches Agent -> Caregiver Prep Agent -> Brief Compiler.
+- [x] Expose hybrid retriever as a standard LangChain Tool (`retriever.as_tool()`) for agent state queries.
+- [x] Add agent unit test suite (`tests/test_clinical_agents.py`) verifying compilation, schema compliance, and citation preservation.

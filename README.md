@@ -60,8 +60,21 @@ python -m preppulse_ocr.database `
 
 ```text
 src/preppulse_ocr/
-  ├── engine.py                 # Master OCR engine: models, geometry, table parser, router
+  ├── engine.py                 # Master OCR engine: models, geometry, table parser, router (FROZEN)
   ├── database.py               # Master data layer: SQLite store, manifest loader, pack builder, ingestion
+  └── __init__.py               # Public package exports
+src/preppulse_db/
+  ├── mongo_store.py            # Local MongoDB store (stage_1_raw_ocr, patient isolation)
+  ├── schemas.py                # MongoDB patient document schemas
+  └── __init__.py               # Public package exports
+src/preppulse_rag/
+  ├── chunker.py                # Provenance-preserving atomic table row and text chunker
+  ├── retriever.py              # Hybrid BM25 + dense vector ensemble retriever with RRF
+  ├── llm_provider.py           # Pluggable LLM factory (Ollama, Sarvam AI, OpenAI, Mock)
+  └── __init__.py               # Public package exports
+src/preppulse_agents/
+  ├── schemas.py                # Pydantic brief schemas (Trajectory, Gaps, Mismatches, Caregiver)
+  ├── graph.py                  # LangGraph multi-agent review state machine
   └── __init__.py               # Public package exports
 temp_ui/
   └── mock_ui_ocr_testing.py    # Desktop visual testing UI for OCR and bounding boxes
