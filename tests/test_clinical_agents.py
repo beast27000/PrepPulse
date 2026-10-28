@@ -119,3 +119,4 @@ def test_langgraph_clinical_review_workflow(mock_patient_chart: list[Document]):
     for item in checklist:
         assert len(item.text_en) > 0
         assert len(item.text_hi) > 0
+
