@@ -59,9 +59,32 @@ Implementation status and backlog.
 - [x] Expose hybrid retriever as a standard LangChain Tool (`retriever.as_tool()`) for agent state queries.
 - [x] Add agent unit test suite (`tests/test_clinical_agents.py`) verifying compilation, schema compliance, and citation preservation.
 
+### Phase 6: 10-Year Longitudinal Multi-Condition Engine & UI Bindings (PLANNED)
+*(Detailed architectural specs documented in `priority_items.md` and planning artifacts)*
+- [ ] Incorporate sample 10-patient dataset (when provided) to inspect real-world formats while preventing synthetic overfitting.
+- [ ] Extend Pydantic schemas for 10-year longitudinal series:
+  - `TimeSeriesPoint`, `LongitudinalMetricSeries` (numerical tables & chart data).
+  - `ComorbidityMilestone`, `ComorbidityTimeline` (cardiac events, surgeries, childhood history).
+  - `HistoricalConsultationBrief` (retrospective encounter summaries).
+  - `SmartPromptBubble` (non-intrusive assistive prompt suggestions).
+  - `TopLevelDataCard` (direct frontend UI bindings).
+- [ ] Enhance temporal retrieval in `preppulse_rag`:
+  - Date and calendar year indexing on chunks.
+  - Temporal-semantic lab report linking to past clinician consultation notes.
+- [ ] Expand LangGraph review graph to 8 specialized nodes:
+  - Spectrum Staging $\rightarrow$ Longitudinal Trajectory $\rightarrow$ Comorbidity Timeline $\rightarrow$ Specialist Remarks $\rightarrow$ Smart Prompt Bubbles $\rightarrow$ Care Gaps $\rightarrow$ Drug Titration Mismatches $\rightarrow$ Decade Brief Compiler.
+- [ ] Strict Assistive Policy: Verify that all generated outputs, cards, and bubbles are purely assistive and non-diagnostic.
+
 ## Clinical & Architectural Decision Log
 
-### 1. Diabetes Clinical Track & Agent Specialization
+### 1. High-Priority Directives (See `priority_items.md`)
+- **Strictly Assistive (Non-Diagnostic)**: Never assert autonomous diagnoses or treatment advice; present objective metrics, trends, and factual excerpts with clinical humility.
+- **Smart UI Assistive Bubbles**: Offer non-intrusive prompt bubbles (e.g. *"10-year lab history detected: Would you like to view the patient's glycemic trajectory?"*) instead of unsolicited clinical assertions.
+- **Multi-Condition & 10-Year Depth**: Track all conditions (cardiovascular/stents, surgeries, childhood conditions, renal) across a 10-year timeline for non-diabetic, pre-diabetic, and all diabetic stages.
+- **Retrospective Briefs with Lab Linking**: Reconstruct past consultations faithfully, using dates, years, and semantics to correlate separated lab reports to clinician encounter notes.
+- **Dual Presentation Contract**: Feed both direct UI data cards on top and granular drill-downs with Stage 1 bounding box highlights underneath, alongside fast hybrid RAG chat.
+
+### 2. Diabetes Clinical Track & Agent Specialization
 - **Pathophysiology & Risks**: Type 2 diabetes complications stem from chronic hyperglycemia inducing microvascular damage (diabetic nephropathy, retinopathy, peripheral neuropathy) and macrovascular risks (atherosclerosis, CAD).
 - **Agent Roles**:
   - **Trajectory Agent**: Tracks longitudinal metabolic biomarkers (HbA1c %, fasting/random glucose mg/dL, eGFR mL/min/1.73m², urine ACR mg/g) and computes directional vectors (`worsening`, `improving`, `stable`).
