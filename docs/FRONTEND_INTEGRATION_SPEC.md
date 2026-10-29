@@ -338,3 +338,4 @@ Displayed at the bottom of the workspace or docked to the chat:
     ]
   }
   ```
+
