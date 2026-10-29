@@ -96,6 +96,10 @@ class MongoStore:
         query = {"patient_id": patient_id} if patient_id else {}
         return list(self.db["patient_documents"].find(query, {"_id": 0}).sort("visit_date", ASCENDING))
 
+    def get_patient_documents(self, patient_id: str) -> list[dict[str, Any]]:
+        # Alias: retrieves all documents for a patient sorted by visit date
+        return self.list_documents(patient_id=patient_id)
+
     def count_documents(self, patient_id: str | None = None) -> int:
         # Returns count of documents in store
         query = {"patient_id": patient_id} if patient_id else {}

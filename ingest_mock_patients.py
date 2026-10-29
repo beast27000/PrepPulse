@@ -66,7 +66,10 @@ def main() -> None:
         print(f"Clearing collections in database '{args.db_name}'...")
         store.clear_database()
 
-    patient_dirs = sorted([d for d in dataset_dir.iterdir() if d.is_dir()])
+    if (dataset_dir / "record_index.json").is_file() or (dataset_dir / "ground_truth.json").is_file():
+        patient_dirs = [dataset_dir]
+    else:
+        patient_dirs = sorted([d for d in dataset_dir.iterdir() if d.is_dir()])
     if args.limit > 0:
         patient_dirs = patient_dirs[: args.limit]
 

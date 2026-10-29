@@ -23,6 +23,11 @@ DOC_TYPE_MAPPING = {
     "doctor_prescription": DocumentType.REFERRAL_ORDER,
     "handwritten_prescription": DocumentType.REFERRAL_ORDER,
     "discharge_summary": DocumentType.DISCHARGE_SUMMARY,
+    "lab": DocumentType.LAB_PANEL,
+    "consult": DocumentType.OUTPATIENT_NOTE,
+    "discharge": DocumentType.DISCHARGE_SUMMARY,
+    "rx": DocumentType.REFERRAL_ORDER,
+    "history": DocumentType.OUTPATIENT_NOTE,
 }
 
 
@@ -112,24 +117,47 @@ def ingest_patient_pack(
     store: MongoStore,
     pipeline: OcrPipeline | None = None,
 ) -> int:
-    # Ingests all documents for a single patient directory using ground_truth manifest
+    # Ingests all documents for a single patient directory using manifest or direct scan
     pipeline = pipeline or OcrPipeline()
     gt_path = patient_dir / "ground_truth.json"
-    if not gt_path.is_file():
-        return 0
+    rec_index_path = patient_dir / "record_index.json"
 
-    with gt_path.open("r", encoding="utf-8") as f:
-        gt_data: dict[str, Any] = json.load(f)
+    documents: list[dict[str, Any]] = []
+    patient_id = patient_dir.name
 
-    patient_id = gt_data.get("patient_id", patient_dir.name)
-    documents = gt_data.get("documents", [])
+    if rec_index_path.is_file():
+        with rec_index_path.open("r", encoding="utf-8") as f:
+            rec_data: dict[str, Any] = json.load(f)
+        patient_id = rec_data.get("folder", patient_dir.name)
+        for doc_item in rec_data.get("documents", []):
+            documents.append({
+                "file": doc_item.get("filename"),
+                "type": doc_item.get("type", "patient_record"),
+                "visit_date": doc_item.get("date"),
+                "provider": doc_item.get("provider"),
+            })
+    elif gt_path.is_file():
+        with gt_path.open("r", encoding="utf-8") as f:
+            gt_data: dict[str, Any] = json.load(f)
+        patient_id = gt_data.get("patient_id", patient_dir.name)
+        documents = gt_data.get("documents", [])
+    else:
+        # Fallback: scan all PDFs in patient_dir directly
+        for pdf_file in sorted(patient_dir.glob("*.pdf")):
+            documents.append({
+                "file": pdf_file.name,
+                "type": "patient_record",
+                "visit_date": None,
+            })
+
     count = 0
-
     for doc_meta in documents:
         rel_file = doc_meta.get("file")
         if not rel_file:
             continue
-        file_path = base_dir / rel_file
+        file_path = patient_dir / rel_file
+        if not file_path.is_file():
+            file_path = base_dir / rel_file
         if not file_path.is_file():
             continue
 

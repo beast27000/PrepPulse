@@ -69,52 +69,96 @@ class LLMFactory:
     # Resolves and instantiates chat models and embeddings from configuration
 
     @staticmethod
+    def _is_local_server_available(url: str = "http://192.168.1.16:1234/v1/models") -> bool:
+        # Fast non-blocking check if local LM Studio server is live
+        import urllib.request
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                return resp.status == 200
+        except Exception:  # noqa: BLE001
+            return False
+
+    @staticmethod
     def get_chat_model(
         provider: str | None = None,
         model_name: str | None = None,
         base_url: str | None = None,
         api_key: str | None = None,
         temperature: float = 0.0,
+        max_tokens: int = 1024,
     ) -> BaseChatModel:
         # Returns chat model instance based on provider string or env vars
-        resolved_provider = provider or os.getenv("LLM_PROVIDER", "mock").lower()
-        resolved_model = model_name or os.getenv("LLM_MODEL", "qwen2.5:7b")
-        resolved_base_url = base_url or os.getenv("LLM_BASE_URL", "http://localhost:11434")
+        env_provider = os.getenv("LLM_PROVIDER")
+        if provider:
+            resolved_provider = provider.lower()
+        elif env_provider:
+            resolved_provider = env_provider.lower()
+        elif LLMFactory._is_local_server_available():
+            resolved_provider = "local"
+        else:
+            resolved_provider = "mock"
 
-        if resolved_provider == "ollama":
+        if resolved_provider in ("local", "lmstudio"):
+            try:
+                from langchain_openai import ChatOpenAI
+
+                resolved_model = model_name or os.getenv("LOCAL_CHAT_MODEL", "qwen/qwen3-4b-2507")
+                resolved_base_url = (
+                    base_url
+                    or os.getenv("LOCAL_LLM_BASE_URL", "http://192.168.1.16:1234/v1")
+                )
+                return ChatOpenAI(
+                    model=resolved_model,
+                    base_url=resolved_base_url,
+                    api_key="lm-studio",
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            except Exception:  # noqa: BLE001
+                return MockClinicalChatModel(model_name="qwen/qwen3-4b-2507")
+
+        elif resolved_provider == "sarvam":
+            try:
+                from langchain_openai import ChatOpenAI
+
+                resolved_key = (
+                    api_key
+                    or os.getenv("SARVAM_AI_CREDITS")
+                    or os.getenv("SARVAM_API_KEY")
+                    or "dummy-key"
+                )
+                resolved_base_url = (
+                    base_url
+                    or os.getenv("SARVAM_BASE_URL", "https://api.sarvam.ai/v1")
+                )
+                resolved_model = model_name or os.getenv("SARVAM_MODEL", "sarvam-2b")
+                return ChatOpenAI(
+                    model=resolved_model,
+                    base_url=resolved_base_url,
+                    api_key=resolved_key,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            except Exception:  # noqa: BLE001
+                return MockClinicalChatModel(model_name="sarvam-fallback")
+
+        elif resolved_provider == "ollama":
             try:
                 from langchain_community.chat_models import ChatOllama
 
+                resolved_model = model_name or os.getenv("LLM_MODEL", "qwen2.5:7b")
+                resolved_base_url = base_url or os.getenv("LLM_BASE_URL", "http://localhost:11434")
                 return ChatOllama(
                     model=resolved_model,
                     base_url=resolved_base_url,
                     temperature=temperature,
                 )
             except Exception:  # noqa: BLE001
-                # Fallback to mock if Ollama server is offline
-                return MockClinicalChatModel(model_name=resolved_model)
+                return MockClinicalChatModel(model_name=model_name or "qwen2.5:7b")
 
-        elif resolved_provider in ("sarvam", "openai_compatible"):
-            try:
-                from langchain_community.chat_models import ChatOpenAI
-
-                resolved_key = (
-                    api_key
-                    or os.getenv("SARVAM_API_KEY")
-                    or os.getenv("OPENAI_API_KEY")
-                    or "dummy-key"
-                )
-                return ChatOpenAI(
-                    model=resolved_model,
-                    openai_api_base=resolved_base_url,
-                    openai_api_key=resolved_key,
-                    temperature=temperature,
-                )
-            except Exception:  # noqa: BLE001
-                return MockClinicalChatModel(model_name=resolved_model)
-
-        # Default fallback
-        return MockClinicalChatModel(model_name=resolved_model)
+        # Default mock fallback
+        return MockClinicalChatModel(model_name=model_name or "mock-clinical-chat")
 
     @staticmethod
     def get_embeddings(
@@ -123,9 +167,37 @@ class LLMFactory:
         base_url: str | None = None,
     ) -> Embeddings:
         # Returns embeddings generator based on provider configuration
-        resolved_provider = provider or os.getenv("LLM_PROVIDER", "mock").lower()
+        env_provider = os.getenv("LLM_PROVIDER")
+        if provider:
+            resolved_provider = provider.lower()
+        elif env_provider:
+            resolved_provider = env_provider.lower()
+        elif LLMFactory._is_local_server_available():
+            resolved_provider = "local"
+        else:
+            resolved_provider = "mock"
 
-        if resolved_provider == "ollama":
+        if resolved_provider in ("local", "lmstudio"):
+            try:
+                from langchain_openai import OpenAIEmbeddings
+
+                resolved_model = model_name or os.getenv(
+                    "LOCAL_EMBED_MODEL", "text-embedding-qwen3-embedding-0.6b"
+                )
+                resolved_base_url = (
+                    base_url
+                    or os.getenv("LOCAL_LLM_BASE_URL", "http://192.168.1.16:1234/v1")
+                )
+                return OpenAIEmbeddings(
+                    model=resolved_model,
+                    base_url=resolved_base_url,
+                    api_key="lm-studio",
+                    check_embedding_ctx_length=False,
+                )
+            except Exception:  # noqa: BLE001
+                return MockEmbeddings()
+
+        elif resolved_provider == "ollama":
             try:
                 from langchain_community.embeddings import OllamaEmbeddings
 

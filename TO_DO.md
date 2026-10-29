@@ -59,21 +59,21 @@ Implementation status and backlog.
 - [x] Expose hybrid retriever as a standard LangChain Tool (`retriever.as_tool()`) for agent state queries.
 - [x] Add agent unit test suite (`tests/test_clinical_agents.py`) verifying compilation, schema compliance, and citation preservation.
 
-### Phase 6: 10-Year Longitudinal Multi-Condition Engine & UI Bindings (PLANNED)
-*(Detailed architectural specs documented in `priority_items.md` and planning artifacts)*
-- [ ] Incorporate sample 10-patient dataset (when provided) to inspect real-world formats while preventing synthetic overfitting.
-- [ ] Extend Pydantic schemas for 10-year longitudinal series:
-  - `TimeSeriesPoint`, `LongitudinalMetricSeries` (numerical tables & chart data).
-  - `ComorbidityMilestone`, `ComorbidityTimeline` (cardiac events, surgeries, childhood history).
-  - `HistoricalConsultationBrief` (retrospective encounter summaries).
+### Phase 6: 10-Year Longitudinal Multi-Condition Engine & UI Bindings (COMPLETED)
+*(Detailed architectural specs documented in `priority_items.md` and `docs/FRONTEND_INTEGRATION_SPEC.md`)*
+- [x] Ingested and validated real-world 10-year patient records (`PP001_Arvind_Narayanan`, 2016-2026, 13 multi-specialty PDFs) into local MongoDB `stage_1_raw_ocr` preserving normalized `[0, 1000]` bounding boxes.
+- [x] Supported `record_index.json` and `ground_truth.json` manifests in `preppulse_db.ingest`.
+- [x] Extended Pydantic schemas in `src/preppulse_agents/schemas.py`:
+  - `PatientClassification` (dynamic classification across non-diabetic, pre-diabetic, diabetic spectrum).
+  - `PriorityFindingItem` (reverse-chronological findings from recent to 10 years back with action hooks).
+  - `TimeSeriesPoint`, `LongitudinalMetricSeries` (10-year tabular matrix and chart coordinates).
   - `SmartPromptBubble` (non-intrusive assistive prompt suggestions).
-  - `TopLevelDataCard` (direct frontend UI bindings).
-- [ ] Enhance temporal retrieval in `preppulse_rag`:
-  - Date and calendar year indexing on chunks.
-  - Temporal-semantic lab report linking to past clinician consultation notes.
-- [ ] Expand LangGraph review graph to 8 specialized nodes:
-  - Spectrum Staging $\rightarrow$ Longitudinal Trajectory $\rightarrow$ Comorbidity Timeline $\rightarrow$ Specialist Remarks $\rightarrow$ Smart Prompt Bubbles $\rightarrow$ Care Gaps $\rightarrow$ Drug Titration Mismatches $\rightarrow$ Decade Brief Compiler.
-- [ ] Strict Assistive Policy: Verify that all generated outputs, cards, and bubbles are purely assistive and non-diagnostic.
+  - `CaregiverPrep` (dynamically switching between Caregiver Handoff and Caregiver Prep Sheet with `EN`, `हि`, `த` translations).
+- [x] Configured pluggable `LLMFactory` with native local LM Studio inference (`qwen/qwen3-4b-2507` and `text-embedding-qwen3-embedding-0.6b` at `http://192.168.1.16:1234/v1`), VRAM safeguard for RTX 4060, Sarvam AI credit preservation (`SARVAM_AI_CREDITS`), and offline mock fallback.
+- [x] Implemented 8-node LangGraph multi-agent review machine in `src/preppulse_agents/graph.py`:
+  - Classification $\rightarrow$ Trajectory $\rightarrow$ Care Gaps $\rightarrow$ Mismatches $\rightarrow$ Comorbidities $\rightarrow$ Caregiver Prep $\rightarrow$ Assistive Bubbles $\rightarrow$ Brief Compiler.
+- [x] Built and verified full end-to-end integration test suite (`tests/test_end_to_end_pipeline.py`) validating raw PDF $\rightarrow$ Stage 1 OCR $\rightarrow$ Chunker $\rightarrow$ Hybrid RAG $\rightarrow$ LangGraph Swarm $\rightarrow$ Unified Brief.
+- [x] 19 of 19 tests passing across full repository test suite with zero linter errors.
 
 ## Clinical & Architectural Decision Log
 

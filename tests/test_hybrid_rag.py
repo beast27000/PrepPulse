@@ -135,7 +135,10 @@ def test_hybrid_latency_under_500ms(sample_patient_documents: list[Document]):
 
 def test_patient_isolation_boundary(sample_patient_documents: list[Document]):
     # Verifies queries scoped to Patient A never leak Patient B documents
-    retriever = HybridEnsembleRetriever(sample_patient_documents)
+    retriever = HybridEnsembleRetriever(
+        sample_patient_documents,
+        embeddings=LLMFactory.get_embeddings(provider="mock"),
+    )
 
     # Search for Metformin (which belongs to Tanaka) scoped to Williams
     williams_results = retriever.retrieve("Metformin", patient_id="patient_williams", top_k=5)

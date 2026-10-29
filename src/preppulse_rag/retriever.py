@@ -56,8 +56,14 @@ class DenseVectorIndex:
             texts = [d.page_content for d in documents]
             self.doc_vectors = self.embeddings.embed_documents(texts)
 
-    def search(self, query: str, top_k: int = 5, min_score: float = 0.0) -> list[tuple[Document, float]]:
-        # Returns top-k documents by cosine similarity above min_score threshold
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        min_score: float = 0.0,
+        relative_threshold: float = 0.90,
+    ) -> list[tuple[Document, float]]:
+        # Returns top-k documents by cosine similarity above relevance threshold
         if not self.doc_vectors or not self.documents:
             return []
         q_vec = self.embeddings.embed_query(query)
@@ -65,8 +71,10 @@ class DenseVectorIndex:
         for d_vec in self.doc_vectors:
             dot = sum(a * b for a, b in zip(q_vec, d_vec))
             scores.append(dot)
+        max_score = max(scores, default=0.0)
+        cutoff = max(min_score, max_score * relative_threshold)
         ranked_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
-        return [(self.documents[i], float(scores[i])) for i in ranked_indices if scores[i] > min_score]
+        return [(self.documents[i], float(scores[i])) for i in ranked_indices if scores[i] >= cutoff]
 
 
 # ---------- hybrid ensemble retriever ----------
@@ -95,13 +103,16 @@ class HybridEnsembleRetriever:
         query: str,
         patient_id: str | None = None,
         top_k: int = 5,
+        year_start: int | None = None,
+        year_end: int | None = None,
+        category: str | None = None,
     ) -> list[Document]:
         # Executes hybrid search with strict patient isolation and latency tracking
         start_time = time.perf_counter()
 
         # 1. Fetch top candidates from both retrievers
-        sparse_hits = self.sparse_index.search(query, top_k=top_k * 2)
-        dense_hits = self.dense_index.search(query, top_k=top_k * 2)
+        sparse_hits = self.sparse_index.search(query, top_k=top_k * 3)
+        dense_hits = self.dense_index.search(query, top_k=top_k * 3)
 
         # 2. Reciprocal Rank Fusion
         rrf_scores: dict[str, float] = {}
@@ -126,6 +137,16 @@ class HybridEnsembleRetriever:
             # Strict patient boundary isolation check
             if patient_id and doc.metadata.get("patient_id") != patient_id:
                 continue
+            # Temporal filters
+            doc_year = doc.metadata.get("year")
+            if year_start is not None and doc_year is not None and doc_year < year_start:
+                continue
+            if year_end is not None and doc_year is not None and doc_year > year_end:
+                continue
+            # Category filter
+            if category is not None and doc.metadata.get("document_type") != category:
+                continue
+
             doc.metadata["rrf_score"] = rrf_scores[cid]
             results.append(doc)
             if len(results) >= top_k:
@@ -136,6 +157,11 @@ class HybridEnsembleRetriever:
             doc.metadata["latency_ms"] = elapsed_ms
 
         return results
+
+    def get_patient_documents(self, patient_id: str) -> list[Document]:
+        # Returns all documents for a patient sorted chronologically
+        docs = [d for d in self.documents if d.metadata.get("patient_id") == patient_id]
+        return sorted(docs, key=lambda d: str(d.metadata.get("visit_date") or ""))
 
     def as_tool(self, patient_id: str | None = None):
         # Exposes retriever as a standard LangChain Tool for LangGraph agents

@@ -40,6 +40,19 @@ class ClinicalProvenanceChunker:
         pages = stage1.get("pages", [])
         stage2 = mongo_doc.get("stage_2_structured_entities")
 
+        # Resolve calendar year for longitudinal indexing
+        year: int | None = None
+        if visit_date:
+            try:
+                year = int(str(visit_date).split("-")[0])
+            except (ValueError, IndexError):
+                year = None
+        if year is None and source_file:
+            import re
+            m = re.search(r"(\d{4})", source_file)
+            if m:
+                year = int(m.group(1))
+
         documents: list[Document] = []
 
         for page in pages:
@@ -61,6 +74,7 @@ class ClinicalProvenanceChunker:
                         "source_file": source_file,
                         "document_type": document_type,
                         "visit_date": visit_date,
+                        "year": year,
                         "page_number": page_num,
                         "bbox": table_bbox,
                         "is_table": True,
@@ -73,9 +87,9 @@ class ClinicalProvenanceChunker:
                 for token in tokens:
                     current_tokens.append(token)
                     text = token.get("text", "")
-                    # Split on line breaks or punctuation or token limit
+                    # Split on sentence punctuation when minimum token length reached or token limit
                     if (
-                        text.endswith((".", ";"))
+                        (len(current_tokens) >= 5 and text.endswith((".", ";")))
                         or len(current_tokens) >= self.max_tokens_per_chunk
                     ):
                         chunk_text = " ".join(t.get("text", "") for t in current_tokens).strip()
@@ -87,6 +101,7 @@ class ClinicalProvenanceChunker:
                             "source_file": source_file,
                             "document_type": document_type,
                             "visit_date": visit_date,
+                            "year": year,
                             "page_number": page_num,
                             "bbox": chunk_bbox,
                             "is_table": False,
@@ -104,6 +119,7 @@ class ClinicalProvenanceChunker:
                         "source_file": source_file,
                         "document_type": document_type,
                         "visit_date": visit_date,
+                        "year": year,
                         "page_number": page_num,
                         "bbox": chunk_bbox,
                         "is_table": False,

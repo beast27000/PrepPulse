@@ -8,10 +8,15 @@ from preppulse_agents.schemas import (
     ChecklistItem,
     ConsultationBrief,
     KpiMetric,
+    LongitudinalMetricSeries,
     MetabolicTrajectory,
     MismatchItem,
+    PatientClassification,
+    PriorityFindingItem,
     RecordMismatches,
+    SmartPromptBubble,
     SourceProofCitation,
+    TimeSeriesPoint,
 )
 
 __all__ = [
@@ -21,10 +26,15 @@ __all__ = [
     "ChecklistItem",
     "ConsultationBrief",
     "KpiMetric",
+    "LongitudinalMetricSeries",
     "MetabolicTrajectory",
     "MismatchItem",
+    "PatientClassification",
+    "PriorityFindingItem",
     "RecordMismatches",
+    "SmartPromptBubble",
     "SourceProofCitation",
+    "TimeSeriesPoint",
     "create_clinical_review_workflow",
 ]
 
