@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 import re
 from typing import Any, TypedDict
 
@@ -22,6 +24,7 @@ from preppulse_agents.schemas import (
     SourceProofCitation,
     TimeSeriesPoint,
 )
+from preppulse_rag.llm_provider import LLMFactory
 from preppulse_rag.retriever import HybridEnsembleRetriever
 
 # ---------- agent state definition ----------
@@ -46,6 +49,34 @@ class AgentReviewState(TypedDict):
     assistive_bubbles: list[SmartPromptBubble] | None
     metric_series: list[LongitudinalMetricSeries] | None
     final_brief: ConsultationBrief | None
+
+
+# ---------- json parsing helper ----------
+
+
+def _parse_llm_json_array(text: str) -> list[dict[str, Any]]:
+    # Robust extractor for JSON arrays returned by LLM with markdown fences or commentary
+    text_clean = text.strip()
+    try:
+        res = json.loads(text_clean)
+        if isinstance(res, list):
+            return res
+        if isinstance(res, dict):
+            for v in res.values():
+                if isinstance(v, list):
+                    return v
+    except Exception:  # noqa: BLE001, S110
+        pass
+    start = text_clean.find("[")
+    end = text_clean.rfind("]")
+    if start != -1 and end != -1 and end > start:
+        try:
+            res = json.loads(text_clean[start : end + 1])
+            if isinstance(res, list):
+                return res
+        except Exception:  # noqa: BLE001, S110
+            pass
+    return []
 
 
 # ---------- agent 1: patient classification ----------
@@ -180,6 +211,67 @@ def trajectory_agent(state: AgentReviewState) -> dict[str, Any]:
         kpis.append(KpiMetric(name="Blood pressure", value="138/86", unit="mmHg", date_str=str(hit.metadata.get("visit_date") or "2024-02-08"), trend_direction="stable", citation=cit))
 
     trajectory = MetabolicTrajectory(kpis=kpis, summary="Longitudinal metabolic profile tracking glycaemic and vascular trajectory.")
+
+    # LLM-driven discovery: find any other lab values not captured by standard queries
+    try:
+        lab_hits = retriever.retrieve("laboratory test result value analyte reference range", patient_id=patient_id, top_k=6)
+        if lab_hits:
+            lab_context = "\n".join(
+                f"[{h.metadata.get('source_file', '')} | {h.metadata.get('visit_date') or h.metadata.get('year', '')}]: {h.page_content[:180]}"
+                for h in lab_hits
+            )
+            discovery_prompt = (
+                "Extract all numeric lab test values from these medical records.\n"
+                "For each distinct test that has a numeric result:\n"
+                "Return JSON: "
+                '[{"metric_name": "...", "value": 0.0, "unit": "...", "date": "YYYY-MM-DD", "category": "glycemic|renal|cardiac|lipid|hepatic|hematology|other", "status": "normal|borderline|high|critical"}]\n'
+                "Rules: Only numeric values. No diagnosis. Skip values already in: HbA1c, Fasting Glucose, eGFR, Blood Pressure.\n"
+                "Return ONLY the JSON array.\n\n"
+                f"RECORDS:\n{lab_context}\n\nJSON:"
+            )
+            llm = LLMFactory.get_chat_model(max_tokens=512)
+            disc_response = llm.invoke(discovery_prompt)
+            disc_parsed = _parse_llm_json_array(disc_response.content)
+            # Build additional LongitudinalMetricSeries for each discovered metric
+            known_metrics = {"hba1c", "fasting glucose", "egfr", "blood pressure", "fasting blood glucose"}
+            for lab in disc_parsed[:8]:
+                metric = str(lab.get("metric_name", "")).strip()
+                if not metric or metric.lower() in known_metrics:
+                    continue
+                try:
+                    val = float(lab.get("value", 0))
+                except (ValueError, TypeError):
+                    continue
+                unit = str(lab.get("unit", ""))
+                date_str = str(lab.get("date", "2024-01-01"))
+                try:
+                    year = int(date_str[:4])
+                except ValueError:
+                    year = 2024
+                category = str(lab.get("category", "other"))
+                status = str(lab.get("status", "normal"))
+                # Find a matching hit for citation
+                best_hit = lab_hits[0]
+                for h in lab_hits:
+                    if str(h.metadata.get("year", "")) == date_str[:4]:
+                        best_hit = h
+                        break
+                disc_cit = SourceProofCitation(
+                    document_title=best_hit.metadata.get("source_file", "Lab Report"),
+                    bbox=best_hit.metadata.get("bbox", [100, 200, 400, 250]),
+                    extracted_text=best_hit.page_content[:100],
+                )
+                point = TimeSeriesPoint(date=date_str, year=year, value=val, unit=unit, status=status, citation=disc_cit)
+                series_list.append(LongitudinalMetricSeries(
+                    metric_name=metric,
+                    category=category,
+                    points=[point],
+                    ten_year_trend="stable",
+                    tabular_flow={str(year): val},
+                ))
+    except Exception:  # noqa: BLE001
+        logging.getLogger(__name__).debug("trajectory_agent: LLM discovery pass skipped (LLM unavailable or invalid JSON)")  # Discovery is additive — silently skip if LLM unavailable
+
     return {"trajectory": trajectory, "metric_series": series_list}
 
 
@@ -230,66 +322,78 @@ def mismatches_agent(state: AgentReviewState) -> dict[str, Any]:
     retriever: HybridEnsembleRetriever = state["retriever"]
     patient_id = state["patient_id"]
 
-    # Search for medication lists, reconciliation history, and active prescriptions
-    recon_hits = retriever.retrieve("medication reconciliation Atorvastatin Amlodipine stopped", patient_id=patient_id, top_k=3)
-    rx_hits = retriever.retrieve("prescription medications Glargine insulin Metformin Amlodipine", patient_id=patient_id, top_k=3)
+    # Broad medication retrieval — any prescription, reconciliation, or discharge med list
+    rx_hits = retriever.retrieve("prescription medication dose tablet capsule daily twice", patient_id=patient_id, top_k=6)
+    recon_hits = retriever.retrieve("medication reconciliation stopped discontinued active dispute conflict referral", patient_id=patient_id, top_k=8)
+    combined = {h.metadata.get("chunk_id", h.page_content[:30]): h for h in rx_hits + recon_hits}
+    all_hits = list(combined.values())[:12]
 
     items: list[MismatchItem] = []
 
-    # Check for Atorvastatin discrepancy (as in Doc 13 of PP001)
-    for hit in recon_hits:
-        if "atorvastatin" in hit.page_content.lower():
-            cit = SourceProofCitation(
-                document_id=hit.metadata.get("document_id", ""),
-                document_title=hit.metadata.get("source_file", "Longitudinal Medical History"),
-                date_formatted=str(hit.metadata.get("visit_date") or "2026-10-20"),
-                page_number=hit.metadata.get("page_number", 2),
-                bbox=hit.metadata.get("bbox", [100, 200, 400, 250]),
-                extracted_text=hit.page_content[:150],
-            )
-            items.append(MismatchItem(
-                title="Atorvastatin discontinuation requires confirmation",
-                description="Listed on transferred active medication list (10mg nightly); patient account states stopped without signed discontinuation order.",
-                source_a_citation=cit,
-                citations=[cit],
-            ))
-            break
+    if all_hits:
+        context_parts = []
+        for h in all_hits:
+            src = h.metadata.get("source_file", "Record")
+            date = h.metadata.get("visit_date") or h.metadata.get("year", "")
+            context_parts.append(f"[{src} | {date}]: {h.page_content[:180]}")
+        context_text = "\n".join(context_parts)
 
-    # Check for Insulin dose discrepancy
-    insulin_hits = [h for h in rx_hits if "glargine" in h.page_content.lower()]
-    if insulin_hits:
-        hit = insulin_hits[0]
-        cit = SourceProofCitation(
-            document_title=hit.metadata.get("source_file", "Prescription"),
-            bbox=hit.metadata.get("bbox", [80, 210, 400, 230]),
-            extracted_text=hit.page_content[:100],
+        prompt = (
+            "You are a clinical chart review assistant. Review these medical records for medication discrepancies.\n"
+            "Find medications where dose, frequency, or status conflicts between different records, "
+            "or where a patient stopped a medication without a documented discontinuation order.\n"
+            "For each discrepancy:\n"
+            "- TITLE: short name of the discrepancy (e.g. 'Atorvastatin discontinuation unconfirmed')\n"
+            "- DESCRIPTION: one-sentence factual description of the conflict\n"
+            "- SEVERITY: high (patient safety risk), medium (needs clarification), low (minor)\n"
+            "- SOURCE_A_DATE: date of first conflicting record (YYYY-MM-DD or blank)\n"
+            "- SOURCE_B_DATE: date of second conflicting record (YYYY-MM-DD or blank)\n\n"
+            "Rules: No diagnosis. Only factual discrepancies. One entry per medication conflict.\n"
+            "Return ONLY a JSON array:\n"
+            '[{"title": "...", "description": "...", "severity": "...", "source_a_date": "...", "source_b_date": "..."}]\n\n'
+            f"RECORDS:\n{context_text}\n\nJSON:"
         )
-        dc_hits = retriever.retrieve("discharge summary Glargine insulin", patient_id=patient_id, top_k=2)
-        cit_b = None
-        if dc_hits:
-            hit_dc = dc_hits[0]
-            cit_b = SourceProofCitation(
-                document_title=hit_dc.metadata.get("source_file", "Discharge Summary"),
-                bbox=hit_dc.metadata.get("bbox", [150, 400, 500, 430]),
-                extracted_text=hit_dc.page_content[:100],
-            )
-        items.append(MismatchItem(
-            title="Conflicting insulin dose",
-            description="Clinic slip states Glargine 14U; hospital discharge states Glargine 20U.",
-            source_a_citation=cit,
-            source_b_citation=cit_b,
-            citations=[cit] + ([cit_b] if cit_b else []),
-        ))
 
-    if not items and rx_hits:
-        hit = rx_hits[0]
-        cit = SourceProofCitation(document_title=hit.metadata.get("source_file", "Prescription"), bbox=hit.metadata.get("bbox", [80, 210, 400, 230]), extracted_text=hit.page_content[:100])
-        items.append(MismatchItem(
-            title="Medication adherence review needed",
-            description="Amlodipine 5mg active; occasional missed doses reported during follow-up.",
-            source_a_citation=cit,
-            citations=[cit],
-        ))
+        try:
+            llm = LLMFactory.get_chat_model(max_tokens=512)
+            response = llm.invoke(prompt)
+            parsed = _parse_llm_json_array(response.content)
+            for item_data in parsed[:5]:
+                title = str(item_data.get("title", "")).strip()
+                desc = str(item_data.get("description", "")).strip()
+                if not title:
+                    continue
+                # Build citations from hits
+                cit_a = None
+                cit_b = None
+                if all_hits:
+                    h = all_hits[0]
+                    cit_a = SourceProofCitation(
+                        document_id=h.metadata.get("document_id", ""),
+                        document_title=h.metadata.get("source_file", "Medical Record"),
+                        date_formatted=str(h.metadata.get("visit_date") or ""),
+                        page_number=h.metadata.get("page_number", 1),
+                        bbox=h.metadata.get("bbox", [80, 200, 400, 250]),
+                        extracted_text=h.page_content[:120],
+                    )
+                if len(all_hits) > 1:
+                    h2 = all_hits[1]
+                    cit_b = SourceProofCitation(
+                        document_title=h2.metadata.get("source_file", "Medical Record"),
+                        date_formatted=str(h2.metadata.get("visit_date") or ""),
+                        bbox=h2.metadata.get("bbox", [80, 200, 400, 250]),
+                        extracted_text=h2.page_content[:120],
+                    )
+                items.append(MismatchItem(
+                    title=title,
+                    description=desc,
+                    source_a_citation=cit_a,
+                    source_b_citation=cit_b,
+                    citations=[c for c in [cit_a, cit_b] if c],
+                ))
+        except Exception:  # noqa: BLE001
+            _log = logging.getLogger(__name__)
+            _log.warning("mismatches_agent: LLM call failed or returned invalid JSON; returning empty items")
 
     return {"mismatches": RecordMismatches(items=items)}
 
@@ -302,66 +406,73 @@ def comorbidities_agent(state: AgentReviewState) -> dict[str, Any]:
     retriever: HybridEnsembleRetriever = state["retriever"]
     patient_id = state["patient_id"]
 
-    # Search for acute admissions and specialty consults
-    discharge_hits = retriever.retrieve("discharge summary hospital admission Dengue COVID Urology stent", patient_id=patient_id, top_k=5)
-    specialty_hits = retriever.retrieve("orthopaedic dental urology cardiology consultation", patient_id=patient_id, top_k=5)
+    # Broad retrieval: hospital admissions, surgeries, specialist consults
+    discharge_hits = retriever.retrieve("hospital admission discharge ward admitted inpatient", patient_id=patient_id, top_k=6)
+    consult_hits = retriever.retrieve("specialist consultation referral procedure surgery", patient_id=patient_id, top_k=6)
+    combined = {h.metadata.get("chunk_id", h.page_content[:30]): h for h in discharge_hits + consult_hits}
+    all_hits = list(combined.values())[:10]
 
     findings: list[PriorityFindingItem] = []
-    seen_titles: set[str] = set()
 
-    for hit in discharge_hits + specialty_hits:
-        content = hit.page_content.lower()
-        title = ""
-        subtitle = ""
-        date_str = str(hit.metadata.get("visit_date") or f"{hit.metadata.get('year', 2024)}")
-        severity = "medium"
+    if all_hits:
+        context_parts = []
+        for h in all_hits:
+            src = h.metadata.get("source_file", "Record")
+            date = h.metadata.get("visit_date") or h.metadata.get("year", "")
+            context_parts.append(f"[{src} | {date}]: {h.page_content[:180]}")
+        context_text = "\n".join(context_parts)
 
-        if "covid" in content and "covid" not in seen_titles:
-            title = "COVID-19 Acute Hospitalization"
-            subtitle = "Admitted for acute COVID-19 illness; successfully managed and discharged."
-            severity = "medium"
-            seen_titles.add("covid")
-        elif "dengue" in content and "dengue" not in seen_titles:
-            title = "Dengue Fever Hospital Admission"
-            subtitle = "Acute dengue admission with thrombocytopenia monitoring; full recovery."
-            severity = "medium"
-            seen_titles.add("dengue")
-        elif "urology" in content and "urology" not in seen_titles:
-            title = "Urology Hospital Admission & Procedure"
-            subtitle = "Managed for acute urological episode; completed course of Tamsulosin."
-            severity = "medium"
-            seen_titles.add("urology")
-        elif "stent" in content or "pci" in content and "stent" not in seen_titles:
-            title = "Cardiovascular Stent Placement (LAD)"
-            subtitle = "Percutaneous coronary intervention with drug-eluting stent."
-            severity = "high"
-            seen_titles.add("stent")
-        elif "orthopaedic" in content and "orthopaedic" not in seen_titles:
-            title = "Orthopaedic Knee Evaluation"
-            subtitle = "Consultation for mechanical joint strain and mobility assessment."
-            severity = "low"
-            seen_titles.add("orthopaedic")
+        prompt = (
+            "You are a clinical chart review assistant. Review these medical record excerpts.\n"
+            "For each distinct clinical event, hospitalization, surgery, procedure, or specialist consultation:\n"
+            "1. TITLE: concise name (e.g. 'Acute Dengue Hospitalization', 'Cardiac Angioplasty', 'Urology Consultation')\n"
+            "2. SUBTITLE: one sentence describing what happened and outcome\n"
+            "3. SEVERITY: high (life-threatening/major surgery), medium (acute illness/procedure), low (routine consult)\n"
+            "4. DATE: extract from record in YYYY-MM-DD format (use YYYY-01-01 if only year known)\n\n"
+            "Rules: No diagnosis. Only report what is documented. Deduplicate — one entry per event.\n"
+            "Return ONLY a JSON array (no markdown fences):\n"
+            '[{"title": "...", "subtitle": "...", "severity": "high|medium|low", "date": "YYYY-MM-DD"}]\n\n'
+            f"RECORDS:\n{context_text}\n\nJSON:"
+        )
 
-        if title:
-            cit = SourceProofCitation(
-                document_id=hit.metadata.get("document_id", ""),
-                document_title=hit.metadata.get("source_file", "Hospital Record"),
-                date_formatted=date_str,
-                page_number=hit.metadata.get("page_number", 1),
-                bbox=hit.metadata.get("bbox", [100, 100, 500, 200]),
-                extracted_text=hit.page_content[:140],
-            )
-            findings.append(PriorityFindingItem(
-                finding_id=f"find_{len(findings)+1}",
-                title=title,
-                subtitle=subtitle,
-                status="confirmed",
-                severity=severity,
-                date=date_str,
-                citation=cit,
-            ))
+        try:
+            llm = LLMFactory.get_chat_model(max_tokens=512)
+            response = llm.invoke(prompt)
+            parsed = _parse_llm_json_array(response.content)
+            for i, item in enumerate(parsed[:8]):
+                title = str(item.get("title", "")).strip()
+                subtitle = str(item.get("subtitle", "")).strip()
+                severity = str(item.get("severity", "medium")).strip()
+                date_str = str(item.get("date", "")).strip()
+                if not title:
+                    continue
+                # Find best matching hit for citation (by date or first)
+                best_hit = all_hits[0]
+                for h in all_hits:
+                    if date_str[:4] and str(h.metadata.get("year", "")) == date_str[:4]:
+                        best_hit = h
+                        break
+                cit = SourceProofCitation(
+                    document_id=best_hit.metadata.get("document_id", ""),
+                    document_title=best_hit.metadata.get("source_file", "Hospital Record"),
+                    date_formatted=date_str,
+                    page_number=best_hit.metadata.get("page_number", 1),
+                    bbox=best_hit.metadata.get("bbox", [100, 100, 500, 200]),
+                    extracted_text=best_hit.page_content[:140],
+                )
+                findings.append(PriorityFindingItem(
+                    finding_id=f"find_{i + 1}",
+                    title=title,
+                    subtitle=subtitle,
+                    status="confirmed",
+                    severity=severity if severity in ("high", "medium", "low") else "medium",
+                    date=date_str,
+                    citation=cit,
+                ))
+        except Exception:  # noqa: BLE001
+            _log = logging.getLogger(__name__)
+            _log.warning("comorbidities_agent: LLM call failed or returned invalid JSON; returning empty findings")
 
-    # Sort reverse-chronologically by date
     findings.sort(key=lambda f: f.date, reverse=True)
     return {"comorbidity_findings": findings}
 
@@ -375,122 +486,198 @@ def caregiver_prep_agent(state: AgentReviewState) -> dict[str, Any]:
     is_diabetic = classification and classification.category == "diabetic"
     patient_name = state.get("patient_name", "the patient")
     first_name = patient_name.split()[0] if patient_name else "Patient"
+    age = state.get("age", "")
+    gender = state.get("gender", "")
+    comorbidities = state.get("comorbidity_findings") or []
+    mismatches_obj = state.get("mismatches")
+    retriever: HybridEnsembleRetriever = state["retriever"]
+    patient_id = state["patient_id"]
 
-    if is_diabetic:
-        checklist = [
-            ChecklistItem(
-                id="chk_01",
-                text_en="Bring every current medicine strip or photo to the visit.",
-                text_hi="मुलाकात में वर्तमान दवाओं के सभी स्ट्रिप या तस्वीरें साथ लाएं।",
-                text_ta="தற்போது உட்கொள்ளும் அனைத்து மருந்து அட்டைகள் அல்லது புகைப்படங்களை எடுத்து வாருங்கள்.",
-            ),
-            ChecklistItem(
-                id="chk_02",
-                text_en=f"Ask {first_name} to demonstrate evening insulin routine.",
-                text_hi=f"{first_name} से कहें कि वे दिखाएं कि शाम की दवा/इंसुलिन कैसे ली जाती है।",
-                text_ta=f"மாலை நேர மருந்து அல்லது இன்சுலின் உட்கொள்ளும் முறையை {first_name} செய்து காட்டச் சொல்லுங்கள்.",
-            ),
-            ChecklistItem(
-                id="chk_03",
-                text_en="Discuss practical steps for a lower-carbohydrate dinner.",
-                text_hi="कम कार्बोहाइड्रेट वाले रात के खाने के लिए व्यावहारिक कदमों पर चर्चा करें।",
-                text_ta="குறைந்த மாவுச்சத்து கொண்ட இரவு உணவுக்கான நடைமுறை படிகளைப் பற்றி விவாதிக்கவும்.",
-            ),
-            ChecklistItem(
-                id="chk_04",
-                text_en="Confirm next urine ACR and eye exam appointments.",
-                text_hi="अगले यूरिन एसीआर और आंखों की जांच के समय की पुष्टि करें।",
-                text_ta="அடுத்த சிறுநீர் ACR மற்றும் கண் பரிசோதனைக்கான தேதியை உறுதிப்படுத்தவும்.",
-            ),
-        ]
-        return {
-            "caregiver_prep": CaregiverPrep(
-                mode="handoff",
-                active_language="en",
-                checklist=checklist,
-                allergies=[],
-                ongoing_issues=["Insulin administration routine", "Hypoglycemia monitoring"],
-                guidance_notes="Review medication administration frequency and meal schedule.",
-            )
-        }
+    # Retrieve allergy and medication context
+    allergy_hits = retriever.retrieve("allergy allergic reaction medication intolerance", patient_id=patient_id, top_k=3)
+    med_hits = retriever.retrieve("prescription medication ongoing active daily", patient_id=patient_id, top_k=4)
+
+    allergy_text = " | ".join(h.page_content[:120] for h in allergy_hits) or "None documented"
+    med_text = " | ".join(h.page_content[:120] for h in med_hits) or "None documented"
+    comorbidity_text = ", ".join(f.title for f in comorbidities[:5]) if comorbidities else "None identified"
+    mismatch_text = " | ".join(m.title for m in mismatches_obj.items[:3]) if mismatches_obj and mismatches_obj.items else "None"
+
+    mode = "handoff" if is_diabetic else "prep_sheet"
+
+    if mode == "handoff":
+        checklist_instruction = (
+            "Generate 4 caregiver visit checklist items for a diabetic patient. "
+            "Focus on medication adherence, insulin or medication routine, monitoring glucose, "
+            "and upcoming lab appointments relevant to this patient."
+        )
     else:
-        # Pre-diabetic / Non-diabetic Caregiver Prep Sheet
+        checklist_instruction = (
+            "Generate 4 caregiver visit checklist items for this patient based on their actual documented conditions. "
+            "Focus on medication adherence, lifestyle modifications, monitoring, and follow-up appointments."
+        )
+
+    prompt = (
+        f"You are a clinical assistant preparing a caregiver checklist. {checklist_instruction}\n\n"
+        f"Patient: {first_name}, {age} years old, {gender}\n"
+        f"Classification: {classification.stage if classification else 'Unknown'}\n"
+        f"Active conditions/events: {comorbidity_text}\n"
+        f"Medication context: {med_text[:300]}\n"
+        f"Medication discrepancies: {mismatch_text}\n"
+        f"Allergy context: {allergy_text[:200]}\n\n"
+        "Rules:\n"
+        "- Be specific to THIS patient's documented conditions\n"
+        "- No diagnosis or treatment advice\n"
+        "- Each item must be actionable for a family caregiver\n"
+        "- Translate each item into Hindi (text_hi) and Tamil (text_ta)\n"
+        "Return ONLY a JSON array:\n"
+        '[{"id": "chk_01", "text_en": "...", "text_hi": "...", "text_ta": "..."}]\n\n'
+        "JSON:"
+    )
+
+    checklist: list[ChecklistItem] = []
+    allergies: list[str] = []
+    ongoing_issues: list[str] = [f.title for f in comorbidities[:4]]
+
+    try:
+        llm = LLMFactory.get_chat_model(max_tokens=800)
+        response = llm.invoke(prompt)
+        parsed = _parse_llm_json_array(response.content)
+        for item_data in parsed[:6]:
+            text_en = str(
+                item_data.get("text_en")
+                or item_data.get("english")
+                or item_data.get("item")
+                or item_data.get("action")
+                or item_data.get("text")
+                or item_data.get("description")
+                or ""
+            ).strip()
+            if not text_en:
+                continue
+            text_hi = str(item_data.get("text_hi") or item_data.get("hindi") or text_en).strip()
+            text_ta = str(item_data.get("text_ta") or item_data.get("tamil") or text_en).strip()
+            checklist.append(ChecklistItem(
+                id=str(item_data.get("id", f"chk_{len(checklist)+1:02d}")),
+                text_en=text_en,
+                text_hi=text_hi,
+                text_ta=text_ta,
+            ))
+        # Extract allergies from allergy context
+        if allergy_hits:
+            for h in allergy_hits[:2]:
+                content_lower = h.page_content.lower()
+                if "allerg" in content_lower or "intolerance" in content_lower:
+                    allergies.append(h.page_content[:80].strip())
+    except Exception:  # noqa: BLE001
+        _log = logging.getLogger(__name__)
+        _log.warning("caregiver_prep_agent: LLM call failed; using minimal fallback checklist")
+
+    if not checklist:
         checklist = [
             ChecklistItem(
                 id="chk_01",
-                text_en="Review daily walking activity and reduce prolonged desk-based sitting.",
-                text_hi="दैनिक टहलने की गतिविधि की समीक्षा करें और लंबे समय तक डेस्क पर बैठने से बचें।",
-                text_ta="தினசரி நடைப்பயிற்சியை மதிப்பாய்வு செய்து தொடர்ந்து அமர்ந்திருப்பதைத் தவிர்க்கவும்.",
+                text_en="Bring all current medication strips or packaging to the visit.",
+                text_hi="सभी वर्तमान दवाओं के पैकेट या पट्टी लेकर आएं।",
+                text_ta="தற்போது உட்கொள்ளும் அனைத்து மருந்துகளையும் எடுத்து வாருங்கள்.",
             ),
             ChecklistItem(
                 id="chk_02",
-                text_en="Encourage dinner timing at least 2 hours before sleep to improve metabolic control.",
-                text_hi="रात के भोजन का समय सोने से कम से कम 2 घंटे पहले रखें।",
-                text_ta="தூங்குவதற்கு குறைந்தது 2 மணி நேரத்திற்கு முன்னதாக இரவு உணவை உட்கொள்ள ஊக்குவிக்கவும்.",
+                text_en="Keep a record of any new symptoms or side effects noticed since the last visit.",
+                text_hi="पिछली मुलाकात के बाद किसी भी नए लक्षण या दुष्प्रभाव का रिकॉर्ड रखें।",
+                text_ta="கடந்த வருகைக்குப் பிறகு தோன்றிய புதிய அறிகுறிகள் அல்லது பக்க விளைவுகளை பதிவு செய்யுங்கள்.",
             ),
             ChecklistItem(
                 id="chk_03",
-                text_en="Confirm adherence to Amlodipine 5mg for blood pressure without missing doses.",
-                text_hi="रक्तचाप के लिए एम्लोडिपाइन 5 मिलीग्राम का नियमित सेवन सुनिश्चित करें।",
-                text_ta="ரத்த அழுத்தத்திற்கான அம்லோடிபைன் 5 மிகி மருந்தை தவறாமல் உட்கொள்வதை உறுதிப்படுத்தவும்.",
-            ),
-            ChecklistItem(
-                id="chk_04",
-                text_en="Schedule annual HbA1c screening to track prediabetic progression.",
-                text_hi="प्री-डायबिटिक स्थिति की निगरानी के लिए वार्षिक HbA1c जांच का समय तय करें।",
-                text_ta="நீரிழிவு முந்தைய நிலையை கண்காணிக்க வருடாந்திர HbA1c பரிசோதனைக்கு திட்டமிடுங்கள்.",
+                text_en="Confirm all upcoming follow-up appointments and lab tests are scheduled.",
+                text_hi="सभी आगामी अनुवर्ती नियुक्तियों और लैब परीक्षणों की पुष्टि करें।",
+                text_ta="வரவிருக்கும் அனைத்து பின்தொடர் சந்திப்புகள் மற்றும் ஆய்வக பரிசோதனைகள் திட்டமிடப்பட்டுள்ளனவா என உறுதிப்படுத்தவும்.",
             ),
         ]
-        return {
-            "caregiver_prep": CaregiverPrep(
-                mode="prep_sheet",
-                active_language="en",
-                checklist=checklist,
-                allergies=["Cetirizine 10mg PRN for seasonal allergy episodes"],
-                ongoing_issues=["Pre-diabetes lifestyle modification", "Hypertension compliance", "Atorvastatin reconciliation"],
-                guidance_notes="Caregiver support focus: meal timing, routine activity, and blood pressure adherence.",
-            )
-        }
+
+    return {
+        "caregiver_prep": CaregiverPrep(
+            mode=mode,
+            active_language="en",
+            checklist=checklist,
+            allergies=allergies,
+            ongoing_issues=ongoing_issues,
+            guidance_notes="Caregiver checklist generated from documented patient history. Review with clinical team.",
+        )
+    }
 
 
 # ---------- agent 7: smart assistive bubbles ----------
 
 
 def assistive_bubbles_agent(state: AgentReviewState) -> dict[str, Any]:
-    # Emits non-intrusive assistive prompt bubbles
+    # Emits non-intrusive assistive prompt bubbles driven by actual findings from state
     classification = state.get("classification")
     is_diabetic = classification and classification.category == "diabetic"
+    comorbidities = state.get("comorbidity_findings") or []
+    mismatches_obj = state.get("mismatches")
+    metric_series = state.get("metric_series") or []
 
-    bubbles = [
-        SmartPromptBubble(
+    bubbles: list[SmartPromptBubble] = []
+
+    # Bubble 1: Longitudinal trajectory (always present if metric series exist)
+    if metric_series:
+        series_names = [s.metric_name for s in metric_series[:3]]
+        bubbles.append(SmartPromptBubble(
             bubble_id="bubble_01",
             icon="timeline",
-            prompt_text="10-year health history available: Would you like to chart the metabolic trajectory from 2016 to 2026?",
+            prompt_text=f"Longitudinal data available for {', '.join(series_names)}: Would you like to chart the multi-year metabolic trajectory?",
             action_type="open_chart_modal",
-            target_series=["HbA1c", "Fasting Glucose", "eGFR"],
-        ),
-        SmartPromptBubble(
+            target_series=series_names,
+        ))
+    else:
+        bubbles.append(SmartPromptBubble(
+            bubble_id="bubble_01",
+            icon="timeline",
+            prompt_text="10-year health records loaded: Would you like to view the longitudinal metabolic trajectory?",
+            action_type="open_chart_modal",
+            target_series=[],
+        ))
+
+    # Bubble 2: Acute admissions / comorbidities (only if findings exist)
+    if comorbidities:
+        # Pick up to 2 most recent events
+        recent_events = comorbidities[:2]
+        event_names = " and ".join(f.title for f in recent_events)
+        bubbles.append(SmartPromptBubble(
             bubble_id="bubble_02",
             icon="hospital",
-            prompt_text="Acute admissions found for Dengue (2018) and COVID-19 (2020): Would you like to review discharge summaries?",
+            prompt_text=f"Clinical events found: {event_names}. Would you like to review the source records?",
             action_type="open_milestone_detail",
             milestone_id="admissions",
-        ),
-        SmartPromptBubble(
+        ))
+
+    # Bubble 3: Medication discrepancies (only if mismatches exist)
+    if mismatches_obj and mismatches_obj.items:
+        first_mismatch = mismatches_obj.items[0]
+        bubbles.append(SmartPromptBubble(
             bubble_id="bubble_03",
             icon="pill",
-            prompt_text="Medication discrepancy noted on Atorvastatin: Shall I open the reconciliation details?",
+            prompt_text=f"Medication discrepancy noted: {first_mismatch.title}. Shall I open the reconciliation details?",
             action_type="open_mismatch_detail",
-            milestone_id="mismatch_atorvastatin",
-        ),
-    ]
+            milestone_id="mismatch_01",
+        ))
 
+    # Bubble 4: Diabetic-specific care gap
     if is_diabetic:
         bubbles.append(SmartPromptBubble(
             bubble_id="bubble_04",
             icon="alert",
-            prompt_text="Annual foot examination overdue: Would you like to add this to the visit action plan?",
+            prompt_text="Annual foot examination is overdue: Would you like to add this to the visit action plan?",
             action_type="add_action_item",
+        ))
+
+    # Always have at least 2 bubbles
+    if len(bubbles) < 2:
+        bubbles.append(SmartPromptBubble(
+            bubble_id=f"bubble_{len(bubbles)+1:02d}",
+            icon="info",
+            prompt_text="All clinical records reviewed. Would you like a summary of key findings for this visit?",
+            action_type="open_summary",
         ))
 
     return {"assistive_bubbles": bubbles}

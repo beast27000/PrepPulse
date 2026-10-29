@@ -72,6 +72,13 @@ Implementation status and backlog.
 - [x] Configured pluggable `LLMFactory` with native local LM Studio inference (`qwen/qwen3-4b-2507` and `text-embedding-qwen3-embedding-0.6b` at `http://192.168.1.16:1234/v1`), VRAM safeguard for RTX 4060, Sarvam AI credit preservation (`SARVAM_AI_CREDITS`), and offline mock fallback.
 - [x] Implemented 8-node LangGraph multi-agent review machine in `src/preppulse_agents/graph.py`:
   - Classification $\rightarrow$ Trajectory $\rightarrow$ Care Gaps $\rightarrow$ Mismatches $\rightarrow$ Comorbidities $\rightarrow$ Caregiver Prep $\rightarrow$ Assistive Bubbles $\rightarrow$ Brief Compiler.
+- [x] **Refactored All Agents to LLM-Driven Dynamic Inference (Zero Hardcoding)**:
+  - `comorbidities_agent`: Replaced all hardcoded keyword branches with dynamic Qwen3-4B inference to identify any clinical admission, surgery, or specialist consult across a patient's entire decade-long record.
+  - `mismatches_agent`: Replaced hardcoded drug queries with broad reconciliation retrieval and LLM discovery of conflicting doses, frequencies, or unconfirmed discontinuations.
+  - `caregiver_prep_agent`: Dynamic contextual generation of actionable family caregiver checklist items with English, Hindi (`हि`), and Tamil (`த`) translations.
+  - `trajectory_agent`: Added open-ended LLM discovery pass extracting any documented numeric lab biomarkers into `LongitudinalMetricSeries`.
+  - `assistive_bubbles_agent`: Dynamic bubble synthesis reflecting the actual clinical events and longitudinal series present in the patient's state.
+  - Robust `_parse_llm_json_array` utility ensuring fail-safe JSON parsing across diverse LLM markdown outputs.
 - [x] Built and verified full end-to-end integration test suite (`tests/test_end_to_end_pipeline.py`) validating raw PDF $\rightarrow$ Stage 1 OCR $\rightarrow$ Chunker $\rightarrow$ Hybrid RAG $\rightarrow$ LangGraph Swarm $\rightarrow$ Unified Brief.
 - [x] 19 of 19 tests passing across full repository test suite with zero linter errors.
 
