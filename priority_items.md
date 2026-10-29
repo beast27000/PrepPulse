@@ -75,3 +75,53 @@ These bubbles give the doctor instant one-click drill-downs without cluttering t
   - Powered by sub-50ms hybrid RAG (BM25 + dense vectors) for rapid ad-hoc doctor queries and drill-downs.
 - **Full Provenance Underneath**:
   - Behind every high-level card and chat response lies the granular Stage 1 OCR token/line data and visual bounding box overlays.
+
+---
+
+## 7. Priority Findings Tiles (Reverse Chronological 10-Year Clinical Signals)
+
+- **Reverse-Chronological Ordering**: Findings sorted from most recent (e.g. latest 2024 labs) back to 10 years prior.
+- **Actionable State Machine**: Each tile features actionable clinician controls:
+  - **Status Pill**: `Confirmed`, `Pending review`, `Open`.
+  - **Direct Actions**: `Accept`, `Edit`, `Reject`.
+  - **Provenance Citation Link**: Clicking any tile immediately renders the source document and highlights the exact `[0, 1000]` bounding box in the right-hand preview panel.
+- **Dedicated Agents**: Produced by specialized clinical inference agents synthesizing cross-encounter events.
+
+---
+
+## 8. Dynamic Patient Classification: Caregiver Handoff vs. Caregiver Prep Sheet
+
+The patient's clinical stage dynamically determines the structure and content of Card 04:
+- **Diabetic Stage (e.g., Type 2 Diabetes on Insulin/Multiple Agents)**:
+  - Renders as **"Caregiver Handoff"** checklist.
+  - Focuses on insulin dose confirmation, injection routine verification, hypoglycemia precautions, and bringing medicine strips/photos to visits.
+- **Pre-Diabetic & Non-Diabetic Stages**:
+  - Dynamically switches to **"Caregiver Prep Sheet"**.
+  - Focuses on primary allergies, ongoing chronic/minor health issues, lifestyle guidance, and annual HbA1c screening intervals.
+- **Automated Stage Detection**: Agent identifies classification from prior doctor consult remarks, clinical diagnosis notes, or discharge summaries, falling back to objective laboratory thresholds if notes are absent.
+
+---
+
+## 9. Multi-Lingual Architecture (Indic Languages: EN, हि, த, తె)
+
+- **Language Toggle**: A frontend control allows the entire interface to switch between English and Indian languages (Hindi, Tamil, Telugu).
+- **AI Structured Translation**: Agents return multi-lingual text objects (e.g., `text_en`, `text_hi`, `text_ta`, `text_te`) in the JSON payload, allowing instantaneous client-side UI language switching without re-querying the backend.
+
+---
+
+## 10. Top 4 Dynamic Consultation Cards
+
+Under **Current Consultation Brief**, four cards adapt dynamically based on what the multi-agent graph uncovers:
+1. **01. WHAT CHANGED - Metabolic Trajectory**: Core KPIs (HbA1c, Fasting Glucose, eGFR) with trend arrows and date badges.
+2. **02. STILL TO CLOSE - Care Gaps**: Overdue foot exams, missing microalbumin tests, or unperformed cardiac reviews.
+3. **03. RESOLVE BEFORE PLAN - Record Mismatches**: Medication dose contradictions across clinic notes and discharge slips.
+4. **04. FAMILY HANDOFF - Caregiver Handoff / Prep Sheet**: Dynamically styled for disease stage with multi-lingual checklists.
+
+---
+
+## 11. Frontend Team Documentation Reference
+
+Detailed API specifications, JSON schema contracts, coordinate math, and bounding box rendering instructions are documented in:
+👉 [`docs/FRONTEND_INTEGRATION_SPEC.md`](file:///c:/All_My_Personal_Projects/PrepPulse/docs/FRONTEND_INTEGRATION_SPEC.md)
+
+

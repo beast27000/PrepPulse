@@ -26,3 +26,4 @@ uv.lock
 # Local-only documentation (un-ignore shared specifications)
 docs/*
 !docs/STAGE_2_AND_3_SPECIFICATION.md
+!docs/FRONTEND_INTEGRATION_SPEC.md
