@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PrepPulse Architecture Diagram</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #f8fafc;
+      color: #0f172a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 24px;
+    }
+    p {
+      color: #64748b;
+      margin: 0 0 16px 0;
+    }
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .btn {
+      background: #0ea5e9;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #0284c7;
+    }
+    .btn-secondary {
+      background: #64748b;
+    }
+    .btn-secondary:hover {
+      background: #475569;
+    }
+    .card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+      max-width: 95vw;
+      overflow: auto;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>PrepPulse Clinical Intelligence Architecture</h1>
+    <p>Data Layer &bull; LangGraph Agent Swarm &bull; UI Presentation Ecosystem</p>
+    <div class="btn-group">
+      <a href="architecture_diagram.png" download="preppulse_architecture.png" class="btn">
+        &#128190; Download High-Res PNG
+      </a>
+      <a href="architecture_diagram.svg" download="preppulse_architecture.svg" class="btn btn-secondary">
+        &#128190; Download Vector SVG
+      </a>
+    </div>
+  </div>
+  <div class="card">
+    <img src="architecture_diagram.svg" alt="PrepPulse Architecture Diagram">
+  </div>
+</body>
+</html>

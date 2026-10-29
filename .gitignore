@@ -27,3 +27,4 @@ uv.lock
 docs/*
 !docs/STAGE_2_AND_3_SPECIFICATION.md
 !docs/FRONTEND_INTEGRATION_SPEC.md
+!docs/architecture_diagram.*

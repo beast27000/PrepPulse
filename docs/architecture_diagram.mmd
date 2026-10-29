@@ -1,0 +1,43 @@
+flowchart TD
+    subgraph DataLayer [Data Layer]
+        OCR[Stage 1 Raw OCR / MongoDB]
+        Retriever[Hybrid BM25 + Dense RAG]
+    end
+
+    subgraph AgenticSwarm [Agentic Swarm LangGraph]
+        Classifier[Patient Classification Agent]
+        Trajectory[Metabolic Trajectory Agent]
+        CareGaps[Care Gaps Agent]
+        Mismatches[Record Mismatches Agent]
+        PriorityAgent[Priority Findings Agent]
+        CaregiverAgent[Dynamic Caregiver Prep / Handoff Agent]
+        ChatAgent[Interactive Chat Dock Agent]
+        Compiler[Brief Compiler]
+    end
+
+    subgraph UIPresentationLayer [UI Presentation Layer]
+        Cards[Top 4 Dynamic Consultation Cards]
+        Tiles[Priority Findings Tiles Reverse Chronological]
+        Proof[Source Proof Panel 0-1000 Bounding Box]
+        ChatUI[Interactive Clinical Chat Dock]
+        LangToggle[Multi-Lingual Toggle EN / HI / TA]
+    end
+
+    OCR --> Retriever
+    Retriever --> Classifier
+    Classifier --> Trajectory
+    Classifier --> CareGaps
+    Classifier --> Mismatches
+    Classifier --> PriorityAgent
+    Classifier --> CaregiverAgent
+    Trajectory --> Cards
+    CareGaps --> Cards
+    Mismatches --> Cards
+    PriorityAgent --> Tiles
+    CaregiverAgent --> LangToggle
+    Retriever --> ChatAgent
+    ChatAgent --> ChatUI
+    Cards --> Proof
+    Tiles --> Proof
+    Compiler --> Cards
+    Compiler --> Tiles
