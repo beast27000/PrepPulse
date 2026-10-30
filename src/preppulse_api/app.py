@@ -23,6 +23,8 @@ from preppulse_api.config import (
     TTS_MODEL_PATH,
 )
 from preppulse_api.store import WorkspaceStore, new_id, now
+from preppulse_api.voice import ready as tts_ready
+from preppulse_api.voice import synthesize
 
 if len(SESSION_SECRET) < 32:
     raise RuntimeError("Set PREPPULSE_SESSION_SECRET to a random value of at least 32 characters")
@@ -839,13 +841,34 @@ def chat(body: QueryIn, current: dict = Depends(clinician), store: WorkspaceStor
 
 @app.get("/api/voice/capabilities")
 def voice_capabilities(_: dict = Depends(clinician)):
+    available = tts_ready()
     return {
         "dictation": True,
-        "tts_ready": False,
-        "tts_status": "Awaiting verified local GGUF runtime",
+        "tts_ready": available,
+        "tts_status": "Local audio endpoint verified"
+        if available
+        else "No compatible audio endpoint verified",
         "tts_model": "mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF",
         "tts_path_configured": bool(TTS_MODEL_PATH and Path(TTS_MODEL_PATH).is_file()),
     }
+
+
+class SpeakIn(BaseModel):
+    patient_id: str
+    text: str = Field(min_length=1, max_length=1200)
+
+
+@app.post("/api/voice/speak")
+def speak(body: SpeakIn, current: dict = Depends(clinician), store: WorkspaceStore = Depends(db)):
+    patient_access(body.patient_id, current, store)
+    if not tts_ready():
+        raise HTTPException(503, "Local speech audio is unavailable")
+    try:
+        data = synthesize(body.text)
+    except Exception:
+        raise HTTPException(503, "Local speech audio failed") from None
+    store.audit(current, "voice_playback", body.patient_id)
+    return Response(data, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/voice/transcribe")

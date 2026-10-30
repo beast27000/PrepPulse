@@ -13,7 +13,8 @@ Implementation status and backlog.
 - [ ] Resolve existing full-suite fixture assumptions: some legacy tests require a pre-seeded `PP001_Arvind_Narayanan` Mongo patient, and one agent expectation differs from the current mock-model output. The isolated UI/API suite passes without that seed.
 - [x] Add a historical pathway browser for clinician-approved versions.
 - [ ] Persist the sidebar checklist's temporary on-screen check marks. Finalized pathway items and doctor notes are persisted separately.
-- [ ] Verify and integrate a compatible local runtime for `mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF`, then enable opt-in Read aloud after language tests.
+- [x] Added authenticated opt-in Read aloud API and browser playback, gated by a real WAV-audio probe of a configured local endpoint.
+- [ ] Provide and test an audio-capable runtime for `mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF` and verify spoken languages. The reachable LM Studio server lists the model but returns `Unexpected endpoint or method` for `POST /v1/audio/speech`, so Read aloud remains disabled with that server.
 - [ ] Add owner-approved Guidance library content when supplied.
 - [ ] Complete a shared-deployment security review before exposing the app beyond local loopback.
 

@@ -239,3 +239,37 @@ def test_sample_import_is_idempotent_and_uses_folder_alias(workspace, tmp_path, 
         patient = workspace.db.patients.find_one()
         assert "PP001" in patient["external_aliases"]
         assert "PP002" not in patient["external_aliases"]
+
+
+def test_read_aloud_requires_assigned_doctor_and_audio_runtime(workspace, monkeypatch):
+    api_module = importlib.import_module("preppulse_api.app")
+    monkeypatch.setattr(api_module, "tts_ready", lambda: False)
+    with TestClient(app) as client:
+        headers = login(client, "admin", "correct-long-password")
+        doctor = client.post(
+            "/api/admin/accounts",
+            json={
+                "name": "Dr Anika",
+                "username": "anika",
+                "password": "doctor-long-password",
+                "role": "doctor",
+            },
+            headers=headers,
+        ).json()
+        patient = client.post(
+            "/api/patients",
+            json={"name": "Sample Patient", "doctor_id": doctor["user_id"]},
+            headers=headers,
+        ).json()
+        payload = {"patient_id": patient["patient_id"], "text": "Voice check."}
+        assert client.post("/api/voice/speak", json=payload, headers=headers).status_code == 403
+    with TestClient(app) as client:
+        headers = login(client, "anika", "doctor-long-password")
+        assert client.get("/api/voice/capabilities").json()["tts_ready"] is False
+        assert client.post("/api/voice/speak", json=payload, headers=headers).status_code == 503
+        monkeypatch.setattr(api_module, "tts_ready", lambda: True)
+        monkeypatch.setattr(api_module, "synthesize", lambda text: b"RIFF" + b"\0" * 36 + b"WAVE")
+        response = client.post("/api/voice/speak", json=payload, headers=headers)
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "audio/wav"
+        assert response.headers["cache-control"] == "no-store"

@@ -14,6 +14,7 @@ Requirements: Python 3.11+, Node.js 20.19+, MongoDB on local loopback, and Tesse
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+pip install -e .
 cd web
 npm install
 cd ..
@@ -61,7 +62,18 @@ Open the local URL printed by Vite. It proxies `/api` to `127.0.0.1:8000`. Uploa
 
 ## Voice
 
-Dictation uses local faster-whisper `small` on CPU. The doctor reviews the transcript before sending it to chat. The planned spoken-answer model is `mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF`; `PREPPULSE_TTS_MODEL_PATH` is a blank local configuration placeholder. Read aloud stays disabled until a compatible runtime and downloaded model are verified. No speech API key is required.
+Dictation uses local faster-whisper `small` on CPU. The doctor reviews the transcript before sending it to chat.
+
+Read aloud uses a local OpenAI-compatible audio endpoint when one returns real WAV audio. Set `PREPPULSE_TTS_ENDPOINT` to the **full** `/v1/audio/speech` URL and, if needed, `PREPPULSE_TTS_MODEL_ID` to the model's API identifier. The backend sends a harmless voice check first; only a valid WAV response enables the button. A doctor must click Read aloud for each reply. Audio is returned directly to the browser and is not saved by PrepPulse. No API key is required for the local setup.
+
+The owner-provided LM Studio server at `http://192.168.1.50:1234` lists `qwen3-1.7b-multilingual-tts`, but a live check of `POST /v1/audio/speech` returned `Unexpected endpoint or method`. Listing a TTS-named GGUF as a text model does not provide speech output. **Do not set that URL as a working TTS endpoint yet.** Text chat and dictation still work. `PREPPULSE_TTS_MODEL_PATH` remains an optional local file reference; the API adapter uses the endpoint, not that path. Once a compatible runtime exposes WAV audio, configure it before starting the API:
+
+```powershell
+$env:PREPPULSE_TTS_ENDPOINT = "http://127.0.0.1:PORT/v1/audio/speech"
+$env:PREPPULSE_TTS_MODEL_ID = "qwen3-1.7b-multilingual-tts"
+```
+
+Keep any audio server on this machine or a trusted private network. Read aloud sends the chosen reply text to that server.
 
 ## Checks
 

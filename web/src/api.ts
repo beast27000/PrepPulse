@@ -150,6 +150,21 @@ export async function request<T>(
 export function post<T>(path: string, body: unknown): Promise<T> {
   return request<T>(path, { method: "POST", body: JSON.stringify(body) });
 }
+export async function postAudio(path: string, body: unknown): Promise<Blob> {
+  const res = await fetch("/api" + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf },
+    credentials: "same-origin",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.detail || `${res.status}: ${res.statusText}`);
+  }
+  if (!res.headers.get("Content-Type")?.includes("audio/wav"))
+    throw new Error("Speech server returned no audio");
+  return res.blob();
+}
 export function patch<T>(path: string, body: unknown): Promise<T> {
   return request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 }

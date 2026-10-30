@@ -39,6 +39,7 @@ import {
   Visit,
   patch,
   post,
+  postAudio,
   request,
   setCsrf,
 } from "./api";
@@ -197,8 +198,65 @@ function ChatBox({
   const [busy, setBusy] = useState(false);
   const [recording, setRecording] = useState(false);
   const [voiceError, setVoiceError] = useState("");
+  const [ttsReady, setTtsReady] = useState(false);
+  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
+  const playback = useRef<HTMLAudioElement | null>(null);
+  const playbackUrl = useRef<string | null>(null);
   const media = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
+  useEffect(() => {
+    let active = true;
+    request<{ tts_ready: boolean }>("/voice/capabilities")
+      .then((result) => {
+        if (active) setTtsReady(result.tts_ready);
+      })
+      .catch(() => {
+        if (active) setTtsReady(false);
+      });
+    return () => {
+      active = false;
+      playback.current?.pause();
+      if (playbackUrl.current) URL.revokeObjectURL(playbackUrl.current);
+    };
+  }, []);
+  async function readAloud(text: string, index: number) {
+    if (playback.current) playback.current.pause();
+    if (playbackUrl.current) URL.revokeObjectURL(playbackUrl.current);
+    playback.current = null;
+    playbackUrl.current = null;
+    if (playingIndex === index) {
+      setPlayingIndex(null);
+      return;
+    }
+    if (!patient) return;
+    setVoiceError("");
+    try {
+      const blob = await postAudio("/voice/speak", {
+        patient_id: patient.patient_id,
+        text: text.slice(0, 1200),
+      });
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      playbackUrl.current = url;
+      playback.current = audio;
+      audio.onended = () => {
+        setPlayingIndex(null);
+        URL.revokeObjectURL(url);
+        playbackUrl.current = null;
+      };
+      audio.onerror = () => {
+        setPlayingIndex(null);
+        setVoiceError("Audio playback failed.");
+        URL.revokeObjectURL(url);
+        playbackUrl.current = null;
+      };
+      await audio.play();
+      setPlayingIndex(index);
+    } catch (error) {
+      setPlayingIndex(null);
+      setVoiceError((error as Error).message);
+    }
+  }
   async function send(e?: React.FormEvent) {
     e?.preventDefault();
     const text = input.trim();
@@ -324,10 +382,16 @@ function ChatBox({
               {m.role === "assistant" && (
                 <button
                   className="text-button muted"
-                  disabled
-                  title="Read aloud becomes available after the local TTS model and runtime are configured"
+                  disabled={!ttsReady || !patient}
+                  title={
+                    ttsReady
+                      ? "Play this reply aloud"
+                      : "No compatible local audio endpoint is available"
+                  }
+                  onClick={() => readAloud(m.text, i)}
                 >
-                  <Volume2 size={13} /> Read aloud
+                  <Volume2 size={13} />{" "}
+                  {playingIndex === i ? "Stop audio" : "Read aloud"}
                 </button>
               )}
             </div>

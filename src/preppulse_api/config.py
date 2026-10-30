@@ -13,4 +13,5 @@ PRIVATE_ROOT = Path(os.getenv("PREPPULSE_PRIVATE_ROOT", str(ROOT / "private_data
 SESSION_SECRET = os.getenv("PREPPULSE_SESSION_SECRET", "")
 TTS_MODEL_PATH = os.getenv("PREPPULSE_TTS_MODEL_PATH", "")
 TTS_ENDPOINT = os.getenv("PREPPULSE_TTS_ENDPOINT", "")
+TTS_MODEL_ID = os.getenv("PREPPULSE_TTS_MODEL_ID", "qwen3-1.7b-multilingual-tts")
 STT_MODEL = os.getenv("PREPPULSE_STT_MODEL", "small")
