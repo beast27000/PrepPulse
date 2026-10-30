@@ -21,7 +21,7 @@ The application interface follows a **3-Column / Dual-Pane Layout** as depicted 
 | • Guidance    |   01. Metabolic Trajectory   |   02. Care Gaps                 |  Visual Bounding Box   |
 |               |   03. Record Mismatches      |   04. Caregiver Handoff/Prep    |  Highlight ([0, 1000]) |
 | [LANGUAGE]    |  ------------------------------------------------------------  |                        |
-| [EN|हि|த|తె]   |  [ PRIORITY FINDINGS TILES (Chronological 10-Yr Flow) ]        |  Snippet Extraction    |
+| [EN|हि|த|বাং|ଓଡ଼ି|తె] | [ PRIORITY FINDINGS TILES (Chronological 10-Yr Flow) ]        |  Snippet Extraction    |
 |               |   • Finding 1 (Recent - Confirmed / Accept / Reject)           |                        |
 |               |   • Finding 2 (Pending Review / Direct Proof Link)             |  --------------------  |
 |               |  ------------------------------------------------------------  |  [ SMART CHAT DOCK ]   |
@@ -169,12 +169,17 @@ The backend returns a unified `DecadeConsultationBrief` JSON payload structured 
   "title": "Caregiver prep sheet",
   "badge": "FAMILY HANDOFF",
   "mode": "handoff",
+  "active_language": "en",
+  "available_languages": ["en", "hi", "ta", "bn", "or", "te"],
   "checklist": [
     {
       "id": "chk_01",
       "text_en": "Bring every current medicine strip or photo to the visit.",
       "text_hi": "मुलाकात में वर्तमान दवाओं के सभी स्ट्रिप या तस्वीरें साथ लाएं।",
       "text_ta": "தற்போது உட்கொள்ளும் அனைத்து மருந்து அட்டைகள் அல்லது புகைப்படங்களை எடுத்து வாருங்கள்.",
+      "text_bn": "বর্তমান সব ওষুধের স্ট্রিপ বা প্যাকেট সাথে আনুন।",
+      "text_or": "ବର୍ତ୍ତମାନର ସମସ୍ତ ଔଷଧ ପ୍ୟାକେଟ୍ ସାଙ୍ଗରେ ଆଣନ୍ତୁ।",
+      "text_te": "ప్రస్తుతం వాడుతున్న అన్ని మందుల ప్యాకెట్లను వెంట తీసుకురండి.",
       "completed": false
     },
     {
@@ -182,13 +187,9 @@ The backend returns a unified `DecadeConsultationBrief` JSON payload structured 
       "text_en": "Ask patient to demonstrate evening insulin injection routine.",
       "text_hi": "मरीज से शाम के इंसुलिन इंजेक्शन की प्रक्रिया दिखाने को कहें।",
       "text_ta": "மாலை நேர இன்சுலின் ஊசி செலுத்தும் முறையை செய்து காட்டச் சொல்லுங்கள்.",
-      "completed": false
-    },
-    {
-      "id": "chk_03",
-      "text_en": "Keep the next urine ACR and dilated eye exam appointments on calendar.",
-      "text_hi": "अगली यूरिन ACR और आंखों की जांच का अपॉइंटमेंट कैलेंडर पर नोट रखें।",
-      "text_ta": "அடுத்த சிறுநீர் ACR மற்றும் கண் பரிசோதனைக்கான தேதியை குறித்து வையுங்கள்.",
+      "text_bn": "রোগীকে সন্ধ্যার ইনসুলিন ইনজেকশন দেওয়ার নিয়মটি প্রদর্শন করতে বলুন।",
+      "text_or": "ରୋଗୀଙ୍କୁ ସନ୍ଧ୍ୟା ଇନସୁଲିନ ନେବାର ପ୍ରଣାଳୀ ଦେଖାଇବାକୁ କୁହନ୍ତୁ।",
+      "text_te": "సాయంత్రం ఇన్సులిన్ తీసుకునే విధానాన్ని ప్రదర్శించమని రోగిని అడగండి.",
       "completed": false
     }
   ]
@@ -338,4 +339,36 @@ Displayed at the bottom of the workspace or docked to the chat:
     ]
   }
   ```
+
+---
+
+## 8. Structured Prompt Engine & Multi-Lingual Specifications
+
+### A. Externalized YAML Prompt Engine
+All agent and RAG prompts are managed externally under `prompts/`:
+- `prompts/agents/classification_agent.yaml`
+- `prompts/agents/trajectory_agent.yaml`
+- `prompts/agents/lab_discovery_agent.yaml`
+- `prompts/agents/care_gaps_agent.yaml`
+- `prompts/agents/mismatches_agent.yaml`
+- `prompts/agents/comorbidities_agent.yaml`
+- `prompts/agents/caregiver_prep_agent.yaml`
+- `prompts/agents/assistive_bubbles_agent.yaml`
+- `prompts/rag/hybrid_query_reformulation.yaml`
+- `prompts/rag/clinical_chatbot.yaml`
+
+### B. 6-Language Toggle Bar Contract
+The UI language toggle bar supports instant client-side switching across 6 languages without re-invoking the backend:
+- `en`: English (Default master)
+- `hi`: Hindi (हिंदी)
+- `ta`: Tamil (தமிழ்)
+- `bn`: Bengali (বাংলা)
+- `or`: Odia (ଓଡ଼ିଆ)
+- `te`: Telugu (తెలుగు)
+
+When a clinician clicks any language pill, the `CaregiverPrep` card instantly displays the corresponding `item["text_<lang>"]` string.
+
+### C. Expandable Doctor Chatbot View
+The chat dock on the right sidebar includes an expand button `[ ⤢ Full View ]` allowing clinicians to expand the RAG dialogue into a side-by-side 50/50 split canvas or full-page audit workspace while preserving the Source Proof bounding box inspector.
+
 

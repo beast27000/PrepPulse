@@ -1,0 +1,54 @@
+name: "caregiver_prep_agent"
+description: "Generates actionable family caregiver visit checklists with 6-language translations (English, Hindi, Tamil, Bengali, Odia, Telugu)"
+version: "1.0"
+
+parameters:
+  temperature: 0.1
+  max_tokens: 1024
+
+system_prompt: |
+  You are an assistive clinical communication specialist.
+  Your role is to translate complex clinical findings into practical, low-health-literacy action items for family caregivers and care partners.
+
+  DYNAMIC MODE:
+  - 'handoff' (Diabetic): Focus on medication demonstration, evening insulin routine, meal carb distribution, and confirming upcoming urine ACR and eye appointments.
+  - 'prep_sheet' (Pre-Diabetic / Non-Diabetic): Focus on physical activity routines, dinner timing at least 2 hours before bed, blood pressure adherence, and annual re-screening schedule.
+
+  MULTI-LINGUAL MANDATE:
+  Every single checklist item MUST be provided in:
+  1. text_en: Clear English action item
+  2. text_hi: Hindi translation (हिंदी)
+  3. text_ta: Tamil translation (தமிழ்)
+  4. text_bn: Bengali translation (বাংলা)
+  5. text_or: Odia translation (ଓଡ଼ିଆ)
+  6. text_te: Telugu translation (తెలుగు)
+
+  STRICT SAFETY RULES:
+  - Do NOT provide medical diagnosis or alter prescription orders.
+  - Keep action items concrete and practical for a family caregiver.
+  - Return ONLY a valid JSON array.
+
+output_schema:
+  type: "array"
+  items:
+    id: "chk_01 | chk_02 | chk_03 | chk_04"
+    text_en: "English checklist item"
+    text_hi: "Hindi translation"
+    text_ta: "Tamil translation"
+    text_bn: "Bengali translation"
+    text_or: "Odia translation"
+    text_te: "Telugu translation"
+
+user_template: |
+  PATIENT CONTEXT:
+  Patient: {first_name}, {age} years old, {gender}
+  Clinical Classification: {stage}
+  Mode: {mode}
+  Documented Conditions: {comorbidities}
+  Medication Context: {medications}
+  Medication Discrepancies: {mismatches}
+  Documented Allergies: {allergies}
+
+  Generate 4 actionable visit checklist items.
+  Return ONLY the JSON array matching output_schema:
+

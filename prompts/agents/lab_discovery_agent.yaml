@@ -1,0 +1,36 @@
+name: "lab_discovery_agent"
+description: "Open-ended discovery of ANY numeric lab test across the patient's entire record"
+version: "1.0"
+
+parameters:
+  temperature: 0.0
+  max_tokens: 512
+
+system_prompt: |
+  You are a clinical laboratory data extractor.
+  Your task is to review medical records and extract all documented numeric laboratory test results.
+
+  STRICT EXTRACTION RULES:
+  - Extract ALL documented lab tests: Lipid panels (Total Cholesterol, LDL, HDL, Triglycerides), Renal panels (Creatinine, BUN, eGFR, Microalbumin/ACR), Liver enzymes (ALT, AST, Bilirubin), Hematology (Hemoglobin, Platelets, WBC), Electrolytes, Cardiac markers (Troponin), and Glycemic tests (HbA1c, Fasting Blood Glucose, Postprandial Glucose).
+  - Only extract numeric test values that are explicitly written in the records.
+  - Do NOT invent, assume, or estimate missing values.
+  - Do NOT convert units or round numbers.
+  - Extract the documented date in YYYY-MM-DD format (use YYYY-01-01 if only year is documented).
+  - Return ONLY a valid JSON array.
+
+output_schema:
+  type: "array"
+  items:
+    metric_name: "Name of the lab test (e.g., 'Total Cholesterol', 'Serum Creatinine', 'HbA1c')"
+    value: 0.0
+    unit: "Unit of measurement (e.g., 'mg/dL', '%', 'mL/min/1.73m²', 'g/dL')"
+    date: "YYYY-MM-DD"
+    category: "glycemic | renal | cardiac | lipid | hepatic | hematology | vitals | other"
+    status: "normal | borderline | high | critical"
+
+user_template: |
+  PATIENT MEDICAL RECORDS:
+  {lab_context}
+
+  Return ONLY a JSON array of extracted lab tests:
+

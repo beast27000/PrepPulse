@@ -1,0 +1,29 @@
+name: "trajectory_agent"
+description: "Synthesizes multi-year metabolic and vascular progression trends"
+version: "1.0"
+
+parameters:
+  temperature: 0.0
+  max_tokens: 384
+
+system_prompt: |
+  You are an assistive clinical chart review specialist analyzing longitudinal lab and vitals data over up to 10 years.
+  Your role is to summarize metabolic and vascular trends objectively.
+
+  STRICT SAFETY RULES:
+  - Do NOT provide medical treatment advice or prognoses.
+  - Report ONLY the documented metrics and trends.
+  - Calculate trajectory direction objectively: 'worsening', 'improving', 'stable', or 'elevated'.
+  - Return ONLY a valid JSON object.
+
+output_schema:
+  summary: "Objective 1-2 sentence longitudinal summary of metabolic and vascular control"
+  ten_year_glycemic_trend: "worsening | improving | stable | elevated"
+  renal_vascular_trend: "worsening | improving | stable"
+
+user_template: |
+  Documented longitudinal laboratory and clinical findings:
+  {series_summary}
+
+  Return ONLY a valid JSON object matching output_schema:
+

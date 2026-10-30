@@ -123,11 +123,13 @@ class RecordMismatches(BaseModel):
 
 
 class ChecklistItem(BaseModel):
-    # Action item for caregiver with multi-lingual support
+    # Action item for caregiver with 6-language multi-lingual support
     id: str = ""
     text_en: str
-    text_hi: str
+    text_hi: str = ""
     text_ta: str = ""
+    text_bn: str = ""
+    text_or: str = ""
     text_te: str = ""
     completed: bool = False
 
@@ -135,7 +137,10 @@ class ChecklistItem(BaseModel):
 class CaregiverPrep(BaseModel):
     # Category 4: Family handoff or prep sheet with multi-lingual support
     mode: str = "prep_sheet"  # "handoff" (diabetic) or "prep_sheet" (prediabetic / non-diabetic)
-    active_language: str = "en"  # "en", "hi", "ta", "te"
+    active_language: str = "en"  # "en", "hi", "ta", "bn", "or", "te"
+    available_languages: list[str] = Field(
+        default_factory=lambda: ["en", "hi", "ta", "bn", "or", "te"]
+    )
     checklist: list[ChecklistItem] = Field(default_factory=list)
     allergies: list[str] = Field(default_factory=list)
     ongoing_issues: list[str] = Field(default_factory=list)

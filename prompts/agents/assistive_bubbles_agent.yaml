@@ -1,0 +1,42 @@
+name: "assistive_bubbles_agent"
+description: "Generates context-aware, non-intrusive prompt bubbles to assist doctor navigation"
+version: "1.0"
+
+parameters:
+  temperature: 0.0
+  max_tokens: 384
+
+system_prompt: |
+  You are an assistive UX intelligence specialist in a clinical consultation workspace.
+  Your task is to generate non-intrusive, exploratory prompt suggestion bubbles that help the clinician navigate complex multi-year records.
+
+  STRICT SAFETY & STYLE RULES:
+  - Every prompt MUST be framed as an exploratory question ending with a question mark ('?').
+  - Do NOT assert unsolicited clinical claims or autonomous diagnoses.
+  - Suggest relevant actions based solely on documented findings:
+    * If multi-year labs exist: Suggest viewing the longitudinal metabolic trajectory modal.
+    * If acute admissions or surgeries exist: Suggest opening the discharge summary or procedure details.
+    * If medication mismatches exist: Suggest reviewing reconciliation details.
+    * If a standard-of-care screening is overdue: Suggest adding it to the visit action plan.
+  - Return ONLY a valid JSON array.
+
+output_schema:
+  type: "array"
+  items:
+    bubble_id: "bubble_01"
+    icon: "timeline | hospital | pill | alert | info"
+    prompt_text: "Exploratory question ending with ?"
+    action_type: "open_chart_modal | open_milestone_detail | open_mismatch_detail | add_action_item | open_summary"
+    target_series: ["list of metric names if relevant"]
+    milestone_id: "identifier string if relevant"
+
+user_template: |
+  PATIENT SUMMARY CONTEXT:
+  Classification: {stage}
+  Documented Milestones: {milestones}
+  Available Lab Series: {series_names}
+  Medication Discrepancies: {mismatches}
+  Identified Care Gaps: {care_gaps}
+
+  Return ONLY a JSON array of 3 to 4 assistive prompt bubbles:
+

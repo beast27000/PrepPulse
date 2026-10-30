@@ -28,9 +28,13 @@ Implementation status and backlog.
 - [x] Verified database teardown and data exclusion so no mock patient data is pushed.
 - [x] Provide seed script and docs to teammates so they can run mock data locally (`docs/TEAMMATE_PREPROCESSING_GUIDE.md` and `docs/TEAM_COLLABORATION_SUMMARY.md`).
 
-### Phase 2: Teammate Pre-Processing & Compilation Track (Parallel)
-- [ ] **Teammate A (Chunking):** Ingest `stage_1_raw_ocr` -> section detection -> write to `document_chunks` collection with normalized bboxes.
-- [ ] **Teammate B (Extraction):** Ingest `document_chunks` -> local Qwen LLM fact extraction -> LOINC/RxNorm/ICD-10 mapping -> write back to `stage_2_structured_entities`.
+### Phase 2: Teammate Pre-Processing & Compilation Track (COMPLETED & INTEGRATED)
+- [x] Integrated teammate preprocessing modules into `src/preppulse_preprocessing/` (`chunk.py`, `extract.py`, `ground.py`, `fhir.py`, `models.py`, `store.py`).
+- [x] Section-aware chunking without fixed-size truncation (`chunk_document` -> `document_chunks`).
+- [x] Pluggable LLM extraction with provider decoupling: added `LMStudioClient` in `src/preppulse_preprocessing/providers/lmstudio_provider.py`.
+- [x] Grounding and verification pass enforcing fail-closed threshold validation and bounding box reattachment.
+- [x] FHIR R4 Bundle conversion (Stage 3) and `MongoStoreAdapter` bridge with `preppulse_db.MongoStore`.
+- [x] 5 of 5 preprocessing logic tests passing cleanly.
 
 ### Phase 3: Hybrid RAG System (LangChain Ensemble: BM25 + Dense Vectors) (COMPLETED)
 - [x] Build provenance-preserving chunker (`ClinicalProvenanceChunker`) linking chunks to exact evidence anchors and `[0, 1000]` bounding boxes.
@@ -81,6 +85,33 @@ Implementation status and backlog.
   - Robust `_parse_llm_json_array` utility ensuring fail-safe JSON parsing across diverse LLM markdown outputs.
 - [x] Built and verified full end-to-end integration test suite (`tests/test_end_to_end_pipeline.py`) validating raw PDF $\rightarrow$ Stage 1 OCR $\rightarrow$ Chunker $\rightarrow$ Hybrid RAG $\rightarrow$ LangGraph Swarm $\rightarrow$ Unified Brief.
 - [x] 19 of 19 tests passing across full repository test suite with zero linter errors.
+
+### Phase 7: External YAML Prompt Engine & 6-Language Multi-Lingual Support (COMPLETED)
+- [x] Externalized all agent and RAG prompts into modular YAML configurations (`prompts/agents/` and `prompts/rag/`):
+  - `prompts/agents/classification_agent.yaml`
+  - `prompts/agents/trajectory_agent.yaml`
+  - `prompts/agents/lab_discovery_agent.yaml`
+  - `prompts/agents/care_gaps_agent.yaml`
+  - `prompts/agents/mismatches_agent.yaml`
+  - `prompts/agents/comorbidities_agent.yaml`
+  - `prompts/agents/caregiver_prep_agent.yaml`
+  - `prompts/agents/assistive_bubbles_agent.yaml`
+  - `prompts/rag/hybrid_query_reformulation.yaml`
+  - `prompts/rag/clinical_chatbot.yaml`
+- [x] Implemented `src/preppulse_agents/prompt_loader.py` with caching and safe string substitution preserving literal JSON formatting.
+- [x] Implemented `src/preppulse_agents/tools.py` with deterministic `extract_metric_timeseries` tool for multi-year clinical trajectory extraction.
+- [x] Expanded multi-lingual caregiver checklist support across 6 languages: English (`en`), Hindi (`hi`), Tamil (`ta`), Bengali (`bn`), Odia (`or`), and Telugu (`te`).
+- [x] Updated `docs/FRONTEND_INTEGRATION_SPEC.md` documenting the 6-language toggle bar, dynamic brief bindings, and full-page expandable chatbot view.
+
+### Phase 8: 10-Patient Dataset Verification & Pipeline Audit (COMPLETED)
+- [x] Received and verified 10-patient dataset in `datasets/PrepPulse Dataset/` (6 diabetics, 3 pre-diabetics, 1 non-diabetic).
+- [x] Implemented `scripts/audit_dataset_pipeline.py` verifying full end-to-end pipeline against live local LM Studio Qwen3-4B:
+  - Stage 1 OCR PDF extraction (15 PDFs).
+  - Section-aware preprocessing chunking (58 section chunks + 237 RAG chunks).
+  - Hybrid BM25 + Qwen dense vector retrieval (<50ms latency).
+  - 8-node LangGraph review workflow (Classification, Trajectory, Gaps, Conflicts, Timeline, 6-Language Checklist, Bubbles).
+- [x] Verified zero database leakage: automated teardown wipes all MongoDB test data immediately upon audit completion (`count == 0`).
+- [x] Full test suite (15 tests) passing cleanly with zero Ruff linting errors.
 
 ## Clinical & Architectural Decision Log
 

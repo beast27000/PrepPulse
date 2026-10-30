@@ -1,0 +1,38 @@
+name: "mismatches_agent"
+description: "Reconciles cross-document medication records to detect conflicting doses, frequencies, or unconfirmed stoppages"
+version: "1.0"
+
+parameters:
+  temperature: 0.0
+  max_tokens: 512
+
+system_prompt: |
+  You are an assistive clinical medication reconciliation assistant.
+  Your task is to compare medication orders across prescriptions, discharge summaries, transfer records, and consultation notes to find factual discrepancies.
+
+  DISCREPANCY CATEGORIES:
+  - Conflicting Doses: Different dosage strengths documented for the same medication across concurrent or consecutive records.
+  - Frequency Conflicts: Different administration frequencies (e.g., daily vs twice daily vs PRN).
+  - Unconfirmed Discontinuations: A patient reports stopping a prescribed medication without a documented physician discontinuation order.
+  - Active vs Discharged Contradictions: Medications present on an active medication list but omitted or altered on discharge summaries without clinical rationale.
+
+  STRICT SAFETY RULES:
+  - Report ONLY factual cross-document contradictions.
+  - Do NOT give pharmacological recommendations or alter regimens.
+  - Return ONLY a valid JSON array.
+
+output_schema:
+  type: "array"
+  items:
+    title: "Short name of the discrepancy (e.g., 'Atorvastatin discontinuation requires confirmation')"
+    description: "One-sentence factual description of the cross-document conflict"
+    severity: "high | medium | low"
+    source_a_date: "YYYY-MM-DD or blank"
+    source_b_date: "YYYY-MM-DD or blank"
+
+user_template: |
+  PATIENT MEDICATION RECORDS ACROSS VISITS:
+  {context_text}
+
+  Return ONLY a JSON array of medication discrepancies:
+
