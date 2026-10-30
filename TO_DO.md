@@ -2,6 +2,21 @@
 
 Implementation status and backlog.
 
+## UI branch implementation (30 October 2026)
+
+- [x] Created `UI` branch and removed the tracked Tkinter OCR test UI on that branch.
+- [x] Added React/TypeScript browser workspace with screenshot-inspired Patients page, doctor/admin navigation, Today cards, Records, Care pathways, Source Proof, expandable chat, movable assistant bubble, login, intake, appointments, and accounts.
+- [x] Added local FastAPI integration layer for admin-managed accounts, signed sessions with CSRF, doctor-to-patient assignments, permanent PrepPulse IDs and dataset aliases, document uploads, sample registry import, appointments, visit state, clinician review decisions, pathways, source page rendering, chat retrieval, and background brief jobs.
+- [x] Added local faster-whisper dictation endpoint with transcript review in the UI. Added blank `PREPPULSE_TTS_MODEL_PATH` placeholder and disabled Read aloud control for the pending local GGUF runtime.
+- [x] Rewrote `docs/FRONTEND_INTEGRATION_SPEC.md` as a handoff matching actual code contracts and known gaps.
+- [ ] Validate the full doctor/admin flow against a running local MongoDB and real downloaded models. Static build and isolated tests are not a substitute for this live check.
+- [ ] Resolve existing full-suite fixture assumptions: some legacy tests require a pre-seeded `PP001_Arvind_Narayanan` Mongo patient, and one agent expectation differs from the current mock-model output. The isolated UI/API suite passes without that seed.
+- [x] Add a historical pathway browser for clinician-approved versions.
+- [ ] Persist the sidebar checklist's temporary on-screen check marks. Finalized pathway items and doctor notes are persisted separately.
+- [ ] Verify and integrate a compatible local runtime for `mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF`, then enable opt-in Read aloud after language tests.
+- [ ] Add owner-approved Guidance library content when supplied.
+- [ ] Complete a shared-deployment security review before exposing the app beyond local loopback.
+
 ## Implemented
 
 - [x] Streamlined architecture: consolidated into master modules (`engine.py` and `database.py`).
@@ -13,9 +28,9 @@ Implementation status and backlog.
 - [x] SQLite store (`patients`, `documents`, `pages`, `evidence_anchors`).
 - [x] Pack builder creating active 93-patient 4-document packs.
 - [x] Batch ingestion pipeline: 75 patients (300 documents, 34,797 anchors) ingested into SQLite.
-- [x] Desktop test UI in `temp_ui/mock_ui_ocr_testing.py` with document preview and bounding-box highlighting.
+- [x] Built the earlier desktop OCR test UI with document preview and bounding-box highlighting; removed it on `UI` after the browser workspace replaced it.
 - [x] Hybrid-PDF support: same-page extraction combining native digital text and embedded image region OCR.
-- [x] Full test suite (6 passing tests) and Ruff linting passing cleanly.
+- [x] Earlier OCR foundation suite (6 tests) and Ruff linting passed at that milestone. Current full-suite status is tracked in the UI branch section.
 - [x] OCR Foundation FROZEN: Native PDF, scanned OCR, table parsing, and same-page hybrid extraction locked.
 
 ## Active Roadmap (Updated Priorities)
@@ -45,10 +60,11 @@ Implementation status and backlog.
 - [x] Add automated retrieval test suite (`tests/test_hybrid_rag.py`) verifying exact precision, latency, patient isolation, and coordinate preservation.
 
 ### Phase 4: Streamlit v1 Clinical Consultation UI
-- [ ] Build lightweight Streamlit UI (`streamlit_app/`) rendering consultation brief matching Figma/Replit prototype.
-- [ ] Display visual placement of KPIs (HbA1c, Fasting Glucose, eGFR) and patient trajectory cards.
-- [ ] Interactive Source Proof panel: clicking any citation renders the source document/page and highlights the normalized `[0, 1000]` bounding box.
-- [ ] Add dynamic toggleable English / Hindi (EN / हि) translations for caregiver handoff checklist.
+The owner approved a React browser UI on the `UI` branch in place of the earlier Streamlit proposal.
+- [x] Build a screenshot-inspired consultation workspace in `web/` using the actual `ConsultationBrief` schema.
+- [x] Display KPI and trajectory cards from available agent output.
+- [x] Render source pages and normalized `[0, 1000]` highlights only when citation validation succeeds; unverified claims show a source-unavailable state.
+- [x] Add six-language client-side checklist switching (English, Hindi, Tamil, Bengali, Odia, Telugu).
 
 ### Phase 5: LangGraph Multi-Agent Orchestration & Clinical Brief (COMPLETED)
 - [x] Define strict Pydantic schemas (`src/preppulse_agents/schemas.py`) for:

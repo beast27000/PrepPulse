@@ -22,6 +22,11 @@ datasets/*.zip
 Updated_Data_Set/
 datasets/
 uv.lock
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+private_data/
+.tmp/
 
 # Local-only documentation (un-ignore shared specifications)
 docs/*
