@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
 from starlette.middleware.sessions import SessionMiddleware
 
-from preppulse_api.clinical import answer_chat, process_patient, render_page
+from preppulse_api.clinical import answer_chat, locate_citation, process_patient, render_page
 from preppulse_api.config import (
     PRIVATE_ROOT,
     SESSION_SECRET,
@@ -378,6 +378,72 @@ async def upload_document(
     return {k: v for k, v in record.items() if k not in {"_id", "source_path"}}
 
 
+@app.get("/api/patients/{patient_id}/documents/search")
+def search_document_pages(
+    patient_id: str,
+    q: str = "",
+    current: dict = Depends(clinician),
+    store: WorkspaceStore = Depends(db),
+):
+    patient_access(patient_id, current, store)
+    term = q.strip().casefold()
+    if len(term) < 2 or len(term) > 120:
+        return []
+    records = {
+        item["record_id"]: item
+        for item in store.db.workspace_documents.find(
+            {"patient_id": patient_id}, {"_id": 0, "record_id": 1, "filename": 1}
+        )
+    }
+    matches = []
+    for item in store.db.patient_documents.find(
+        {"patient_id": patient_id},
+        {"document_id": 1, "stage_1_raw_ocr.pages": 1},
+    ):
+        record = records.get(item.get("document_id"))
+        if not record:
+            continue
+        for page in item.get("stage_1_raw_ocr", {}).get("pages", []):
+            content = page.get("full_text", "")
+            index = content.casefold().find(term)
+            filename_match = term in record["filename"].casefold()
+            if index < 0 and not filename_match:
+                continue
+            token = next(
+                (t for t in page.get("tokens", []) if term in t.get("text", "").casefold()),
+                None,
+            )
+            precise = (
+                locate_citation(
+                    store,
+                    patient_id,
+                    {
+                        "document_id": item["document_id"],
+                        "page_number": page["page_number"],
+                        "bbox": [1, 1, 999, 999],
+                        "snippet": term,
+                    },
+                )
+                if index >= 0 and " " in term
+                else None
+            )
+            matches.append(
+                {
+                    "document_id": item["document_id"],
+                    "document_title": record["filename"],
+                    "page_number": page["page_number"],
+                    "snippet": content[max(0, index - 75) : index + len(term) + 95].strip()
+                    if index >= 0
+                    else "Filename match",
+                    "bbox": precise or (token.get("bbox") if token else None),
+                }
+            )
+            if len(matches) >= 50:
+                return matches
+    store.audit(current, "document_search", patient_id, {"result_count": len(matches)})
+    return matches
+
+
 @app.get("/api/patients/{patient_id}/documents/{record_id}/page/{page_number}")
 def document_page(
     patient_id: str,
@@ -429,10 +495,18 @@ def _job(job_id: str, patient_id: str):
             )
 
         progress()
-        process_patient(store, patient_id, progress=progress)
+        brief = process_patient(store, patient_id, progress=progress)
         store.db.jobs.update_one(
             {"job_id": job_id},
-            {"$set": {"status": "complete", "stage": "complete", "updated_at": now()}},
+            {
+                "$set": {
+                    "status": "complete",
+                    "stage": "complete",
+                    "evidence_chunks": brief.get("raw_evidence_count", 0),
+                    "verified_findings": len(brief.get("priority_findings", [])),
+                    "updated_at": now(),
+                }
+            },
         )
     except Exception as exc:
         store.db.jobs.update_one(
@@ -897,8 +971,14 @@ def speak(body: SpeakIn, current: dict = Depends(clinician), store: WorkspaceSto
 
 
 @app.post("/api/voice/transcribe")
-async def transcribe(file: UploadFile = File(...), current: dict = Depends(clinician)):
+async def transcribe(
+    file: UploadFile = File(...),
+    language: str = Form(""),
+    current: dict = Depends(clinician),
+):
     global _stt_model
+    if language not in {"", "en", "hi", "ta", "bn", "te"}:
+        raise HTTPException(400, "Unsupported dictation language")
     data = await file.read(10 * 1024 * 1024 + 1)
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(413, "Audio exceeds 10 MB")
@@ -913,7 +993,7 @@ async def transcribe(file: UploadFile = File(...), current: dict = Depends(clini
             tmp.write(data)
             tmp_path = Path(tmp.name)
         try:
-            segments, _ = _stt_model.transcribe(str(tmp_path))
+            segments, _ = _stt_model.transcribe(str(tmp_path), language=language or None)
             text = " ".join(s.text.strip() for s in segments).strip()
         finally:
             tmp_path.unlink(missing_ok=True)

@@ -37,6 +37,7 @@ import {
   FolderImportResult,
   Finding,
   Patient,
+  ProcessingJob,
   User,
   Visit,
   patch,
@@ -45,6 +46,13 @@ import {
   request,
   setCsrf,
 } from "./api";
+import RecordWorkspace from "./RecordWorkspace";
+import {
+  defaultPreferences,
+  Preferences,
+  readPreferences,
+  SettingsControls,
+} from "./preferences";
 
 type Page =
   | "Today"
@@ -57,7 +65,8 @@ type Page =
   | "Patient appointments"
   | "Patient directory"
   | "Accounts"
-  | "Chat workspace";
+  | "Chat workspace"
+  | "Record workspace";
 type ChatMessage = {
   role: "user" | "assistant";
   text: string;
@@ -188,6 +197,7 @@ function ChatBox({
   full = false,
   onExpand,
   onCitation,
+  preferences,
 }: {
   patient: Patient | null;
   messages: ChatMessage[];
@@ -195,6 +205,7 @@ function ChatBox({
   full?: boolean;
   onExpand?: () => void;
   onCitation: (c: Citation) => void;
+  preferences: Preferences;
 }) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -310,6 +321,8 @@ function ChatBox({
           new Blob(chunks.current, { type: recorder.mimeType || "audio/webm" }),
           "dictation.webm",
         );
+        if (preferences.dictationLanguage !== "auto")
+          form.append("language", preferences.dictationLanguage);
         setBusy(true);
         try {
           const r = await request<{ transcript: string }>("/voice/transcribe", {
@@ -381,7 +394,7 @@ function ChatBox({
                   ))}
                 </div>
               ) : null}
-              {m.role === "assistant" && (
+              {m.role === "assistant" && preferences.showReadAloud && (
                 <button
                   className="text-button muted"
                   disabled={!ttsReady || !patient}
@@ -462,6 +475,10 @@ function SourceProof({
     [citation?.document_id, citation?.page_number],
   );
   const box = citation?.bbox;
+  const precise =
+    !!box &&
+    box.length === 4 &&
+    (box[2] - box[0]) * (box[3] - box[1]) <= 100_000;
   return (
     <section className={"panel proof-panel " + (expanded ? "expanded" : "")}>
       <div className="panel-heading">
@@ -481,9 +498,10 @@ function SourceProof({
         <button
           className="icon-button"
           onClick={onExpand}
-          title={expanded ? "Collapse source proof" : "Expand source proof"}
+          title="Open record workspace"
+          aria-label="Open full record workspace"
         >
-          {expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          <Maximize2 size={17} />
         </button>
       </div>
       {verified && !failed ? (
@@ -498,7 +516,7 @@ function SourceProof({
               src={`/api/patients/${patient!.patient_id}/documents/${citation!.document_id}/page/${citation!.page_number}`}
               onError={() => setFailed(true)}
             />
-            {box && (
+            {precise && (
               <div
                 className="proof-highlight"
                 style={{
@@ -546,11 +564,13 @@ function FloatingAssistant({
   messages,
   setMessages,
   onCitation,
+  preferences,
 }: {
   patient: Patient | null;
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   onCitation: (c: Citation) => void;
+  preferences: Preferences;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
@@ -605,6 +625,7 @@ function FloatingAssistant({
             messages={messages}
             setMessages={setMessages}
             onCitation={onCitation}
+            preferences={preferences}
             onExpand={() => setOpen(false)}
           />
         </div>
@@ -628,30 +649,30 @@ function FloatingAssistant({
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [preferences, setPreferences] =
+    useState<Preferences>(defaultPreferences);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<Page>("Patients");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selected, setSelected] = useState<Patient | null>(null);
+  const selectedPatientRef = useRef<string | null>(null);
+  selectedPatientRef.current = selected?.patient_id || null;
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [documents, setDocuments] = useState<Doc[]>([]);
   const [brief, setBrief] = useState<Brief | null>(null);
-  const [job, setJob] = useState<{
-    job_id: string;
-    status: string;
-    error?: string;
-  } | null>(null);
+  const [job, setJob] = useState<ProcessingJob | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [citation, setCitation] = useState<Citation | null>(null);
   const [recordPreview, setRecordPreview] = useState<Doc | null>(null);
-  const [proofExpanded, setProofExpanded] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [language, setLanguage] = useState("en");
   const [notice, setNotice] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [chatFullscreen, setChatFullscreen] = useState(false);
+  const [recordReturnPage, setRecordReturnPage] = useState<Page>("Patients");
   const [pathway, setPathway] = useState<{
     mode: string;
     doctor_notes: string;
@@ -675,6 +696,36 @@ export default function App() {
     (v) => v.status === "active" && v.doctor_id === user?.user_id,
   );
   const nav = user?.role === "admin" ? adminPages : doctorPages;
+  function acceptLogin(next: User) {
+    setPreferences(readPreferences(next.user_id));
+    setUser(next);
+    setPage(next.role === "admin" ? "New patient intake" : "Patients");
+  }
+  useEffect(() => {
+    if (!user) return;
+    try {
+      localStorage.setItem(
+        `preppulse.preferences.${user.user_id}`,
+        JSON.stringify(preferences),
+      );
+    } catch {
+      /* Display preferences still work for this session. */
+    }
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      document.documentElement.dataset.theme =
+        preferences.appearance === "system"
+          ? media.matches
+            ? "dark"
+            : "light"
+          : preferences.appearance;
+      document.documentElement.dataset.textSize = preferences.textSize;
+      document.documentElement.dataset.contrast = preferences.contrast;
+    };
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [user?.user_id, preferences]);
 
   const loadPatients = useCallback(
     async (q = "") => {
@@ -699,13 +750,21 @@ export default function App() {
       request<Doc[]>(`/patients/${id}/documents`),
       request<{ brief: Brief }>(`/patients/${id}/brief`),
       request<Visit[]>(`/patients/${id}/visits`),
-      request<{ job_id: string; status: string; error?: string } | null>(
-        `/patients/${id}/brief/jobs/latest`,
-      ),
+      request<ProcessingJob | null>(`/patients/${id}/brief/jobs/latest`),
     ]);
+    if (selectedPatientRef.current !== id) return;
     if (results[0].status === "fulfilled") setDocuments(results[0].value);
-    if (results[1].status === "fulfilled") setBrief(results[1].value.brief);
-    else setBrief(null);
+    if (results[1].status === "fulfilled") {
+      const nextBrief = results[1].value.brief;
+      setBrief(nextBrief);
+      const firstEvidence =
+        nextBrief.priority_findings.find(
+          (item) => item.citation?.source_verified,
+        )?.citation ||
+        nextBrief.trajectory.kpis.find((item) => item.citation?.source_verified)
+          ?.citation;
+      if (firstEvidence) setCitation((current) => current || firstEvidence);
+    } else setBrief(null);
     if (results[2].status === "fulfilled") setVisits(results[2].value);
     if (results[3].status === "fulfilled") setJob(results[3].value);
   }, [selected, user]);
@@ -721,7 +780,7 @@ export default function App() {
     request<User>("/auth/me")
       .then((u) => {
         setCsrf(u.csrf);
-        setUser(u);
+        acceptLogin(u);
         setPage(u.role === "admin" ? "New patient intake" : "Patients");
       })
       .catch(() => {})
@@ -731,8 +790,15 @@ export default function App() {
     if (user) loadPatients();
   }, [user]);
   useEffect(() => {
-    loadSelected();
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [page, chatFullscreen]);
+  useEffect(() => {
+    setDocuments([]);
+    setBrief(null);
+    setJob(null);
+    setVisits([]);
     setCitation(null);
+    loadSelected();
     setMessages([]);
   }, [selected?.patient_id]);
   useEffect(() => {
@@ -749,7 +815,12 @@ export default function App() {
           `/patients/${selected.patient_id}/brief/jobs/latest`,
         );
         setJob(next);
-        if (next?.status === "complete") loadSelected();
+        if (next?.status === "complete") {
+          await loadSelected();
+          setNotice(
+            "Clinical analysis complete. Review the source-linked findings.",
+          );
+        }
       } catch {}
     }, 3000);
     return () => clearInterval(timer);
@@ -822,6 +893,26 @@ export default function App() {
       "Clinical analysis queued",
     );
     if (result) setJob(result);
+  }
+  function openRecordWorkspace() {
+    setRecordReturnPage(
+      chatFullscreen || page === "Chat workspace"
+        ? "Chat workspace"
+        : "Patients",
+    );
+    setChatFullscreen(false);
+    setPage("Record workspace");
+  }
+  function selectEvidence(source: Citation | null | undefined, title: string) {
+    setCitation(
+      source || {
+        document_id: "",
+        document_title: title,
+        page_number: 1,
+        bbox: [],
+        source_verified: false,
+      },
+    );
   }
   async function reviewFinding(
     f: Finding,
@@ -916,9 +1007,12 @@ export default function App() {
     setUser(null);
     setSelected(null);
     setBrief(null);
+    document.documentElement.dataset.theme = "light";
+    document.documentElement.dataset.textSize = "standard";
+    document.documentElement.dataset.contrast = "standard";
   }
   if (loading) return <div className="boot">Opening PrepPulse…</div>;
-  if (!user) return <Login onLogin={setUser} />;
+  if (!user) return <Login onLogin={acceptLogin} />;
 
   return (
     <div className="app-shell">
@@ -1071,6 +1165,17 @@ export default function App() {
                             {activeVisit ? "Visit active" : "Start visit"}
                           </button>
                           <button
+                            className="secondary"
+                            onClick={generateBrief}
+                            disabled={
+                              job?.status === "queued" ||
+                              job?.status === "running" ||
+                              !documents.length
+                            }
+                          >
+                            <Activity size={17} /> Analyze records
+                          </button>
+                          <button
                             className="primary"
                             onClick={() => setUploadOpen(true)}
                           >
@@ -1088,8 +1193,7 @@ export default function App() {
                   {selected ? (
                     <div
                       className={
-                        "workspace-grid " +
-                        (proofExpanded || chatExpanded ? "panel-wide" : "")
+                        "workspace-grid " + (chatExpanded ? "panel-wide" : "")
                       }
                     >
                       <div className="main-column">
@@ -1115,7 +1219,12 @@ export default function App() {
                             </div>
                             <span className="status-pill">
                               <ShieldCheck size={13} />
-                              {brief ? "Ready to review" : "Awaiting analysis"}
+                              {job?.status === "queued" ||
+                              job?.status === "running"
+                                ? "Updating analysis"
+                                : brief
+                                  ? "Ready to review"
+                                  : "Awaiting analysis"}
                             </span>
                           </div>
                           {job &&
@@ -1125,7 +1234,7 @@ export default function App() {
                               <div className={"job-banner " + job.status}>
                                 {job.status === "failed"
                                   ? `Analysis failed: ${job.error || "Try again"}`
-                                  : `Analysis ${job.status}…`}
+                                  : `Analysis ${job.status} · ${job.stage || "waiting"} · ${job.documents_ready || 0}/${job.documents_total || documents.length} documents ready`}
                               </div>
                             )}
                           {!brief ? (
@@ -1140,7 +1249,9 @@ export default function App() {
                                 className="primary"
                                 onClick={generateBrief}
                                 disabled={
-                                  !documents.length || job?.status === "running"
+                                  !documents.length ||
+                                  job?.status === "queued" ||
+                                  job?.status === "running"
                                 }
                               >
                                 Run clinical analysis
@@ -1169,8 +1280,7 @@ export default function App() {
                                             key={i}
                                             className="kpi"
                                             onClick={() =>
-                                              k.citation &&
-                                              setCitation(k.citation)
+                                              selectEvidence(k.citation, k.name)
                                             }
                                           >
                                             <small>{k.name}</small>
@@ -1207,8 +1317,7 @@ export default function App() {
                                           key={i}
                                           className="card-list-item"
                                           onClick={() =>
-                                            g.citation &&
-                                            setCitation(g.citation)
+                                            selectEvidence(g.citation, g.title)
                                           }
                                         >
                                           <i
@@ -1248,12 +1357,11 @@ export default function App() {
                                           key={i}
                                           className="card-list-item"
                                           onClick={() =>
-                                            setCitation(
+                                            selectEvidence(
                                               m.citations?.find(
                                                 (c) => c.source_verified,
-                                              ) ||
-                                                m.source_a_citation ||
-                                                null,
+                                              ) || m.source_a_citation,
+                                              m.title,
                                             )
                                           }
                                         >
@@ -1409,7 +1517,10 @@ export default function App() {
                           <button
                             className="secondary"
                             onClick={generateBrief}
-                            disabled={job?.status === "running"}
+                            disabled={
+                              job?.status === "queued" ||
+                              job?.status === "running"
+                            }
                           >
                             Refresh brief
                           </button>
@@ -1463,8 +1574,8 @@ export default function App() {
                         <SourceProof
                           patient={selected}
                           citation={citation}
-                          expanded={proofExpanded}
-                          onExpand={() => setProofExpanded((v) => !v)}
+                          expanded={false}
+                          onExpand={openRecordWorkspace}
                         />
                         <button
                           className="secondary inline-expand"
@@ -1479,6 +1590,7 @@ export default function App() {
                           messages={messages}
                           setMessages={setMessages}
                           onCitation={setCitation}
+                          preferences={preferences}
                           onExpand={() => setChatFullscreen(true)}
                         />
                         {brief && (
@@ -1873,19 +1985,20 @@ export default function App() {
                     title="Settings"
                     text="Your local PrepPulse workspace settings."
                   />
-                  <div className="panel settings-panel">
-                    <h3>Signed in account</h3>
-                    <p>
-                      {user.name} · {user.role}
-                    </p>
-                    <h3>Voice</h3>
-                    <p>
-                      Dictation runs locally and waits for your transcript
-                      review. Spoken replies become available after a local TTS
-                      runtime and model path are configured.
-                    </p>
-                  </div>
+                  <SettingsControls
+                    user={user}
+                    value={preferences}
+                    onChange={setPreferences}
+                  />
                 </>
+              )}
+              {page === "Record workspace" && selected && (
+                <RecordWorkspace
+                  patient={selected}
+                  documents={documents}
+                  citation={citation}
+                  onClose={() => setPage(recordReturnPage)}
+                />
               )}
               {(page === "Chat workspace" || chatFullscreen) && (
                 <>
@@ -1915,13 +2028,14 @@ export default function App() {
                       setMessages={setMessages}
                       full
                       onCitation={setCitation}
+                      preferences={preferences}
                     />
                     <div>
                       <SourceProof
                         patient={selected}
                         citation={citation}
                         expanded
-                        onExpand={() => {}}
+                        onExpand={openRecordWorkspace}
                       />
                       <section className="panel context-panel">
                         <h3>Patient context</h3>
@@ -1988,18 +2102,22 @@ export default function App() {
               reloadAppointments={loadAppointments}
               appointments={appointments}
               run={run}
+              preferences={preferences}
+              setPreferences={setPreferences}
             />
           )}
         </main>
         {user.role === "doctor" &&
           page !== "Patients" &&
           page !== "Chat workspace" &&
+          page !== "Record workspace" &&
           !chatFullscreen && (
             <FloatingAssistant
               patient={selected}
               messages={messages}
               setMessages={setMessages}
               onCitation={setCitation}
+              preferences={preferences}
             />
           )}
       </div>
@@ -2266,6 +2384,8 @@ function AdminPages({
   reloadAppointments,
   appointments,
   run,
+  preferences,
+  setPreferences,
 }: {
   page: Page;
   user: User;
@@ -2279,6 +2399,8 @@ function AdminPages({
     action: () => Promise<T>,
     success?: string,
   ) => Promise<T | undefined>;
+  preferences: Preferences;
+  setPreferences: (value: Preferences) => void;
 }) {
   const doctors = accounts.filter(
     (a) =>
@@ -2290,7 +2412,9 @@ function AdminPages({
   const [doctor, setDoctor] = useState("");
   const [appointmentPatient, setAppointmentPatient] = useState("");
   const [appointmentDate, setAppointmentDate] = useState(today());
-  const [appointmentTime, setAppointmentTime] = useState("10:30");
+  const [appointmentTime, setAppointmentTime] = useState(
+    preferences.appointmentTime,
+  );
   const [reason, setReason] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -2315,6 +2439,9 @@ function AdminPages({
     null,
   );
   const selectedDoctor = doctor || doctors[0]?.user_id || "";
+  useEffect(() => {
+    if (!editAppointment) setAppointmentTime(preferences.appointmentTime);
+  }, [preferences.appointmentTime]);
   useEffect(() => {
     folderInput.current?.setAttribute("webkitdirectory", "");
     folderInput.current?.setAttribute("directory", "");
@@ -2732,6 +2859,7 @@ function AdminPages({
                     Time
                     <input
                       type="time"
+                      step={preferences.appointmentInterval * 60}
                       value={appointmentTime}
                       onChange={(e) => setAppointmentTime(e.target.value)}
                       required
@@ -2856,7 +2984,10 @@ function AdminPages({
                         ),
                       "Doctor assigned",
                     );
-                    if (assigned && directoryPatient?.patient_id === p.patient_id) {
+                    if (
+                      assigned &&
+                      directoryPatient?.patient_id === p.patient_id
+                    ) {
                       try {
                         setDirectoryOverview(
                           await request<AdminPatientOverview>(
@@ -3084,16 +3215,11 @@ function AdminPages({
             title="Settings"
             text="Local PrepPulse workspace configuration."
           />
-          <div className="panel settings-panel">
-            <h3>Administrator</h3>
-            <p>
-              {user.name} · {user.username}
-            </p>
-            <p>
-              Sample records remain local. Configure model paths and session
-              secret through environment variables.
-            </p>
-          </div>
+          <SettingsControls
+            user={user}
+            value={preferences}
+            onChange={setPreferences}
+          />
         </>
       )}
     </>

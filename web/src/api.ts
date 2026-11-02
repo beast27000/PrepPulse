@@ -41,6 +41,8 @@ export type ProcessingJob = {
   documents_total?: number;
   documents_ready?: number;
   documents_failed?: number;
+  evidence_chunks?: number;
+  verified_findings?: number;
   error?: string;
 };
 export type FolderImportResult = {

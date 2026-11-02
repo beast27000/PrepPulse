@@ -46,6 +46,10 @@ npm run dev
 
 Open the local URL printed by Vite. It proxies `/api` to `127.0.0.1:8000`. Uploaded originals are stored under ignored `private_data/`; sample datasets and generated outputs stay local. Do not run `scripts/audit_dataset_pipeline.py` against patient data retained for the UI: that audit clears MongoDB collections.
 
+On **Patients**, choose **Analyze records** to rerun OCR for pending files, patient-scoped RAG retrieval, and the review agents. The job shows its stage and document counts; the existing brief remains visible until the replacement is ready. A completed brief lists evidence chunks and only source-backed priority observations. Select a cited item to inspect its OCR span. The Source Proof expand button opens a full record workspace with page navigation, searchable record text, and a file rail. Reanalysis tightens older broad citation boxes.
+
+**Settings** contains per-account browser preferences: Light/Dark/System appearance, larger text, contrast, doctor dictation language and Read aloud visibility, and admin appointment time defaults. These preferences stay in that browser; they are not synchronized through MongoDB. Read aloud is always click-to-play. Restart the API after pulling backend changes; the Vite UI updates automatically.
+
 ### Patient folder intake
 
 In **New patient intake**, option 3 selects exactly one folder named like `PP001_Ananya_Baruah`. Choose its doctor and upload. PrepPulse derives `PP001` and `Ananya Baruah` from that folder name, creates a separate immutable `PRP-` ID, and stores every selected file privately. PDF, PNG, and JPEG files become clinical documents and are processed in a background job; a manifest or text index is retained as an auxiliary file. The page shows saved/unchanged counts and OCR/analysis progress. Reuploading the same folder skips files with the same relative path and content hash; changed files are retained as new versions. The browser supports folder selection in current Edge and Chrome. Option 1 still registers a patient manually, and option 2 still appends a single document.

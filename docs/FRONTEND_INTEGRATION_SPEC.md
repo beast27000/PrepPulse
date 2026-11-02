@@ -48,14 +48,14 @@ The center consultation panel follows the screenshot:
 1. Patient header: name, age/sex when available, agent classification, PrepPulse ID, optional external alias, and review status.
 2. Four cards: `trajectory.kpis`; `care_gaps.items`; `mismatches.items`; and `caregiver_prep.checklist`. Card four's displayed family/caregiver mode follows the active visit's admission flag. Agent checklist content remains suggestions until a clinician chooses items for the pathway.
 3. Visit focus strip: agent visit focus, latest available metric, and count of potential review items. It is not a clinical freshness claim.
-4. Priority findings: reverse chronological list from `priority_findings`, each with Accept/Edit/Reject review controls. Review decisions are stored per visit. The source link is enabled only for verified citations.
+4. Priority findings: list from verified agent milestones plus source-backed metric observations already present in the brief. Unverified agent claims are excluded. Each has Accept/Edit/Reject review controls. Review decisions are stored per visit.
 5. Assistive bubbles: exploratory prompts that open the chat workspace.
 
-If no brief exists, show an empty state and **Run clinical analysis**. Analysis creates a background job, reports queued/running/failed/complete, and can be retried after failure. Uploading a new file does not silently regenerate a brief; the clinician refreshes it. The UI continues to work while OCR or model inference runs.
+If no brief exists, show an empty state and **Run clinical analysis**. The top **Analyze records** action starts the same patient-scoped OCR, RAG, and eight-node agent workflow. Analysis creates a background job, reports queued/running/failed/complete, document counts and stage, and can be retried after failure. Uploading a new file does not silently regenerate a brief; the clinician reruns it. The previous brief remains visible while a replacement is built.
 
 ### Source Proof and chat
 
-The right column has a Source Proof panel above chat, followed by a six-language checklist and source/review status. The panels may expand in place; chat also opens a dedicated workspace with a patient-context column. On narrower browser widths, panels reflow below the consultation panel. The same selected patient context is used in both chat views.
+The right column has a Source Proof panel above chat, followed by a six-language checklist and source/review status. When a brief loads, the first verified finding is selected as the initial source. Source Proof expands into a full record workspace with page navigation, text search, and selectable file tiles on the right. Chat opens its own dedicated workspace with patient context. On narrower browser widths, panels reflow below the consultation panel. The same selected patient context is used in both chat views.
 
 For a verified citation, `document_id` is a `DOC-` record ID, `page_number` starts at 1, and `bbox` is `[x0, y0, x1, y1]` normalized to 0–1000. The authenticated page endpoint renders a PNG. The browser overlays the box with:
 
@@ -64,9 +64,9 @@ left = x0 / 10 %          top = y0 / 10 %
 width = (x1-x0) / 10 %   height = (y1-y0) / 10 %
 ```
 
-The overlay must remain aligned as the preview scales. The API checks patient ownership, page existence, non-default geometry, and overlap between snippet words and OCR tokens inside the box before setting `source_verified: true`. Generated agent citations often lack a document ID or use a nearby retrieval hit; those display **Source needs verification** and never a fabricated highlight. The Records page may preview a document separately without claiming a particular highlighted span.
+The overlay must remain aligned as the preview scales. The API checks patient ownership, page existence, non-default geometry, and a contiguous matching phrase in OCR tokens inside the candidate box. It replaces a broad retrieval-chunk box with the narrow token union before setting `source_verified: true`. Old broad citations are not highlighted in the full workspace until reanalysis. Generated agent citations may lack a matching document span; those display **Source needs verification**. The Records page may preview a document separately without claiming a particular highlighted span.
 
-Chat is bound to the selected patient. The API creates a patient-scoped hybrid retriever from existing OCR documents and returns `answer_markdown` plus structured citations. When no live model is available, it returns labeled source excerpts rather than an invented synthesis. A model-generated answer is still assistive and its citations require review. Chat cannot alter a visit, pathway, or record.
+Chat is bound to the selected patient. The API creates a patient-scoped hybrid retriever from existing OCR documents and returns `answer_markdown` plus structured citations. Timeline questions add relevant excerpts from each documented year so five similar recent records do not hide earlier visits. When no live model is available, chat returns labeled source excerpts. A model-generated answer remains assistive and its citations require review. Chat cannot alter a visit, pathway, or record.
 
 ### Records
 
@@ -80,7 +80,7 @@ The draft may list only clinician-reviewed findings with verified citations. **E
 
 ### Other pages
 
-Guidance library has an empty approved-content state. No clinical guidance is generated or imported without owner approval. Settings shows account and local voice configuration context. On Today, Records, Care pathways, Guidance library, and Settings, a small movable assistant bubble opens compact chat with typed or spoken input. It does not offer uploads and should not obscure essential controls.
+Guidance library has an empty approved-content state. No clinical guidance is generated or imported without owner approval. Settings supports local per-account display, voice, and scheduling defaults saved in the browser; no patient information is saved in those preferences. On Today, Records, Care pathways, Guidance library, and Settings, a small movable assistant bubble opens compact chat with typed or spoken input. It does not offer uploads and should not obscure essential controls.
 
 ## 5. Admin screens
 
@@ -88,7 +88,7 @@ Guidance library has an empty approved-content state. No clinical guidance is ge
 
 **Patient appointments:** choose registered patient and assigned doctor, visit date/time, and a scheduling note. Create, edit, and cancel appointments. The doctor sees scheduled appointments on Today after the next refresh. Appointment status and clinical visit status are separate.
 
-**Patient directory:** browse registry cards with internal and optional external IDs and assign an additional doctor. Clicking a card opens an admin-only overview with assigned doctors, document states, visit log, and all appointments; clinical notes and the consultation brief are excluded. **Accounts:** create doctor/admin accounts and disable accounts; self-disable is rejected. **Settings:** show the current admin context and local deployment notes. Theme and other preference ideas remain research only.
+**Patient directory:** browse registry cards with internal and optional external IDs and assign an additional doctor. Clicking a card opens an admin-only overview with assigned doctors, document states, visit log, and all appointments; clinical notes and the consultation brief are excluded. **Accounts:** create doctor/admin accounts and disable accounts; self-disable is rejected. **Settings:** Light/Dark/System display, text and contrast, and appointment start-time/step defaults; preferences remain in that browser.
 
 ## 6. API and data contracts
 
@@ -101,6 +101,7 @@ All routes start with `/api`; JSON except multipart upload/transcription and PNG
 | `POST /patients`, `POST /admin/import-folder`, `POST /patients/{id}/assign/{doctor_id}` | Admin | Register/upload one folder/assign |
 | `GET /admin/patients/{id}/overview` | Admin | Patient administration history, without clinical brief or notes |
 | `GET/POST /patients/{id}/documents`, `GET /patients/{id}/documents/{record_id}/page/{page}` | Scoped | Append and inspect source records |
+| `GET /patients/{id}/documents/search?q=` | Doctor, scoped | Search OCR page text and filenames for the full record workspace |
 | `POST /patients/{id}/brief/jobs`, `GET /patients/{id}/brief/jobs/latest`, `GET /patients/{id}/brief` | Doctor | Build and read agent brief |
 | `GET/POST /appointments`, `PATCH /appointments/{id}`, `POST /appointments/{id}/cancel` | Admin writes; doctor reads own | Scheduling |
 | `GET/POST /patients/{id}/visits`, `GET /patients/{id}/pathways`, `POST /visits/{id}/admission`, `POST /visits/{id}/notes`, `POST /visits/{id}/decisions` | Doctor | Visit, approved pathway history, and review state |

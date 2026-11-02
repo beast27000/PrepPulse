@@ -140,6 +140,7 @@ def process_patient(
         brief: ConsultationBrief = create_clinical_review_workflow().invoke(initial)["final_brief"]
         raw = brief.model_dump(mode="json")
         checked = annotate_citations(store, patient_id, raw)
+        checked["priority_findings"] = grounded_priority_findings(checked)
         store.db.briefs.update_one(
             {"patient_id": patient_id},
             {"$set": {"patient_id": patient_id, "brief": checked, "generated_at": now()}},
@@ -158,40 +159,65 @@ def _tokens(text: str) -> set[str]:
     }
 
 
-def validate_citation(store: WorkspaceStore, patient_id: str, citation: dict) -> bool:
+def locate_citation(store: WorkspaceStore, patient_id: str, citation: dict) -> list[int] | None:
     doc_id = citation.get("document_id")
     bbox = citation.get("bbox")
     page_no = citation.get("page_number")
     snippet = citation.get("snippet") or citation.get("extracted_text") or ""
     if not doc_id or not isinstance(page_no, int) or not isinstance(bbox, list) or len(bbox) != 4:
-        return False
+        return None
     if bbox == [0, 0, 1000, 1000] or not all(isinstance(v, int) and 0 <= v <= 1000 for v in bbox):
-        return False
+        return None
     if bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
-        return False
+        return None
     rec = store.db.workspace_documents.find_one({"record_id": doc_id, "patient_id": patient_id})
     doc = store.db.patient_documents.find_one(
         {"document_id": doc_id, "patient_id": patient_id}, {"stage_1_raw_ocr.pages": 1}
     )
     if not rec or not doc:
-        return False
+        return None
     page = next(
         (p for p in doc.get("stage_1_raw_ocr", {}).get("pages", []) if p["page_number"] == page_no),
         None,
     )
     if not page or not snippet:
-        return False
+        return None
     overlapping = [
-        t["text"]
+        t
         for t in page.get("tokens", [])
         if t["bbox"][0] <= bbox[2]
         and t["bbox"][2] >= bbox[0]
         and t["bbox"][1] <= bbox[3]
         and t["bbox"][3] >= bbox[1]
     ]
-    wanted = _tokens(snippet)
-    found = _tokens(" ".join(overlapping))
-    return len(wanted & found) >= min(2, len(wanted)) and bool(wanted)
+    words = [
+        re.sub(r"[^a-z0-9]", "", word.lower())
+        for word in re.findall(r"[a-zA-Z0-9]+(?:\.[0-9]+)?", snippet)
+    ]
+    words = [word for word in words if word]
+    token_words = [re.sub(r"[^a-z0-9]", "", t["text"].lower()) for t in overlapping]
+    # A retrieval chunk can cover a whole page. Require a contiguous OCR phrase
+    # and return its tight token box, never the chunk's broad bounding box.
+    for length in range(min(7, len(words)), 1, -1):
+        for start in range(len(words) - length + 1):
+            phrase = words[start : start + length]
+            for offset in range(len(token_words) - length + 1):
+                if token_words[offset : offset + length] != phrase:
+                    continue
+                boxes = [t["bbox"] for t in overlapping[offset : offset + length]]
+                result = [
+                    min(b[0] for b in boxes),
+                    min(b[1] for b in boxes),
+                    max(b[2] for b in boxes),
+                    max(b[3] for b in boxes),
+                ]
+                if (result[2] - result[0]) * (result[3] - result[1]) <= 100_000:
+                    return result
+    return None
+
+
+def validate_citation(store: WorkspaceStore, patient_id: str, citation: dict) -> bool:
+    return locate_citation(store, patient_id, citation) is not None
 
 
 def annotate_citations(store: WorkspaceStore, patient_id: str, value: Any) -> Any:
@@ -200,9 +226,63 @@ def annotate_citations(store: WorkspaceStore, patient_id: str, value: Any) -> An
     if isinstance(value, dict):
         result = {k: annotate_citations(store, patient_id, v) for k, v in value.items()}
         if "bbox" in result and "page_number" in result:
-            result["source_verified"] = validate_citation(store, patient_id, result)
+            precise = locate_citation(store, patient_id, result)
+            result["source_verified"] = precise is not None
+            if precise:
+                result["bbox"] = precise
         return result
     return value
+
+
+def grounded_priority_findings(brief: dict) -> list[dict]:
+    """Show reviewable, source-linked observations already present in the brief."""
+    findings = [
+        finding
+        for finding in brief.get("priority_findings", [])
+        if (finding.get("citation") or {}).get("source_verified")
+        and len(
+            _tokens(finding.get("title") or "")
+            & _tokens(
+                (finding.get("citation") or {}).get("snippet")
+                or (finding.get("citation") or {}).get("extracted_text")
+                or ""
+            )
+        )
+        >= min(2, len(_tokens(finding.get("title") or "")))
+        and bool(_tokens(finding.get("title") or ""))
+    ]
+    seen = {((f.get("citation") or {}).get("document_id"), f.get("title")) for f in findings}
+    for index, metric in enumerate(brief.get("trajectory", {}).get("kpis", [])):
+        citation = metric.get("citation") or {}
+        if not citation.get("source_verified") or not metric.get("value"):
+            continue
+        source_text = citation.get("snippet") or citation.get("extracted_text") or ""
+        metric_terms = _tokens(metric.get("name") or "")
+        source_numbers = set(re.findall(r"\d+(?:\.\d+)?", source_text))
+        value_numbers = set(re.findall(r"\d+(?:\.\d+)?", str(metric["value"])))
+        if (metric_terms and not metric_terms & _tokens(source_text)) or (
+            value_numbers and not value_numbers & source_numbers
+        ):
+            continue
+        title = (
+            f"{metric.get('name', 'Recorded metric')}: {metric['value']}{metric.get('unit') or ''}"
+        )
+        key = (citation.get("document_id"), title)
+        if key in seen:
+            continue
+        seen.add(key)
+        findings.append(
+            {
+                "finding_id": f"metric_{index + 1}",
+                "title": title,
+                "subtitle": "Documented result for clinician review; no interpretation is implied.",
+                "date": metric.get("date_str") or "",
+                "severity": "low",
+                "status": "pending_review",
+                "citation": citation,
+            }
+        )
+    return findings[:12]
 
 
 def retriever_for_patient(store: WorkspaceStore, patient_id: str) -> HybridEnsembleRetriever:
@@ -213,7 +293,33 @@ def retriever_for_patient(store: WorkspaceStore, patient_id: str) -> HybridEnsem
 
 def answer_chat(store: WorkspaceStore, patient_id: str, question: str) -> dict:
     retriever = retriever_for_patient(store, patient_id)
-    hits = retriever.retrieve(question, patient_id=patient_id, top_k=5)
+    hits = retriever.retrieve(question, patient_id=patient_id, top_k=6)
+    longitudinal = bool(
+        re.search(
+            r"\b(history|years?|decade|timeline|earlier|since|over time|trend|previous)\b",
+            question,
+            re.IGNORECASE,
+        )
+    )
+    if longitudinal:
+        # A single top-k search overweights recent similar lab reports. Include
+        # documented years across the chart before asking for a timeline answer.
+        terms = _tokens(question)
+        by_year: dict[str, Any] = {}
+        for chunk in retriever.get_patient_documents(patient_id):
+            year = str(chunk.metadata.get("visit_date") or chunk.metadata.get("year") or "")[:4]
+            if not year.isdigit():
+                continue
+            score = len(terms & _tokens(chunk.page_content))
+            if year not in by_year or score > by_year[year][0]:
+                by_year[year] = (score, chunk)
+        known = {h.metadata.get("chunk_id") for h in hits}
+        for year in sorted(by_year):
+            chunk = by_year[year][1]
+            if chunk.metadata.get("chunk_id") not in known:
+                hits.append(chunk)
+                known.add(chunk.metadata.get("chunk_id"))
+        hits = hits[:18]
     citations = []
     context = []
     for h in hits:
@@ -224,10 +330,15 @@ def answer_chat(store: WorkspaceStore, patient_id: str, question: str) -> dict:
             "bbox": h.metadata.get("bbox", []),
             "snippet": h.page_content[:300],
         }
-        cit["source_verified"] = validate_citation(store, patient_id, cit)
+        precise = locate_citation(store, patient_id, cit)
+        cit["source_verified"] = precise is not None
+        if precise:
+            cit["bbox"] = precise
         citations.append(cit)
         context.append(
-            f"[{len(citations)}] {cit['document_title']} page {cit['page_number']}: {h.page_content[:300]}"
+            f"[{len(citations)}] {cit['document_title']} "
+            f"({h.metadata.get('visit_date') or h.metadata.get('year') or 'date unknown'}) "
+            f"page {cit['page_number']}: {h.page_content[:300]}"
         )
     if not hits:
         return {
@@ -241,6 +352,8 @@ def answer_chat(store: WorkspaceStore, patient_id: str, question: str) -> dict:
         sys, prompt, _ = format_rag_prompt(
             "clinical_chatbot", evidence_context="\n".join(context), doctor_query=question
         )
+        if longitudinal:
+            sys += "\nThe excerpts span multiple documented years. Summarize the years actually present; do not claim the whole history is unavailable when dated records are provided. Distinguish gaps from documented events."
         try:
             answer = str(
                 model.invoke([SystemMessage(content=sys), HumanMessage(content=prompt)]).content

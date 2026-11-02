@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("PREPPULSE_SESSION_SECRET", "test-session-secret-with-more-than-32-chars")
 
 from preppulse_api.app import app, db, password_hash
-from preppulse_api.clinical import validate_citation
+from preppulse_api.clinical import annotate_citations, grounded_priority_findings, validate_citation
 from preppulse_api.folder_import import checked_paths
 from preppulse_api.store import WorkspaceStore
 
@@ -197,9 +197,91 @@ def test_citation_requires_matching_ocr_span(workspace):
         "snippet": "HbA1c 8.4",
     }
     assert validate_citation(workspace, "PRP-1", citation)
+    precise = annotate_citations(workspace, "PRP-1", citation)
+    assert precise["source_verified"] is True
+    assert precise["bbox"] == [100, 200, 175, 225]
     assert not validate_citation(workspace, "PRP-2", citation)
     assert not validate_citation(workspace, "PRP-1", {**citation, "bbox": [0, 0, 1000, 1000]})
     assert not validate_citation(workspace, "PRP-1", {**citation, "snippet": "insulin dose"})
+
+
+def test_priority_findings_require_precise_source():
+    verified = {
+        "document_id": "DOC-1",
+        "page_number": 1,
+        "bbox": [10, 20, 30, 40],
+        "source_verified": True,
+        "extracted_text": "HbA1c 8.3 percent",
+    }
+    brief = {
+        "priority_findings": [
+            {"title": "Unverified claim", "citation": {"source_verified": False}},
+            {
+                "title": "Unsupported surgery",
+                "citation": {**verified, "extracted_text": "HbA1c 8.3 percent"},
+            },
+        ],
+        "trajectory": {
+            "kpis": [
+                {
+                    "name": "HbA1c",
+                    "value": "8.3",
+                    "unit": "%",
+                    "date_str": "2026-10-08",
+                    "citation": verified,
+                },
+                {"name": "Other", "value": "99", "citation": {"source_verified": False}},
+                {"name": "HbA1c", "value": "9.9", "citation": verified},
+            ]
+        },
+    }
+    findings = grounded_priority_findings(brief)
+    assert len(findings) == 1
+    assert findings[0]["title"] == "HbA1c: 8.3%"
+    assert findings[0]["citation"]["source_verified"] is True
+
+
+def test_record_search_is_patient_scoped(workspace):
+    workspace.db.users.insert_one(
+        {
+            "user_id": "USR-DOC",
+            "name": "Doctor",
+            "username": "doctor",
+            "role": "doctor",
+            "password_hash": password_hash.hash("doctor-long-password"),
+            "disabled": False,
+        }
+    )
+    workspace.db.patients.insert_one({"patient_id": "PRP-1", "name": "Patient One"})
+    workspace.db.patient_access.insert_one({"patient_id": "PRP-1", "doctor_id": "USR-DOC"})
+    workspace.db.workspace_documents.insert_one(
+        {"patient_id": "PRP-1", "record_id": "DOC-1", "filename": "labs.pdf"}
+    )
+    workspace.db.patient_documents.insert_one(
+        {
+            "patient_id": "PRP-1",
+            "document_id": "DOC-1",
+            "stage_1_raw_ocr": {
+                "pages": [
+                    {
+                        "page_number": 1,
+                        "full_text": "HbA1c 8.3 percent",
+                        "tokens": [{"text": "HbA1c", "bbox": [10, 20, 40, 30]}],
+                    }
+                ]
+            },
+        }
+    )
+    with TestClient(app) as client:
+        login(client, "doctor", "doctor-long-password")
+        response = client.get("/api/patients/PRP-1/documents/search?q=HbA1c")
+        assert response.status_code == 200
+        assert response.json()[0]["document_id"] == "DOC-1"
+        assert response.json()[0]["bbox"] == [10, 20, 40, 30]
+        assert client.get("/api/patients/PRP-2/documents/search?q=HbA1c").status_code == 404
+    with TestClient(app) as client:
+        login(client, "admin", "correct-long-password")
+        assert client.get("/api/patients/PRP-1/documents/search?q=HbA1c").status_code == 403
 
 
 def test_one_folder_import_preserves_files_ids_and_admin_overview(workspace, tmp_path, monkeypatch):
