@@ -2,13 +2,13 @@
 
 PrepPulse is an assistive clinical chart-review workspace. It connects source-preserving OCR, preprocessing, hybrid retrieval, and clinical review agents to a local browser UI. Clinicians must review generated findings against the source record; PrepPulse does not autonomously diagnose or prescribe treatment.
 
-## Branch status
+## Release status
 
-The `UI` branch adds a React workspace and FastAPI integration layer. The existing OCR, preprocessing, RAG, and agent modules remain the data pipeline. The earlier Tkinter OCR test UI was removed from this branch. See [the detailed UI handoff](docs/FRONTEND_INTEGRATION_SPEC.md) and [delivery tracker](TO_DO.md) for implemented behavior and known limitations.
+The reviewed browser release is developed on `UI` and is ready to merge into `main`. It combines the React/TypeScript workspace with the authenticated FastAPI integration layer, the existing OCR/preprocessing pipeline, patient-scoped hybrid RAG, and the LangGraph review agents. The earlier Tkinter test UI is not part of this release. See the [detailed UI handoff](docs/FRONTEND_INTEGRATION_SPEC.md) and [delivery tracker](TO_DO.md) for contracts, permissions, and known limitations.
 
 ## Local setup
 
-Requirements: Python 3.11+, Node.js 20.19+, MongoDB on local loopback, and Tesseract OCR for scanned PDFs/images. A local LM Studio model is optional; without it, chat shows source excerpts and agent inference may be limited.
+Requirements: Python 3.11+, Node.js 20.19+, MongoDB on local loopback, and Tesseract OCR for scanned PDFs/images. LM Studio (or another OpenAI-compatible local server) is strongly recommended for full agent-generated briefs and chat. This release targets a single local browser; review security, TLS, file encryption, backups, and access controls before shared deployment.
 
 ```powershell
 python -m venv .venv
@@ -19,6 +19,8 @@ cd web
 npm install
 cd ..
 ```
+
+Start MongoDB before bootstrapping or using the API. The default connection is `mongodb://127.0.0.1:27017/preppulse`; keep the API and Vite development server in separate PowerShell terminals.
 
 Set local environment variables. Keep values out of version control:
 
@@ -41,6 +43,8 @@ $env:LOCAL_LLM_BASE_URL = "http://127.0.0.1:1234/v1"
 $env:LOCAL_CHAT_MODEL = "qwen/qwen3-4b-2507"
 python -m uvicorn preppulse_api.app:app --host 127.0.0.1 --port 8000
 ```
+
+For full analysis, load a chat model and an embedding model in LM Studio, start its local server, and use the exact model identifiers shown by LM Studio. If LM Studio is on another machine, replace `LOCAL_LLM_BASE_URL` with its reachable `/v1` URL. Without it, source excerpts and deterministic fallbacks remain available but synthesis and some agent outputs are limited.
 
 ```powershell
 cd web

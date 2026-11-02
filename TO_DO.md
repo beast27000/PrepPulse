@@ -74,7 +74,7 @@ Implementation status and backlog.
 - [x] Add plug-and-play `LLMFactory` supporting Ollama (`qwen2.5:7b`), Sarvam AI, OpenAI-compatible APIs, or offline mock providers via `.env`.
 - [x] Add automated retrieval test suite (`tests/test_hybrid_rag.py`) verifying exact precision, latency, patient isolation, and coordinate preservation.
 
-### Phase 4: Streamlit v1 Clinical Consultation UI
+### Phase 4: React browser consultation UI
 The owner approved a React browser UI on the `UI` branch in place of the earlier Streamlit proposal.
 - [x] Build a screenshot-inspired consultation workspace in `web/` using the actual `ConsultationBrief` schema.
 - [x] Display KPI and trajectory cards from available agent output.
@@ -104,7 +104,7 @@ The owner approved a React browser UI on the `UI` branch in place of the earlier
   - `TimeSeriesPoint`, `LongitudinalMetricSeries` (10-year tabular matrix and chart coordinates).
   - `SmartPromptBubble` (non-intrusive assistive prompt suggestions).
   - `CaregiverPrep` (dynamically switching between Caregiver Handoff and Caregiver Prep Sheet with `EN`, `हि`, `த` translations).
-- [x] Configured pluggable `LLMFactory` with native local LM Studio inference (`qwen/qwen3-4b-2507` and `text-embedding-qwen3-embedding-0.6b` at `http://192.168.1.16:1234/v1`), VRAM safeguard for RTX 4060, Sarvam AI credit preservation (`SARVAM_AI_CREDITS`), and offline mock fallback.
+- [x] Configured pluggable `LLMFactory` with native local LM Studio inference (`qwen/qwen3-4b-2507` and `text-embedding-qwen3-embedding-0.6b`), defaulting to loopback `http://127.0.0.1:1234/v1` and allowing `LOCAL_LLM_BASE_URL` overrides; retained the RTX 4060 safeguard, Sarvam fallback, and offline mock provider.
 - [x] Implemented 8-node LangGraph multi-agent review machine in `src/preppulse_agents/graph.py`:
   - Classification $\rightarrow$ Trajectory $\rightarrow$ Care Gaps $\rightarrow$ Mismatches $\rightarrow$ Comorbidities $\rightarrow$ Caregiver Prep $\rightarrow$ Assistive Bubbles $\rightarrow$ Brief Compiler.
 - [x] **Refactored All Agents to LLM-Driven Dynamic Inference (Zero Hardcoding)**:
@@ -115,7 +115,7 @@ The owner approved a React browser UI on the `UI` branch in place of the earlier
   - `assistive_bubbles_agent`: Dynamic bubble synthesis reflecting the actual clinical events and longitudinal series present in the patient's state.
   - Robust `_parse_llm_json_array` utility ensuring fail-safe JSON parsing across diverse LLM markdown outputs.
 - [x] Built and verified full end-to-end integration test suite (`tests/test_end_to_end_pipeline.py`) validating raw PDF $\rightarrow$ Stage 1 OCR $\rightarrow$ Chunker $\rightarrow$ Hybrid RAG $\rightarrow$ LangGraph Swarm $\rightarrow$ Unified Brief.
-- [x] 19 of 19 tests passing across full repository test suite with zero linter errors.
+- [x] Focused UI/API, RAG, pipeline, and browser regression checks pass; legacy full-suite fixtures that require a pre-seeded patient remain documented below.
 
 ### Phase 7: External YAML Prompt Engine & 6-Language Multi-Lingual Support (COMPLETED)
 - [x] Externalized all agent and RAG prompts into modular YAML configurations (`prompts/agents/` and `prompts/rag/`):

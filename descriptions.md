@@ -65,7 +65,7 @@ flowchart TD
 ## 3. Local Model & Compute Constraints
 
 - **Host Machine**: RTX 4060 GPU (8 GB VRAM).
-- **Primary LLM**: Local LM Studio running at `http://192.168.1.16:1234/v1`
+- **Primary LLM**: Local LM Studio (default application URL `http://127.0.0.1:1234/v1`; set `LOCAL_LLM_BASE_URL` for another host)
   - Model: `qwen/qwen3-4b-2507` (Q4_K_M GGUF, 2.5 GB, context window up to 28,858 tokens).
   - Embeddings: `text-embedding-qwen3-embedding-0.6b` (1024-dim, OpenAI-compatible endpoint).
   - VRAM Rule: Prompts must remain concise (under ~3,500 characters of context, chunks trimmed to ~180-200 characters) to prevent VRAM spikes or OOM crashes on the 8 GB card.
@@ -183,7 +183,7 @@ The RAG layer combines lexical and dense semantic search with Reciprocal Rank Fu
 
 ---
 
-## 7. Mock Interactive UI & Final Testing Specification
+## 7. Browser UI & Final Testing Specification
 
 To test the entire pipeline end-to-end visually, an interactive application (Streamlit or lightweight web UI) must be provided:
 
