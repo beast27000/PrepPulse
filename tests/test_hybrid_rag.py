@@ -53,6 +53,19 @@ def sample_patient_documents() -> list[Document]:
     ]
 
 
+def test_dense_service_failure_keeps_sparse_patient_retrieval(sample_patient_documents):
+    class OfflineEmbeddings:
+        def embed_documents(self, texts):
+            raise ConnectionError("embedding service offline")
+
+    retriever = HybridEnsembleRetriever(sample_patient_documents, embeddings=OfflineEmbeddings())
+    results = retriever.retrieve("Empagliflozin", patient_id="patient_williams")
+    assert results
+    assert results[0].metadata["patient_id"] == "patient_williams"
+    assert "Empagliflozin" in results[0].page_content
+    assert retriever.dense_index.available is False
+
+
 # ---------- tests ----------
 
 
@@ -102,7 +115,9 @@ def test_chunker_provenance_and_bounding_boxes():
     assert bbox[0] == 100 and bbox[1] == 200 and bbox[2] == 210 and bbox[3] == 220
 
 
-def test_sparse_bm25_exact_medication_100_percent_precision(sample_patient_documents: list[Document]):
+def test_sparse_bm25_exact_medication_100_percent_precision(
+    sample_patient_documents: list[Document],
+):
     # Acceptance Criteria 1: Retrieval for exact medication names achieves 100% precision
     bm25_index = SparseBM25Index(sample_patient_documents)
 

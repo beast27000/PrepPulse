@@ -50,6 +50,14 @@ class WorkspaceStore:
         db.pathways.create_index([("visit_id", ASCENDING), ("version", ASCENDING)], unique=True)
         db.pathway_items.create_index("item_id", unique=True)
         db.jobs.create_index("job_id", unique=True)
+        db.chat_sessions.create_index("session_id", unique=True)
+        db.chat_sessions.create_index(
+            [("user_id", ASCENDING), ("patient_id", ASCENDING), ("updated_at", ASCENDING)]
+        )
+        db.chat_messages.create_index("message_id", unique=True)
+        db.chat_messages.create_index([("session_id", ASCENDING), ("created_at", ASCENDING)])
+        db.chat_artifacts.create_index("artifact_id", unique=True)
+        db.chat_turns.create_index("turn_id", unique=True)
 
     def patient(self, patient_id: str) -> dict | None:
         return self.db.patients.find_one({"patient_id": patient_id}, {"_id": 0})

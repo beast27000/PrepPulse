@@ -13,6 +13,7 @@ from preppulse_agents.graph import create_clinical_review_workflow
 from preppulse_agents.prompt_loader import format_rag_prompt
 from preppulse_agents.schemas import ConsultationBrief
 from preppulse_api.config import DATASET_ROOT, MONGO_URI, PRIVATE_ROOT
+from preppulse_api.evidence_catalog import build_catalog, enrich_history
 from preppulse_api.store import WorkspaceStore, now
 from preppulse_db.ingest import map_parsed_doc_to_mongo
 from preppulse_db.mongo_store import MongoStore
@@ -137,10 +138,137 @@ def process_patient(
             "metric_series": None,
             "final_brief": None,
         }
-        brief: ConsultationBrief = create_clinical_review_workflow().invoke(initial)["final_brief"]
+        state = dict(initial)
+        workflow = create_clinical_review_workflow()
+        agent_names = [
+            "classification_agent",
+            "trajectory_agent",
+            "care_gaps_agent",
+            "mismatches_agent",
+            "comorbidities_agent",
+            "caregiver_prep_agent",
+            "assistive_bubbles_agent",
+            "brief_compiler",
+        ]
+        if progress:
+            progress(agent_names[0])
+        for update in workflow.stream(initial, stream_mode="updates"):
+            for node, values in update.items():
+                if values:
+                    state.update(values)
+                if (
+                    progress
+                    and node in agent_names
+                    and agent_names.index(node) + 1 < len(agent_names)
+                ):
+                    progress(agent_names[agent_names.index(node) + 1])
+        brief: ConsultationBrief = state["final_brief"]
         raw = brief.model_dump(mode="json")
         checked = annotate_citations(store, patient_id, raw)
+        if progress:
+            progress("history_synthesis_agent")
+        catalog = build_catalog(store, patient_id)
+        model = LLMFactory.get_chat_model(max_tokens=2600)
+        if not isinstance(model, MockClinicalChatModel):
+            enrich_history(catalog, model, progress=progress)
+        checked["record_summaries"] = catalog["record_summaries"]
+        checked["metric_series"] = catalog["metric_series"]
+        glycemic = next(
+            (series for series in catalog["metric_series"] if series["metric_name"] == "HbA1c"),
+            None,
+        )
+        dates = [record["date"] for record in catalog["record_summaries"] if record["date"]]
+        history_text = (
+            f"{len(dates)} source records cover {min(dates)[:4]}–{max(dates)[:4]}."
+            if dates
+            else "No dated source history is available."
+        )
+        if glycemic and glycemic["points"]:
+            first, last = glycemic["points"][0], glycemic["points"][-1]
+            history_text += f" Recorded HbA1c: {first['value']:g}% ({first['date']}) → {last['value']:g}% ({last['date']})."
+        diagnosis = next(
+            (
+                record
+                for record in catalog["record_summaries"]
+                if any(
+                    re.search(r"new diagnosis of type 2 diabetes", item["text"], re.IGNORECASE)
+                    for item in record["evidence"]
+                )
+            ),
+            None,
+        )
+        if diagnosis:
+            history_text = (
+                f"Type 2 diabetes is documented in the {diagnosis['date']} consultation. "
+                + history_text
+            )
+        checked["diabetes_history"] = {
+            "summary": history_text,
+            "start_date": min(dates) if dates else None,
+            "end_date": max(dates) if dates else None,
+            "diagnosis_date": diagnosis["date"] if diagnosis else None,
+            "diagnosis_citation": diagnosis.get("citation") if diagnosis else None,
+            "records": [
+                record
+                for record in catalog["record_summaries"]
+                if record["category"] == "diabetes_history"
+            ],
+        }
+        checked["history_synthesis"] = catalog.get("history_synthesis", "source_excerpts")
+        checked["care_gaps"]["items"] = [
+            item
+            for item in checked["care_gaps"]["items"]
+            if (item.get("citation") or {}).get("source_verified")
+        ]
+        checked["visit_focus"] = "Diabetes history, current results, and relevant clinical events"
+        checked["trajectory"]["summary"] = history_text
+        kpis = []
+        for name in ("HbA1c", "Fasting glucose", "eGFR"):
+            series = next(
+                (item for item in catalog["metric_series"] if item["metric_name"] == name), None
+            )
+            if not series or not series["points"]:
+                continue
+            point = series["points"][-1]
+            earlier = series["points"][-2] if len(series["points"]) > 1 else point
+            kpis.append(
+                {
+                    "name": name,
+                    "value": f"{point['value']:g}",
+                    "unit": point["unit"],
+                    "date_str": point["date"],
+                    "trend_direction": "up"
+                    if point["value"] > earlier["value"]
+                    else "down"
+                    if point["value"] < earlier["value"]
+                    else "stable",
+                    "citation": point["citation"],
+                }
+            )
+        checked["trajectory"]["kpis"] = kpis
+        if not patient.get("sex"):
+            text = " ".join(
+                page.get("full_text", "")[:600]
+                for doc in docs
+                for page in doc.get("stage_1_raw_ocr", {}).get("pages", [])[:1]
+            )
+            sex = re.search(r"\bSex:\s*(Female|Male|Other)\b", text, re.IGNORECASE)
+            checked["gender"] = sex[1] if sex else "Not recorded"
+            checked["age_sex"] = f"{age} years / {checked['gender']}" if age else checked["gender"]
         checked["priority_findings"] = grounded_priority_findings(checked)
+        for record in catalog["record_summaries"]:
+            if record["category"] == "other_history" and record.get("citation"):
+                checked["priority_findings"].append(
+                    {
+                        "finding_id": f"history_{record['record_id']}",
+                        "title": record["title"],
+                        "subtitle": record["summary"],
+                        "date": record["date"],
+                        "severity": "medium",
+                        "status": "pending_review",
+                        "citation": record["citation"],
+                    }
+                )
         store.db.briefs.update_one(
             {"patient_id": patient_id},
             {"$set": {"patient_id": patient_id, "brief": checked, "generated_at": now()}},
@@ -264,22 +392,41 @@ def grounded_priority_findings(brief: dict) -> list[dict]:
             value_numbers and not value_numbers & source_numbers
         ):
             continue
-        title = (
-            f"{metric.get('name', 'Recorded metric')}: {metric['value']}{metric.get('unit') or ''}"
+        value = str(metric["value"])
+        unit = metric.get("unit") or ""
+        rendered = (
+            value if not unit or unit in value else f"{value}{'' if unit == '%' else ' '}{unit}"
         )
+        title = f"{metric.get('name', 'Recorded metric')}: {rendered}"
         key = (citation.get("document_id"), title)
         if key in seen:
             continue
         seen.add(key)
+        series = next(
+            (
+                item
+                for item in brief.get("metric_series", [])
+                if item.get("metric_name", "").lower() == str(metric.get("name", "")).lower()
+            ),
+            None,
+        )
+        previous = series["points"][-2] if series and len(series.get("points", [])) > 1 else None
+        subtitle = f"Recorded on {metric.get('date_str') or 'the source date'}."
+        if previous:
+            previous_value = f"{previous['value']:g}{'' if unit == '%' else ' '}{unit}"
+            subtitle = f"Previous recorded value: {previous_value} on {previous['date']}. Latest result: {metric.get('date_str') or 'source date'}."
         findings.append(
             {
                 "finding_id": f"metric_{index + 1}",
                 "title": title,
-                "subtitle": "Documented result for clinician review; no interpretation is implied.",
+                "subtitle": subtitle,
                 "date": metric.get("date_str") or "",
                 "severity": "low",
                 "status": "pending_review",
                 "citation": citation,
+                "related_citations": [previous["citation"]]
+                if previous and previous.get("citation")
+                else [],
             }
         )
     return findings[:12]

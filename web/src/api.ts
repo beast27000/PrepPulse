@@ -83,6 +83,7 @@ export type Finding = {
   severity: string;
   status: string;
   citation?: Citation | null;
+  related_citations?: Citation[];
 };
 export type Brief = {
   patient_id: string;
@@ -144,6 +145,80 @@ export type Brief = {
   }[];
   raw_evidence_count: number;
   freshness_score: number;
+  record_summaries?: RecordSummary[];
+  diabetes_history?: {
+    summary: string;
+    start_date?: string;
+    end_date?: string;
+    records: RecordSummary[];
+  };
+};
+export type RecordSummary = {
+  record_id: string;
+  date: string;
+  title: string;
+  category: string;
+  summary: string;
+  citation?: Citation;
+  evidence: { text: string; citation: Citation }[];
+};
+export type ChatSession = {
+  session_id: string;
+  title: string;
+  patient_id: string;
+  updated_at: string;
+  active_turn_id?: string | null;
+};
+export type ChartArtifact = {
+  artifact_id: string;
+  title: string;
+  kind: "line" | "journey" | "table";
+  created_at: string;
+  note: string;
+  series: {
+    metric_name: string;
+    points: {
+      date: string;
+      value: number;
+      unit: string;
+      citation: Citation;
+      citation_index?: number;
+    }[];
+  }[];
+  events: {
+    date: string;
+    title: string;
+    text: string;
+    citation: Citation;
+    citation_index?: number;
+  }[];
+};
+export type SavedChatMessage = {
+  message_id: string;
+  role: "user" | "assistant";
+  text: string;
+  citations?: Citation[];
+  artifact_ids?: string[];
+  created_at: string;
+  presentation?: {
+    show_chart: boolean;
+    show_source: boolean;
+    source_index?: number;
+  };
+};
+export type ChatTurn = {
+  turn_id: string;
+  status: string;
+  stage: string;
+  query: string;
+  error?: string;
+  steps?: { label: string; at: string }[];
+};
+export type ChatBundle = {
+  session: ChatSession;
+  messages: SavedChatMessage[];
+  artifacts: ChartArtifact[];
+  active_turn: ChatTurn | null;
 };
 export type Visit = {
   visit_id: string;

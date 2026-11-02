@@ -12,7 +12,9 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("PREPPULSE_SESSION_SECRET", "test-session-secret-with-more-than-32-chars")
 
 from preppulse_api.app import app, db, password_hash
+from preppulse_api.chat_service import make_chart_artifact, run_chat_turn
 from preppulse_api.clinical import annotate_citations, grounded_priority_findings, validate_citation
+from preppulse_api.evidence_catalog import build_catalog, enrich_history
 from preppulse_api.folder_import import checked_paths
 from preppulse_api.store import WorkspaceStore
 
@@ -282,6 +284,208 @@ def test_record_search_is_patient_scoped(workspace):
     with TestClient(app) as client:
         login(client, "admin", "correct-long-password")
         assert client.get("/api/patients/PRP-1/documents/search?q=HbA1c").status_code == 403
+
+
+def seed_chat_patient(workspace):
+    for username in ("first", "second"):
+        workspace.db.users.insert_one(
+            {
+                "user_id": username,
+                "name": username,
+                "username": username,
+                "role": "doctor",
+                "password_hash": password_hash.hash("doctor-test-password"),
+                "disabled": False,
+            }
+        )
+        workspace.db.patient_access.insert_one({"doctor_id": username, "patient_id": "PRP-CHAT"})
+    workspace.db.patients.insert_one({"patient_id": "PRP-CHAT", "name": "Chart Patient"})
+    workspace.db.workspace_documents.insert_one(
+        {
+            "record_id": "DOC-CHAT",
+            "patient_id": "PRP-CHAT",
+            "filename": "2025_Labs.pdf",
+            "visit_date": "2025-01-01",
+            "document_type": "lab",
+        }
+    )
+    workspace.db.patient_documents.insert_one(
+        {
+            "document_id": "DOC-CHAT",
+            "patient_id": "PRP-CHAT",
+            "stage_1_raw_ocr": {
+                "pages": [
+                    {
+                        "page_number": 1,
+                        "full_text": "HbA1c 7.2 <5.7 %",
+                        "tokens": [
+                            {"text": "HbA1c", "bbox": [100, 200, 170, 212]},
+                            {"text": "7.2", "bbox": [400, 200, 430, 212]},
+                            {"text": "<5.7", "bbox": [600, 200, 640, 212]},
+                            {"text": "%", "bbox": [800, 200, 815, 212]},
+                        ],
+                    }
+                ]
+            },
+        }
+    )
+
+
+def test_chart_tool_uses_ocr_values_and_new_artifact_ids(workspace):
+    seed_chat_patient(workspace)
+    catalog = build_catalog(workspace, "PRP-CHAT")
+    assert catalog["metric_series"][0]["points"][0]["value"] == 7.2
+    original_summary = catalog["record_summaries"][0]["summary"]
+    assert enrich_history(catalog, None)["record_summaries"][0]["summary"] == original_summary
+    first = make_chart_artifact(catalog, "Chart HbA1c", "CHAT-1", "PRP-CHAT")
+    second = make_chart_artifact(catalog, "Chart HbA1c", "CHAT-1", "PRP-CHAT")
+    assert first["artifact_id"] != second["artifact_id"]
+    assert first["series"][0]["points"][0]["citation"]["bbox"] == [100, 200, 815, 212]
+    assert make_chart_artifact(catalog, "Chart eGFR", "CHAT-1", "PRP-CHAT") is None
+    assert make_chart_artifact(catalog, "Chart weight", "CHAT-1", "PRP-CHAT") is None
+    assert make_chart_artifact(catalog, "Chart blood pressure", "CHAT-1", "PRP-CHAT") is None
+
+
+def test_chart_request_never_waits_for_embedding_or_chat_model(workspace, monkeypatch):
+    seed_chat_patient(workspace)
+    module = importlib.import_module("preppulse_api.chat_service")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Chart generation must not call a model service")
+
+    monkeypatch.setattr(module, "retriever_for_patient", forbidden)
+    monkeypatch.setattr(module.LLMFactory, "get_chat_model", forbidden)
+    result = run_chat_turn(
+        workspace,
+        {"patient_id": "PRP-CHAT", "session_id": "CHAT-1"},
+        "Chart HbA1c",
+        [],
+        lambda *args: None,
+    )
+    assert result["artifacts"][0]["series"][0]["points"][0]["value"] == 7.2
+    assert "cannot create" not in result["text"].lower()
+    assert "| Measurement |" in result["text"]
+
+
+def test_chart_catalog_preserves_different_same_day_reports(workspace):
+    seed_chat_patient(workspace)
+    record = workspace.db.workspace_documents.find_one({}, {"_id": 0})
+    workspace.db.workspace_documents.insert_one({**record, "record_id": "DOC-SECOND"})
+    document = workspace.db.patient_documents.find_one({}, {"_id": 0})
+    document["document_id"] = "DOC-SECOND"
+    document["stage_1_raw_ocr"]["pages"][0]["tokens"][1]["text"] = "8.1"
+    workspace.db.patient_documents.insert_one(document)
+    points = build_catalog(workspace, "PRP-CHAT")["metric_series"][0]["points"]
+    assert {point["value"] for point in points} == {7.2, 8.1}
+    assert {point["citation"]["document_id"] for point in points} == {"DOC-CHAT", "DOC-SECOND"}
+
+
+def test_interrupted_analysis_can_be_retried(workspace, monkeypatch):
+    seed_chat_patient(workspace)
+    api_module = importlib.import_module("preppulse_api.app")
+    monkeypatch.setattr(api_module.workers, "submit", lambda *args: None)
+    workspace.db.jobs.insert_one(
+        {
+            "job_id": "JOB-INTERRUPTED",
+            "patient_id": "PRP-CHAT",
+            "status": "running",
+            "created_at": "2026-01-01T00:00:00Z",
+        }
+    )
+    insert_job = workspace.db.jobs.insert_one
+
+    def insert_and_poll(job):
+        result = insert_job(job)
+        assert api_module.recover_brief_job(workspace, job)["status"] == "queued"
+        return result
+
+    monkeypatch.setattr(workspace.db.jobs, "insert_one", insert_and_poll)
+    with TestClient(app) as client:
+        headers = login(client, "first", "doctor-test-password")
+        assert client.get("/api/patients/PRP-CHAT/brief/jobs/latest").json()["status"] == "failed"
+        new = client.post("/api/patients/PRP-CHAT/brief/jobs", json={}, headers=headers)
+        assert new.status_code == 200, new.text
+        assert new.json()["status"] == "queued"
+        assert new.json()["job_id"] != "JOB-INTERRUPTED"
+
+
+def test_chat_sessions_persist_messages_charts_and_enforce_owner(workspace, monkeypatch):
+    seed_chat_patient(workspace)
+    api_module = importlib.import_module("preppulse_api.app")
+    contexts = []
+    insert_turn = workspace.db.chat_turns.insert_one
+
+    def insert_and_poll(turn):
+        result = insert_turn(turn)
+        if turn.get("status") == "queued":
+            current = workspace.db.users.find_one({"user_id": "first"})
+            session = api_module.owned_chat_session(turn["session_id"], current, workspace)
+            assert session["active_turn_id"] == turn["turn_id"]
+        return result
+
+    monkeypatch.setattr(workspace.db.chat_turns, "insert_one", insert_and_poll)
+
+    def fake_turn(store, session, question, previous, progress):
+        contexts.append(len(previous))
+        progress("RAG · retrieving evidence", "retrieval")
+        artifact = make_chart_artifact(
+            build_catalog(store, session["patient_id"]),
+            question,
+            session["session_id"],
+            session["patient_id"],
+        )
+        return {
+            "message_id": f"MSG-{len(contexts)}",
+            "role": "assistant",
+            "text": "### Recorded HbA1c\n\n**7.2%** [1]",
+            "created_at": "2026-11-02T00:00:00Z",
+            "citations": [artifact["series"][0]["points"][0]["citation"]],
+            "artifact_ids": [artifact["artifact_id"]],
+            "artifacts": [artifact],
+            "presentation": {"show_chart": True, "show_source": False},
+        }
+
+    monkeypatch.setattr(api_module, "WorkspaceStore", lambda: workspace)
+    monkeypatch.setattr(api_module, "run_chat_turn", fake_turn)
+    monkeypatch.setattr(api_module.workers, "submit", lambda fn, *args: fn(*args))
+    with TestClient(app) as client:
+        headers = login(client, "first", "doctor-test-password")
+        session = client.post(
+            "/api/chat/sessions", json={"patient_id": "PRP-CHAT"}, headers=headers
+        ).json()
+        sid = session["session_id"]
+        for _ in range(2):
+            response = client.post(
+                f"/api/chat/sessions/{sid}/turns", json={"query": "Chart HbA1c"}, headers=headers
+            )
+            assert response.status_code == 200, response.text
+            assert (
+                client.get(f"/api/chat/turns/{response.json()['turn_id']}").json()["status"]
+                == "complete"
+            )
+        saved = client.get(f"/api/chat/sessions/{sid}").json()
+        assert len(saved["messages"]) == 4
+        assert len(saved["artifacts"]) == 2
+        assert contexts == [0, 2]
+        assert saved["artifacts"][0]["artifact_id"] != saved["artifacts"][1]["artifact_id"]
+        assert client.get("/api/chat/sessions?patient_id=PRP-CHAT").json()[0]["session_id"] == sid
+        workspace.db.chat_turns.insert_one(
+            {
+                "turn_id": "TURN-INTERRUPTED",
+                "session_id": sid,
+                "user_id": "first",
+                "status": "running",
+            }
+        )
+        workspace.db.chat_sessions.update_one(
+            {"session_id": sid}, {"$set": {"active_turn_id": "TURN-INTERRUPTED"}}
+        )
+        assert client.get(f"/api/chat/sessions/{sid}").json()["active_turn"] is None
+        assert client.get("/api/chat/turns/TURN-INTERRUPTED").json()["status"] == "failed"
+    with TestClient(app) as client:
+        login(client, "second", "doctor-test-password")
+        assert client.get(f"/api/chat/sessions/{sid}").status_code == 404
+        assert client.get("/api/chat/sessions?patient_id=PRP-CHAT").json() == []
 
 
 def test_one_folder_import_preserves_files_ids_and_admin_overview(workspace, tmp_path, monkeypatch):

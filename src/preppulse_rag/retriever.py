@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import time
 
@@ -52,9 +53,16 @@ class DenseVectorIndex:
         self.documents = documents
         self.embeddings = embeddings or LLMFactory.get_embeddings()
         self.doc_vectors: list[list[float]] = []
+        self.available = True
         if documents:
             texts = [d.page_content for d in documents]
-            self.doc_vectors = self.embeddings.embed_documents(texts)
+            try:
+                self.doc_vectors = self.embeddings.embed_documents(texts)
+            except Exception as exc:  # noqa: BLE001 - remote embedding failure must preserve BM25 retrieval
+                self.available = False
+                logging.getLogger(__name__).warning(
+                    "Dense retrieval unavailable (%s); continuing with BM25", type(exc).__name__
+                )
 
     def search(
         self,
@@ -66,7 +74,15 @@ class DenseVectorIndex:
         # Returns top-k documents by cosine similarity above relevance threshold
         if not self.doc_vectors or not self.documents:
             return []
-        q_vec = self.embeddings.embed_query(query)
+        try:
+            q_vec = self.embeddings.embed_query(query)
+        except Exception as exc:  # noqa: BLE001 - use the already-built sparse index after a service failure
+            self.available = False
+            self.doc_vectors = []
+            logging.getLogger(__name__).warning(
+                "Dense query unavailable (%s); continuing with BM25", type(exc).__name__
+            )
+            return []
         scores: list[float] = []
         for d_vec in self.doc_vectors:
             dot = sum(a * b for a, b in zip(q_vec, d_vec))
@@ -74,7 +90,9 @@ class DenseVectorIndex:
         max_score = max(scores, default=0.0)
         cutoff = max(min_score, max_score * relative_threshold)
         ranked_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:top_k]
-        return [(self.documents[i], float(scores[i])) for i in ranked_indices if scores[i] >= cutoff]
+        return [
+            (self.documents[i], float(scores[i])) for i in ranked_indices if scores[i] >= cutoff
+        ]
 
 
 # ---------- hybrid ensemble retriever ----------
@@ -121,12 +139,16 @@ class HybridEnsembleRetriever:
         for rank, (doc, _) in enumerate(sparse_hits):
             cid = doc.metadata.get("chunk_id", str(id(doc)))
             doc_map[cid] = doc
-            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + (self.bm25_weight / (self.rrf_k + rank + 1))
+            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + (
+                self.bm25_weight / (self.rrf_k + rank + 1)
+            )
 
         for rank, (doc, _) in enumerate(dense_hits):
             cid = doc.metadata.get("chunk_id", str(id(doc)))
             doc_map[cid] = doc
-            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + (self.dense_weight / (self.rrf_k + rank + 1))
+            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + (
+                self.dense_weight / (self.rrf_k + rank + 1)
+            )
 
         # 3. Sort by fused score
         sorted_cids = sorted(rrf_scores.keys(), key=lambda c: rrf_scores[c], reverse=True)

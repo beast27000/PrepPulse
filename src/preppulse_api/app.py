@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import secrets
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 from pymongo.errors import DuplicateKeyError
 from starlette.middleware.sessions import SessionMiddleware
 
+from preppulse_api.chat_service import run_chat_turn
 from preppulse_api.clinical import answer_chat, locate_citation, process_patient, render_page
 from preppulse_api.config import (
     PRIVATE_ROOT,
@@ -30,6 +32,8 @@ if len(SESSION_SECRET) < 32:
 
 app = FastAPI(title="PrepPulse local workspace API")
 workers = ThreadPoolExecutor(max_workers=2)
+active_chat_turns: set[str] = set()
+active_brief_jobs: set[str] = set()
 password_hash = PasswordHash.recommended()
 _stt_model = None
 
@@ -473,8 +477,10 @@ def _job(job_id: str, patient_id: str):
             {"job_id": job_id}, {"$set": {"status": "running", "stage": "ocr", "updated_at": now()}}
         )
         total = store.db.workspace_documents.count_documents({"patient_id": patient_id})
+        last_stage = None
 
         def progress(stage: str = "ocr") -> None:
+            nonlocal last_stage
             ready = store.db.workspace_documents.count_documents(
                 {"patient_id": patient_id, "status": "ready"}
             )
@@ -493,6 +499,11 @@ def _job(job_id: str, patient_id: str):
                     }
                 },
             )
+            if stage != last_stage:
+                store.db.jobs.update_one(
+                    {"job_id": job_id}, {"$push": {"steps": {"stage": stage, "at": now()}}}
+                )
+                last_stage = stage
 
         progress()
         brief = process_patient(store, patient_id, progress=progress)
@@ -514,14 +525,33 @@ def _job(job_id: str, patient_id: str):
             {"$set": {"status": "failed", "error": str(exc)[:500], "updated_at": now()}},
         )
     finally:
+        active_brief_jobs.discard(job_id)
         store.client.close()
+
+
+def recover_brief_job(store: WorkspaceStore, job: dict | None) -> dict | None:
+    if (
+        job
+        and job.get("status") in {"queued", "running"}
+        and job["job_id"] not in active_brief_jobs
+    ):
+        values = {
+            "status": "failed",
+            "stage": "Interrupted",
+            "error": "The server restarted before analysis completed. Select Analyze records to retry.",
+            "updated_at": now(),
+        }
+        store.db.jobs.update_one({"job_id": job["job_id"]}, {"$set": values})
+        return {**job, **values}
+    return job
 
 
 def queue_brief_job(store: WorkspaceStore, patient_id: str) -> dict:
     running = store.db.jobs.find_one(
         {"patient_id": patient_id, "status": {"$in": ["queued", "running"]}}, {"_id": 0}
     )
-    if running:
+    running = recover_brief_job(store, running)
+    if running and running["status"] in {"queued", "running"}:
         return running
     job = {
         "job_id": new_id("JOB"),
@@ -530,8 +560,13 @@ def queue_brief_job(store: WorkspaceStore, patient_id: str) -> dict:
         "stage": "ocr",
         "created_at": now(),
     }
-    store.db.jobs.insert_one(job)
-    workers.submit(_job, job["job_id"], patient_id)
+    active_brief_jobs.add(job["job_id"])
+    try:
+        store.db.jobs.insert_one(job)
+        workers.submit(_job, job["job_id"], patient_id)
+    except Exception:
+        active_brief_jobs.discard(job["job_id"])
+        raise
     return {k: v for k, v in job.items() if k != "_id"}
 
 
@@ -550,7 +585,10 @@ def latest_job(
     patient_id: str, current: dict = Depends(clinician), store: WorkspaceStore = Depends(db)
 ):
     patient_access(patient_id, current, store)
-    return store.db.jobs.find_one({"patient_id": patient_id}, {"_id": 0}, sort=[("created_at", -1)])
+    return recover_brief_job(
+        store,
+        store.db.jobs.find_one({"patient_id": patient_id}, {"_id": 0}, sort=[("created_at", -1)]),
+    )
 
 
 @app.get("/api/patients/{patient_id}/brief")
@@ -928,6 +966,245 @@ def end_visit(
 class QueryIn(BaseModel):
     patient_id: str
     query: str = Field(min_length=2, max_length=2000)
+
+
+class ChatSessionIn(BaseModel):
+    patient_id: str
+
+
+class ChatTurnIn(BaseModel):
+    query: str = Field(min_length=2, max_length=4000)
+
+
+def owned_chat_session(session_id: str, current: dict, store: WorkspaceStore) -> dict:
+    session = store.db.chat_sessions.find_one(
+        {"session_id": session_id, "user_id": current["user_id"]}, {"_id": 0}
+    )
+    if not session:
+        raise HTTPException(404, "Conversation not found")
+    patient_access(session["patient_id"], current, store)
+    active_id = session.get("active_turn_id")
+    if active_id and active_id not in active_chat_turns:
+        store.db.chat_turns.update_one(
+            {"turn_id": active_id, "status": {"$in": ["queued", "running"]}},
+            {
+                "$set": {
+                    "status": "failed",
+                    "stage": "Interrupted",
+                    "error": "The server restarted before this response completed. Please retry.",
+                    "updated_at": now(),
+                }
+            },
+        )
+        store.db.chat_sessions.update_one(
+            {"session_id": session_id}, {"$set": {"active_turn_id": None}}
+        )
+        session["active_turn_id"] = None
+    return session
+
+
+@app.get("/api/chat/sessions")
+def list_chat_sessions(
+    patient_id: str, current: dict = Depends(clinician), store: WorkspaceStore = Depends(db)
+):
+    patient_access(patient_id, current, store)
+    return list(
+        store.db.chat_sessions.find(
+            {"patient_id": patient_id, "user_id": current["user_id"]}, {"_id": 0}
+        )
+        .sort("updated_at", -1)
+        .limit(50)
+    )
+
+
+@app.post("/api/chat/sessions")
+def create_chat_session(
+    body: ChatSessionIn, current: dict = Depends(clinician), store: WorkspaceStore = Depends(db)
+):
+    patient_access(body.patient_id, current, store)
+    store.indexes()
+    session = {
+        "session_id": new_id("CHAT"),
+        "patient_id": body.patient_id,
+        "user_id": current["user_id"],
+        "title": "New conversation",
+        "created_at": now(),
+        "updated_at": now(),
+        "active_turn_id": None,
+    }
+    store.db.chat_sessions.insert_one(session)
+    store.audit(current, "chat_session_created", body.patient_id)
+    return {key: value for key, value in session.items() if key != "_id"}
+
+
+@app.get("/api/chat/sessions/{session_id}")
+def get_chat_session(
+    session_id: str, current: dict = Depends(clinician), store: WorkspaceStore = Depends(db)
+):
+    session = owned_chat_session(session_id, current, store)
+    return {
+        "session": session,
+        "messages": list(
+            store.db.chat_messages.find({"session_id": session_id}, {"_id": 0}).sort(
+                "created_at", 1
+            )
+        ),
+        "artifacts": list(
+            store.db.chat_artifacts.find({"session_id": session_id}, {"_id": 0}).sort(
+                "created_at", 1
+            )
+        ),
+        "active_turn": store.db.chat_turns.find_one(
+            {"turn_id": session.get("active_turn_id")}, {"_id": 0}
+        )
+        if session.get("active_turn_id")
+        else None,
+    }
+
+
+def _chat_worker(turn_id: str, session_id: str, question: str):
+    store = WorkspaceStore()
+    try:
+        session = store.db.chat_sessions.find_one({"session_id": session_id}, {"_id": 0})
+
+        def progress(label: str, step: str):
+            store.db.chat_turns.update_one(
+                {"turn_id": turn_id},
+                {
+                    "$set": {
+                        "status": "running",
+                        "stage": label,
+                        "step": step,
+                        "updated_at": now(),
+                    },
+                    "$push": {"steps": {"label": label, "at": now()}},
+                },
+            )
+
+        previous = list(
+            store.db.chat_messages.find(
+                {"session_id": session_id, "turn_id": {"$ne": turn_id}}, {"_id": 0}
+            ).sort("created_at", 1)
+        )
+        result = run_chat_turn(store, session, question, previous, progress)
+        for artifact in result.pop("artifacts", []):
+            store.db.chat_artifacts.insert_one(
+                {**artifact, "user_id": session["user_id"], "turn_id": turn_id}
+            )
+        store.db.chat_messages.insert_one(
+            {
+                **result,
+                "session_id": session_id,
+                "patient_id": session["patient_id"],
+                "user_id": session["user_id"],
+                "turn_id": turn_id,
+            }
+        )
+        store.db.chat_turns.update_one(
+            {"turn_id": turn_id},
+            {
+                "$set": {
+                    "status": "complete",
+                    "stage": "Complete",
+                    "message_id": result["message_id"],
+                    "updated_at": now(),
+                }
+            },
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("Patient chat turn failed: %s", turn_id)
+        store.db.chat_turns.update_one(
+            {"turn_id": turn_id},
+            {
+                "$set": {
+                    "status": "failed",
+                    "stage": "Response failed",
+                    "error": "The response could not be completed. Your message is saved; retry when the local model is ready.",
+                    "updated_at": now(),
+                }
+            },
+        )
+    finally:
+        store.db.chat_sessions.update_one(
+            {"session_id": session_id, "active_turn_id": turn_id},
+            {"$set": {"active_turn_id": None, "updated_at": now()}},
+        )
+        active_chat_turns.discard(turn_id)
+        store.client.close()
+
+
+@app.post("/api/chat/sessions/{session_id}/turns")
+def send_chat_turn(
+    session_id: str,
+    body: ChatTurnIn,
+    current: dict = Depends(clinician),
+    store: WorkspaceStore = Depends(db),
+):
+    session = owned_chat_session(session_id, current, store)
+    turn_id = new_id("TURN")
+    # Register before publishing the ID so a concurrent poll cannot mistake it for
+    # an orphan from a previous server process.
+    active_chat_turns.add(turn_id)
+    try:
+        claimed = store.db.chat_sessions.update_one(
+            {"session_id": session_id, "active_turn_id": None},
+            {
+                "$set": {
+                    "active_turn_id": turn_id,
+                    "updated_at": now(),
+                    "title": body.query[:65]
+                    if session["title"] == "New conversation"
+                    else session["title"],
+                }
+            },
+        )
+    except Exception:
+        active_chat_turns.discard(turn_id)
+        raise
+    if not claimed.modified_count:
+        active_chat_turns.discard(turn_id)
+        raise HTTPException(409, "A response is already being prepared in this conversation")
+    turn = {
+        "turn_id": turn_id,
+        "session_id": session_id,
+        "patient_id": session["patient_id"],
+        "user_id": current["user_id"],
+        "status": "queued",
+        "stage": "Waiting for analysis",
+        "query": body.query,
+        "created_at": now(),
+        "updated_at": now(),
+        "steps": [],
+    }
+    store.db.chat_turns.insert_one(turn)
+    store.db.chat_messages.insert_one(
+        {
+            "message_id": new_id("MSG"),
+            "turn_id": turn_id,
+            "session_id": session_id,
+            "patient_id": session["patient_id"],
+            "user_id": current["user_id"],
+            "role": "user",
+            "text": body.query,
+            "created_at": now(),
+        }
+    )
+    workers.submit(_chat_worker, turn_id, session_id, body.query)
+    store.audit(current, "chat_turn_started", session["patient_id"])
+    return {key: value for key, value in turn.items() if key != "_id"}
+
+
+@app.get("/api/chat/turns/{turn_id}")
+def get_chat_turn(
+    turn_id: str, current: dict = Depends(clinician), store: WorkspaceStore = Depends(db)
+):
+    turn = store.db.chat_turns.find_one(
+        {"turn_id": turn_id, "user_id": current["user_id"]}, {"_id": 0}
+    )
+    if not turn:
+        raise HTTPException(404, "Response not found")
+    owned_chat_session(turn["session_id"], current, store)
+    return store.db.chat_turns.find_one({"turn_id": turn_id}, {"_id": 0})
 
 
 @app.post("/api/chat/query")

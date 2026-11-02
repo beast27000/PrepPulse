@@ -27,6 +27,10 @@ PATIENT_COLLECTIONS = (
     "pathway_items",
     "review_decisions",
     "audit_events",
+    "chat_sessions",
+    "chat_messages",
+    "chat_turns",
+    "chat_artifacts",
 )
 
 

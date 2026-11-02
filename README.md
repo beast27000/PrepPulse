@@ -36,6 +36,9 @@ Run the API and frontend in separate terminals, with the same session secret ava
 
 ```powershell
 $env:PREPPULSE_SESSION_SECRET = "the-same-random-secret-used-above"
+$env:LLM_PROVIDER = "local"
+$env:LOCAL_LLM_BASE_URL = "http://127.0.0.1:1234/v1"
+$env:LOCAL_CHAT_MODEL = "qwen/qwen3-4b-2507"
 python -m uvicorn preppulse_api.app:app --host 127.0.0.1 --port 8000
 ```
 
@@ -47,6 +50,16 @@ npm run dev
 Open the local URL printed by Vite. It proxies `/api` to `127.0.0.1:8000`. Uploaded originals are stored under ignored `private_data/`; sample datasets and generated outputs stay local. Do not run `scripts/audit_dataset_pipeline.py` against patient data retained for the UI: that audit clears MongoDB collections.
 
 On **Patients**, choose **Analyze records** to rerun OCR for pending files, patient-scoped RAG retrieval, and the review agents. The job shows its stage and document counts; the existing brief remains visible until the replacement is ready. A completed brief lists evidence chunks and only source-backed priority observations. Select a cited item to inspect its OCR span. The Source Proof expand button opens a full record workspace with page navigation, searchable record text, and a file rail. Reanalysis tightens older broad citation boxes.
+
+The brief includes a diabetes journey, source visit cards, and admissions/procedure/consultation history across the uploaded records. Laboratory history is extracted directly from OCR rows; a separate history synthesis pass summarizes narrative records with linked excerpts. Review findings include previous recorded values and relevant earlier events.
+
+### Patient conversations and charts
+
+Chat sessions, messages, and requested charts are saved in MongoDB for the selected patient and signed-in doctor. Use **New chat session**, the conversation selector, and **Session charts** to return to earlier work. Replies render headings, emphasis, real HTML tables, and inline numbered source links. Clicking a citation or chart point opens its OCR evidence on the right. The Source Proof panel starts closed in chat and can close or expand into the record workspace. The navigation rail collapses on every screen.
+
+Chart requests create a new named artifact from dated OCR measurements, save it in the session, and open it above the conversation. Charts can collapse, close, and reopen from their message link. Supported extraction includes HbA1c, fasting/post-meal glucose, eGFR, urine ACR, creatinine, LDL, and recorded blood pressure; clinical-event timelines use source record summaries. Missing requested data produces a gap state. No example values, model-invented points, or missing-year estimates are inserted. Chart generation does not require an LLM or embedding service.
+
+The local model defaults to loopback (`127.0.0.1:1234`), avoiding a changing LAN address. Set `LOCAL_LLM_BASE_URL` explicitly if the model runs elsewhere. Local model calls have bounded timeouts. When embeddings fail, BM25 retrieval remains available; if synthesis fails, the response identifies itself as sourced excerpts. Processing bubbles show the actual active retrieval, chart, or review-agent stage. Interrupted jobs become retryable after a server restart.
 
 **Settings** contains per-account browser preferences: Light/Dark/System appearance, larger text, contrast, doctor dictation language and Read aloud visibility, and admin appointment time defaults. These preferences stay in that browser; they are not synchronized through MongoDB. Read aloud is always click-to-play. Restart the API after pulling backend changes; the Vite UI updates automatically.
 
@@ -61,7 +74,7 @@ python scripts/reset_ui_patient_data.py
 python scripts/reset_ui_patient_data.py --apply --confirm preppulse
 ```
 
-This clears patient, document, appointment, visit, pathway, job, and audit collections. It leaves the account collection, indexes, source datasets, and any previously uploaded private files on disk alone. Inspect private storage separately if you need those files removed too.
+This clears patient, document, appointment, visit, pathway, job, conversation, chart artifact, and audit collections. It leaves the account collection, indexes, source datasets, and any previously uploaded private files on disk alone. Inspect private storage separately if you need those files removed too.
 
 The local workspace was reset on 2 November 2026. Both existing login accounts were retained. Restart the API after a reset and sign in again.
 
@@ -103,5 +116,7 @@ cd web
 npm run build
 npm audit
 ```
+
+The focused local suite is `pytest tests/test_ui_api.py tests/test_hybrid_rag.py tests/test_pipeline.py tests/test_manifest_and_storage.py -q`. Browser regression tests use Playwright and installed Microsoft Edge: `cd web; npm run test:e2e`. Set `PREPPULSE_E2E_URL`, `PREPPULSE_E2E_USER`, and `PREPPULSE_E2E_PASSWORD` to an isolated test workspace with an assigned doctor and a processed patient. They create conversations in that account. `PREPPULSE_API_TARGET` can point a separate Vite instance to a validation API, leaving the main workspace untouched. The browser suite checks actual chart requests, rendered tables, point/citation source links, panel expansion/collapse, persisted session reloads, navigation collapse, and responsive width.
 
 The first release targets a local browser and local MongoDB. Before any shared deployment, review authentication, TLS, file encryption, backups, and clinical data handling for that environment.

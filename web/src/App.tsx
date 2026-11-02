@@ -5,7 +5,6 @@ import {
   BookOpen,
   CalendarDays,
   Check,
-  ChevronDown,
   ChevronRight,
   CircleHelp,
   ClipboardCheck,
@@ -15,17 +14,15 @@ import {
   HeartPulse,
   LogOut,
   Maximize2,
-  Mic,
-  Minimize2,
+  PanelLeftClose,
+  PanelLeftOpen,
   Move,
   Plus,
   Search,
-  Send,
   Settings2,
   ShieldCheck,
   Sparkles,
   Stethoscope,
-  Volume2,
   X,
 } from "lucide-react";
 import {
@@ -42,11 +39,13 @@ import {
   Visit,
   patch,
   post,
-  postAudio,
   request,
   setCsrf,
 } from "./api";
 import RecordWorkspace from "./RecordWorkspace";
+import PatientConversation from "./PatientConversation";
+import ProcessBubble from "./ProcessBubble";
+import BriefHistory from "./BriefHistory";
 import {
   defaultPreferences,
   Preferences,
@@ -67,11 +66,6 @@ type Page =
   | "Accounts"
   | "Chat workspace"
   | "Record workspace";
-type ChatMessage = {
-  role: "user" | "assistant";
-  text: string;
-  citations?: Citation[];
-};
 const doctorPages: Page[] = [
   "Today",
   "Patients",
@@ -190,273 +184,6 @@ function Login({ onLogin }: { onLogin: (u: User) => void }) {
   );
 }
 
-function ChatBox({
-  patient,
-  messages,
-  setMessages,
-  full = false,
-  onExpand,
-  onCitation,
-  preferences,
-}: {
-  patient: Patient | null;
-  messages: ChatMessage[];
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
-  full?: boolean;
-  onExpand?: () => void;
-  onCitation: (c: Citation) => void;
-  preferences: Preferences;
-}) {
-  const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [voiceError, setVoiceError] = useState("");
-  const [ttsReady, setTtsReady] = useState(false);
-  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
-  const playback = useRef<HTMLAudioElement | null>(null);
-  const playbackUrl = useRef<string | null>(null);
-  const media = useRef<MediaRecorder | null>(null);
-  const chunks = useRef<Blob[]>([]);
-  useEffect(() => {
-    let active = true;
-    request<{ tts_ready: boolean }>("/voice/capabilities")
-      .then((result) => {
-        if (active) setTtsReady(result.tts_ready);
-      })
-      .catch(() => {
-        if (active) setTtsReady(false);
-      });
-    return () => {
-      active = false;
-      playback.current?.pause();
-      if (playbackUrl.current) URL.revokeObjectURL(playbackUrl.current);
-    };
-  }, []);
-  async function readAloud(text: string, index: number) {
-    if (playback.current) playback.current.pause();
-    if (playbackUrl.current) URL.revokeObjectURL(playbackUrl.current);
-    playback.current = null;
-    playbackUrl.current = null;
-    if (playingIndex === index) {
-      setPlayingIndex(null);
-      return;
-    }
-    if (!patient) return;
-    setVoiceError("");
-    try {
-      const blob = await postAudio("/voice/speak", {
-        patient_id: patient.patient_id,
-        text: text.slice(0, 1200),
-      });
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      playbackUrl.current = url;
-      playback.current = audio;
-      audio.onended = () => {
-        setPlayingIndex(null);
-        URL.revokeObjectURL(url);
-        playbackUrl.current = null;
-      };
-      audio.onerror = () => {
-        setPlayingIndex(null);
-        setVoiceError("Audio playback failed.");
-        URL.revokeObjectURL(url);
-        playbackUrl.current = null;
-      };
-      await audio.play();
-      setPlayingIndex(index);
-    } catch (error) {
-      setPlayingIndex(null);
-      setVoiceError((error as Error).message);
-    }
-  }
-  async function send(e?: React.FormEvent) {
-    e?.preventDefault();
-    const text = input.trim();
-    if (!text || !patient || busy) return;
-    setInput("");
-    setBusy(true);
-    setMessages((m) => [...m, { role: "user", text }]);
-    try {
-      const r = await post<{ answer_markdown: string; citations: Citation[] }>(
-        "/chat/query",
-        { patient_id: patient.patient_id, query: text },
-      );
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", text: r.answer_markdown, citations: r.citations },
-      ]);
-    } catch (err) {
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          text: `Assistant unavailable: ${(err as Error).message}`,
-        },
-      ]);
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function toggleMic() {
-    setVoiceError("");
-    if (recording) {
-      media.current?.stop();
-      setRecording(false);
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      chunks.current = [];
-      const recorder = new MediaRecorder(stream);
-      media.current = recorder;
-      recorder.ondataavailable = (event) => {
-        if (event.data.size) chunks.current.push(event.data);
-      };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const form = new FormData();
-        form.append(
-          "file",
-          new Blob(chunks.current, { type: recorder.mimeType || "audio/webm" }),
-          "dictation.webm",
-        );
-        if (preferences.dictationLanguage !== "auto")
-          form.append("language", preferences.dictationLanguage);
-        setBusy(true);
-        try {
-          const r = await request<{ transcript: string }>("/voice/transcribe", {
-            method: "POST",
-            body: form,
-          });
-          setInput(r.transcript);
-          if (!r.transcript)
-            setVoiceError(
-              "No speech detected. Try again or type your question.",
-            );
-        } catch (err) {
-          setVoiceError((err as Error).message);
-        } finally {
-          setBusy(false);
-        }
-      };
-      recorder.start();
-      setRecording(true);
-    } catch (err) {
-      setVoiceError((err as Error).message);
-    }
-  }
-  return (
-    <section className={"panel chat-panel " + (full ? "chat-full" : "")}>
-      <div className="panel-heading">
-        <div>
-          <div className="eyebrow teal">
-            <Sparkles size={14} /> PREPPULSE ASSISTANT
-          </div>
-          <h3>Ask about this record</h3>
-        </div>
-        {onExpand && (
-          <button
-            className="icon-button"
-            title={full ? "Collapse chat" : "Expand chat"}
-            onClick={onExpand}
-          >
-            {full ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
-          </button>
-        )}
-      </div>
-      <div className="chat-messages" aria-live="polite">
-        {messages.length === 0 ? (
-          <div className="chat-empty">
-            <Sparkles size={22} />
-            <strong>Chart questions, with sources.</strong>
-            <span>
-              Ask about earlier visits, lab trends, medications, or the
-              consultation brief.
-            </span>
-          </div>
-        ) : (
-          messages.map((m, i) => (
-            <div key={i} className={"message " + m.role}>
-              <div className="message-text">{m.text}</div>
-              {m.citations?.length ? (
-                <div className="message-cites">
-                  {m.citations.map((c, j) => (
-                    <button
-                      key={j}
-                      onClick={() => onCitation(c)}
-                      disabled={!c.source_verified}
-                    >
-                      <FileText size={12} />
-                      {c.document_title || "Source"} · p. {c.page_number}
-                      {!c.source_verified ? " · unverified" : ""}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              {m.role === "assistant" && preferences.showReadAloud && (
-                <button
-                  className="text-button muted"
-                  disabled={!ttsReady || !patient}
-                  title={
-                    ttsReady
-                      ? "Play this reply aloud"
-                      : "No compatible local audio endpoint is available"
-                  }
-                  onClick={() => readAloud(m.text, i)}
-                >
-                  <Volume2 size={13} />{" "}
-                  {playingIndex === i ? "Stop audio" : "Read aloud"}
-                </button>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-      <form className="chat-form" onSubmit={send}>
-        <button
-          type="button"
-          className={"icon-button " + (recording ? "recording" : "")}
-          title={recording ? "Stop dictation" : "Dictate question"}
-          onClick={toggleMic}
-          disabled={!patient || busy}
-        >
-          <Mic size={17} />
-        </button>
-        <input
-          aria-label="Ask PrepPulse"
-          placeholder={
-            recording
-              ? "Listening…"
-              : patient
-                ? "Ask about this patient…"
-                : "Select a patient first"
-          }
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          disabled={!patient || busy}
-        />
-        <button
-          className="send-button"
-          disabled={!input.trim() || !patient || busy}
-          title="Send"
-        >
-          <Send size={17} />
-        </button>
-      </form>
-      {voiceError && (
-        <p className="small-error" role="alert">
-          {voiceError}
-        </p>
-      )}
-      <div className="chat-note">
-        Dictation is reviewed before sending. Answers are assistive and require
-        source review.
-      </div>
-    </section>
-  );
-}
-
 function SourceProof({
   patient,
   citation,
@@ -470,6 +197,8 @@ function SourceProof({
 }) {
   const verified = !!citation?.source_verified && !!patient;
   const [failed, setFailed] = useState(false);
+  const proofScrollRef = useRef<HTMLDivElement | null>(null);
+  const proofImageRef = useRef<HTMLImageElement | null>(null);
   useEffect(
     () => setFailed(false),
     [citation?.document_id, citation?.page_number],
@@ -479,6 +208,19 @@ function SourceProof({
     !!box &&
     box.length === 4 &&
     (box[2] - box[0]) * (box[3] - box[1]) <= 100_000;
+  function centerProof() {
+    if (precise && proofScrollRef.current && proofImageRef.current)
+      proofScrollRef.current.scrollTop = Math.max(
+        0,
+        ((box[1] + box[3]) / 2000) * proofImageRef.current.clientHeight -
+          proofScrollRef.current.clientHeight / 2,
+      );
+  }
+  useEffect(centerProof, [
+    citation?.document_id,
+    citation?.page_number,
+    box?.join(","),
+  ]);
   return (
     <section className={"panel proof-panel " + (expanded ? "expanded" : "")}>
       <div className="panel-heading">
@@ -486,7 +228,12 @@ function SourceProof({
           <div className="eyebrow teal">
             <FileText size={14} /> SOURCE PROOF
           </div>
-          <h3>{citation?.document_title || "Select a finding"}</h3>
+          <h3>
+            {citation?.document_title
+              ?.replace(/^\d+_\d{4}-\d{2}-\d{2}_/, "")
+              .replace(/\.pdf$/i, "")
+              .replaceAll("_", " ") || "Select a finding"}
+          </h3>
           <p>
             {citation
               ? verified
@@ -510,27 +257,30 @@ function SourceProof({
             <FileText size={13} />
             {citation?.document_title} <span>page {citation?.page_number}</span>
           </div>
-          <div className="proof-preview">
-            <img
-              alt="Original document page"
-              src={`/api/patients/${patient!.patient_id}/documents/${citation!.document_id}/page/${citation!.page_number}`}
-              onError={() => setFailed(true)}
-            />
-            {precise && (
-              <div
-                className="proof-highlight"
-                style={{
-                  left: box[0] / 10 + "%",
-                  top: box[1] / 10 + "%",
-                  width: (box[2] - box[0]) / 10 + "%",
-                  height: (box[3] - box[1]) / 10 + "%",
-                }}
+          <div className="proof-scroll" ref={proofScrollRef}>
+            <div className="proof-preview">
+              <img
+                ref={proofImageRef}
+                onLoad={centerProof}
+                alt="Original document page"
+                src={`/api/patients/${patient!.patient_id}/documents/${citation!.document_id}/page/${citation!.page_number}`}
+                onError={() => setFailed(true)}
               />
-            )}
+              {precise && (
+                <div
+                  className="proof-highlight"
+                  style={{
+                    left: box[0] / 10 + "%",
+                    top: box[1] / 10 + "%",
+                    width: (box[2] - box[0]) / 10 + "%",
+                    height: (box[3] - box[1]) / 10 + "%",
+                  }}
+                />
+              )}
+            </div>
           </div>
           <div className="proof-citation">
-            {citation?.document_title} · page {citation?.page_number} · box [
-            {box?.join(", ")}]
+            Verified source excerpt · page {citation?.page_number}
           </div>
           <p className="proof-snippet">
             {citation?.snippet || citation?.extracted_text}
@@ -561,16 +311,16 @@ function SourceProof({
 
 function FloatingAssistant({
   patient,
-  messages,
-  setMessages,
   onCitation,
   preferences,
+  userId,
+  onExpand,
 }: {
   patient: Patient | null;
-  messages: ChatMessage[];
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   onCitation: (c: Citation) => void;
   preferences: Preferences;
+  userId: string;
+  onExpand: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number }>(() => {
@@ -620,13 +370,15 @@ function FloatingAssistant({
     <div className="floating-assistant" style={{ right: pos.x, bottom: pos.y }}>
       {open && (
         <div className="floating-panel">
-          <ChatBox
+          <PatientConversation
             patient={patient}
-            messages={messages}
-            setMessages={setMessages}
-            onCitation={onCitation}
+            userId={userId}
+            onOpenRecord={onCitation}
             preferences={preferences}
-            onExpand={() => setOpen(false)}
+            onExpand={() => {
+              setOpen(false);
+              onExpand();
+            }}
           />
         </div>
       )}
@@ -652,6 +404,9 @@ export default function App() {
   const [preferences, setPreferences] =
     useState<Preferences>(defaultPreferences);
   const [loading, setLoading] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem("preppulse.sidebar-collapsed") === "true",
+  );
   const [page, setPage] = useState<Page>("Patients");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selected, setSelected] = useState<Patient | null>(null);
@@ -667,7 +422,6 @@ export default function App() {
   const [citation, setCitation] = useState<Citation | null>(null);
   const [recordPreview, setRecordPreview] = useState<Doc | null>(null);
   const [chatExpanded, setChatExpanded] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [language, setLanguage] = useState("en");
   const [notice, setNotice] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -799,7 +553,6 @@ export default function App() {
     setVisits([]);
     setCitation(null);
     loadSelected();
-    setMessages([]);
   }, [selected?.patient_id]);
   useEffect(() => {
     if (user) loadAppointments();
@@ -1015,7 +768,9 @@ export default function App() {
   if (!user) return <Login onLogin={acceptLogin} />;
 
   return (
-    <div className="app-shell">
+    <div
+      className={"app-shell " + (sidebarCollapsed ? "sidebar-collapsed" : "")}
+    >
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark">
@@ -1033,6 +788,8 @@ export default function App() {
             return (
               <button
                 key={item}
+                title={item}
+                aria-label={item}
                 className={"nav-item " + (page === item ? "active" : "")}
                 onClick={() => {
                   setPage(item);
@@ -1040,7 +797,7 @@ export default function App() {
                 }}
               >
                 <Icon size={17} />
-                {item}
+                <span className="nav-label">{item}</span>
                 {item === "Today" &&
                   appointments.some((a) => a.status === "scheduled") && (
                     <i className="nav-dot" />
@@ -1070,6 +827,28 @@ export default function App() {
       <div className="app-body">
         <header className="topbar">
           <div className="breadcrumb">
+            <button
+              className="icon-button sidebar-toggle"
+              title={
+                sidebarCollapsed ? "Expand navigation" : "Collapse navigation"
+              }
+              aria-label={
+                sidebarCollapsed ? "Expand navigation" : "Collapse navigation"
+              }
+              onClick={() => {
+                setSidebarCollapsed(!sidebarCollapsed);
+                localStorage.setItem(
+                  "preppulse.sidebar-collapsed",
+                  String(!sidebarCollapsed),
+                );
+              }}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen size={18} />
+              ) : (
+                <PanelLeftClose size={18} />
+              )}
+            </button>
             Workspace <ChevronRight size={14} />{" "}
             <strong>{chatFullscreen ? "Chat workspace" : page}</strong>
           </div>
@@ -1132,7 +911,14 @@ export default function App() {
             </button>
           </div>
         )}
-        <main className="content">
+        <main
+          className={
+            "content " +
+            (page === "Chat workspace" || chatFullscreen
+              ? "conversation-content"
+              : "")
+          }
+        >
           {user.role === "doctor" ? (
             <>
               {page === "Patients" && !chatFullscreen && (
@@ -1259,6 +1045,10 @@ export default function App() {
                             </div>
                           ) : (
                             <>
+                              <BriefHistory
+                                brief={brief}
+                                onCitation={setCitation}
+                              />
                               <div className="four-cards">
                                 <div className="brief-card cool">
                                   <div className="card-head">
@@ -1284,7 +1074,15 @@ export default function App() {
                                             }
                                           >
                                             <small>{k.name}</small>
-                                            <strong>{k.value}</strong>
+                                            <strong>
+                                              {k.value}
+                                              {k.unit &&
+                                              !k.value.includes(k.unit)
+                                                ? k.unit === "%"
+                                                  ? "%"
+                                                  : ` ${k.unit}`
+                                                : ""}
+                                            </strong>
                                             <span>
                                               {k.date_str?.slice(5) || "—"} ·{" "}
                                               {k.trend_direction}
@@ -1334,7 +1132,7 @@ export default function App() {
                                       ))
                                   ) : (
                                     <p className="empty-small">
-                                      No care gaps identified.
+                                      No source-backed care gap was confirmed.
                                     </p>
                                   )}
                                 </div>
@@ -1419,6 +1217,12 @@ export default function App() {
                                   <span>LATEST METRIC</span>
                                   <strong>
                                     {brief.trajectory.kpis[0]?.value || "—"}
+                                    {brief.trajectory.kpis[0]?.unit === "%" &&
+                                    !brief.trajectory.kpis[0]?.value.includes(
+                                      "%",
+                                    )
+                                      ? "%"
+                                      : ""}
                                   </strong>
                                   <small>
                                     {brief.trajectory.kpis[0]?.name ||
@@ -1428,8 +1232,7 @@ export default function App() {
                                 <div>
                                   <span>OPEN ITEMS</span>
                                   <strong>
-                                    {brief.care_gaps.items.length +
-                                      brief.mismatches.items.length}
+                                    {brief.priority_findings.length}
                                   </strong>
                                   <small>Potential review items</small>
                                 </div>
@@ -1473,6 +1276,21 @@ export default function App() {
                                             ? `${f.citation.document_title} · ${shortDate(f.date)} · p. ${f.citation.page_number}`
                                             : "No verified direct source attached"}
                                         </button>
+                                        {f.related_citations?.map(
+                                          (source, index) => (
+                                            <button
+                                              className="source-link"
+                                              key={index}
+                                              onClick={() =>
+                                                setCitation(source)
+                                              }
+                                            >
+                                              <FileText size={13} />
+                                              Previous measurement ·{" "}
+                                              {source.document_title}
+                                            </button>
+                                          ),
+                                        )}
                                       </div>
                                       <div className="finding-controls">
                                         <div>
@@ -1585,11 +1403,13 @@ export default function App() {
                             ? "Collapse assistant"
                             : "Expand assistant inline"}
                         </button>
-                        <ChatBox
+                        <PatientConversation
                           patient={selected}
-                          messages={messages}
-                          setMessages={setMessages}
-                          onCitation={setCitation}
+                          userId={user.user_id}
+                          onOpenRecord={(source) => {
+                            setCitation(source);
+                            openRecordWorkspace();
+                          }}
                           preferences={preferences}
                           onExpand={() => setChatFullscreen(true)}
                         />
@@ -2002,15 +1822,11 @@ export default function App() {
               )}
               {(page === "Chat workspace" || chatFullscreen) && (
                 <>
-                  <div className="page-intro">
-                    <div>
-                      <div className="eyebrow teal">PATIENT ASSISTANT</div>
-                      <h1>Chart conversation</h1>
-                      <p>
-                        {selected?.name || "Select a patient"} · Review prior
-                        records and linked evidence.
-                      </p>
-                    </div>
+                  <div className="conversation-page-top">
+                    <span>
+                      {selected?.name || "Select a patient"} · Patient
+                      conversation
+                    </span>
                     <button
                       className="secondary"
                       onClick={() => {
@@ -2021,73 +1837,16 @@ export default function App() {
                       Back to Patients
                     </button>
                   </div>
-                  <div className="chat-workspace">
-                    <ChatBox
-                      patient={selected}
-                      messages={messages}
-                      setMessages={setMessages}
-                      full
-                      onCitation={setCitation}
-                      preferences={preferences}
-                    />
-                    <div>
-                      <SourceProof
-                        patient={selected}
-                        citation={citation}
-                        expanded
-                        onExpand={openRecordWorkspace}
-                      />
-                      <section className="panel context-panel">
-                        <h3>Patient context</h3>
-                        <p>{brief?.classification.stage || "No brief yet"}</p>
-                        <p>
-                          {documents.length} records ·{" "}
-                          {brief?.metric_series.length || 0} metric series
-                        </p>
-                        {brief && <p>{brief.trajectory.summary}</p>}
-                        <h4>Metric charts and tables</h4>
-                        {brief?.metric_series.slice(0, 5).map((s) => (
-                          <MetricExplorer
-                            key={s.metric_name}
-                            series={s}
-                            onCitation={setCitation}
-                          />
-                        ))}
-                        <h4>Previous records</h4>
-                        {documents.map((d) => (
-                          <button
-                            className="context-row record-button"
-                            key={d.record_id}
-                            onClick={() => setRecordPreview(d)}
-                          >
-                            <strong>{d.filename}</strong>
-                            <span>{shortDate(d.visit_date)}</span>
-                          </button>
-                        ))}
-                        {recordPreview && selected && (
-                          <div className="record-preview">
-                            <div className="section-heading">
-                              <strong>{recordPreview.filename}</strong>
-                              <button
-                                className="text-button"
-                                onClick={() => setRecordPreview(null)}
-                              >
-                                Close
-                              </button>
-                            </div>
-                            <img
-                              alt={`Page 1 of ${recordPreview.filename}`}
-                              src={`/api/patients/${selected.patient_id}/documents/${recordPreview.record_id}/page/1`}
-                            />
-                            <p>
-                              Document preview. No claim-specific highlight is
-                              selected.
-                            </p>
-                          </div>
-                        )}
-                      </section>
-                    </div>
-                  </div>
+                  <PatientConversation
+                    patient={selected}
+                    userId={user.user_id}
+                    preferences={preferences}
+                    full
+                    onOpenRecord={(source) => {
+                      setCitation(source);
+                      openRecordWorkspace();
+                    }}
+                  />
                 </>
               )}
             </>
@@ -2114,9 +1873,12 @@ export default function App() {
           !chatFullscreen && (
             <FloatingAssistant
               patient={selected}
-              messages={messages}
-              setMessages={setMessages}
-              onCitation={setCitation}
+              userId={user.user_id}
+              onExpand={() => setChatFullscreen(true)}
+              onCitation={(source) => {
+                setCitation(source);
+                openRecordWorkspace();
+              }}
               preferences={preferences}
             />
           )}
@@ -2133,84 +1895,13 @@ export default function App() {
           }}
         />
       )}
-    </div>
-  );
-}
-
-function MetricExplorer({
-  series,
-  onCitation,
-}: {
-  series: Brief["metric_series"][number];
-  onCitation: (c: Citation) => void;
-}) {
-  const points = [...series.points].sort((a, b) =>
-    a.date.localeCompare(b.date),
-  );
-  if (!points.length)
-    return (
-      <p className="small-muted">
-        {series.metric_name}: no chartable measurements.
-      </p>
-    );
-  const values = points.map((p) => p.value);
-  const low = Math.min(...values),
-    high = Math.max(...values);
-  const span = high - low || 1;
-  const coords = points.map((p, i) => ({
-    x: points.length === 1 ? 150 : 24 + (i * 252) / (points.length - 1),
-    y: 76 - ((p.value - low) / span) * 52,
-  }));
-  return (
-    <div className="metric-explorer">
-      <strong>{series.metric_name}</strong>
-      <svg
-        viewBox="0 0 300 100"
-        role="img"
-        aria-label={`${series.metric_name} trend chart`}
-      >
-        <line x1="18" y1="78" x2="284" y2="78" stroke="#d5e5e5" />
-        <polyline
-          points={coords.map((p) => `${p.x},${p.y}`).join(" ")}
-          fill="none"
-          stroke="#348f89"
-          strokeWidth="2.5"
+      {(job?.status === "running" || job?.status === "queued") && (
+        <ProcessBubble
+          label={job.stage || "Waiting for analysis"}
+          detail={`${job.documents_ready || 0}/${job.documents_total || documents.length} records processed`}
+          offset={page === "Chat workspace" || chatFullscreen}
         />
-        {coords.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="4" fill="#348f89" />
-        ))}
-      </svg>
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Value</th>
-            <th>Source</th>
-          </tr>
-        </thead>
-        <tbody>
-          {points.map((p, i) => (
-            <tr key={i}>
-              <td>{shortDate(p.date)}</td>
-              <td>
-                {p.value} {p.unit}
-              </td>
-              <td>
-                {p.citation?.source_verified ? (
-                  <button
-                    className="source-link"
-                    onClick={() => onCitation(p.citation!)}
-                  >
-                    View
-                  </button>
-                ) : (
-                  "Unverified"
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      )}
     </div>
   );
 }

@@ -25,6 +25,8 @@ uv.lock
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
+web/test-results/
+web/playwright-report/
 private_data/
 .tmp/
 
