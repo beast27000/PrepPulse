@@ -30,7 +30,7 @@ $env:PREPPULSE_ADMIN_PASSWORD = "replace-with-a-unique-long-password"
 python scripts/bootstrap_ui_admin.py
 ```
 
-Bootstrap creates the first admin and MongoDB indexes. It refuses to overwrite an existing account. Sign in as that admin to create doctors, register patients, assign doctors, schedule appointments, or import the local sample dataset. The API requires `PREPPULSE_SESSION_SECRET` on every start.
+Bootstrap creates the first admin and MongoDB indexes. It refuses to overwrite an existing account. Sign in as that admin to create doctors, register patients, assign doctors, schedule appointments, or upload one patient folder at a time. The API requires `PREPPULSE_SESSION_SECRET` on every start.
 
 Run the API and frontend in separate terminals, with the same session secret available to the API terminal:
 
@@ -45,6 +45,21 @@ npm run dev
 ```
 
 Open the local URL printed by Vite. It proxies `/api` to `127.0.0.1:8000`. Uploaded originals are stored under ignored `private_data/`; sample datasets and generated outputs stay local. Do not run `scripts/audit_dataset_pipeline.py` against patient data retained for the UI: that audit clears MongoDB collections.
+
+### Patient folder intake
+
+In **New patient intake**, option 3 selects exactly one folder named like `PP001_Ananya_Baruah`. Choose its doctor and upload. PrepPulse derives `PP001` and `Ananya Baruah` from that folder name, creates a separate immutable `PRP-` ID, and stores every selected file privately. PDF, PNG, and JPEG files become clinical documents and are processed in a background job; a manifest or text index is retained as an auxiliary file. The page shows saved/unchanged counts and OCR/analysis progress. Reuploading the same folder skips files with the same relative path and content hash; changed files are retained as new versions. The browser supports folder selection in current Edge and Chrome. Option 1 still registers a patient manually, and option 2 still appends a single document.
+
+To clear patient records from the local `preppulse` database while retaining admin and doctor accounts, first stop the API. Preview the counts, then run the guarded reset:
+
+```powershell
+python scripts/reset_ui_patient_data.py
+python scripts/reset_ui_patient_data.py --apply --confirm preppulse
+```
+
+This clears patient, document, appointment, visit, pathway, job, and audit collections. It leaves the account collection, indexes, source datasets, and any previously uploaded private files on disk alone. Inspect private storage separately if you need those files removed too.
+
+The local workspace was reset on 2 November 2026. Both existing login accounts were retained. Restart the API after a reset and sign in again.
 
 ## Repository map
 

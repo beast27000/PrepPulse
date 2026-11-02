@@ -4,7 +4,7 @@ Updated 30 October 2026. This document describes the `UI` branch implementation 
 
 ## 1. Source of truth and visual reference
 
-The two Replit screenshots supplied by the project owner are the reference for the doctor **Patients** page. The screen uses a dark navy left rail, pale gray workspace, warm white rounded panels, compact teal labels, four colored consultation cards, a dated findings list, and a right Source Proof panel. The new app uses the same visual hierarchy and restrained line icons. Do not use emoji, a clinic name, or diabetes-only product branding. The supplied screenshots are not stored as image files in this repository; use the owner's originals for pixel comparison.
+The two Replit screenshots supplied by the project owner are the reference for the doctor **Patients** page. The screen uses a dark navy left rail, pale gray workspace, warm white rounded panels, compact teal labels, four colored consultation cards, a dated findings list, and a right Source Proof panel. The new app uses the same visual hierarchy and restrained line icons. The current subtitle is **Diabetes Clinical Intelligence**. Do not use emoji or a clinic name. The supplied screenshots are not stored as image files in this repository; use the owner's originals for pixel comparison.
 
 The current code contract is `src/preppulse_agents/schemas.py:ConsultationBrief`. The old examples in this document referred to a nonexistent `DecadeConsultationBrief` and `cards[]`. Those were mock shapes and are **not** API payloads. `freshness_score` currently comes from a fixed agent compiler value, so the UI deliberately avoids claiming a clinically fresh score.
 
@@ -29,7 +29,7 @@ Doctor rail: **Today**, **Patients**, **Records**, **Care pathways**, **Guidance
 
 `patient_id` is an immutable internal ID with the `PRP-` prefix. It is the join key for visits, appointments, documents, brief jobs, and pathways. Existing sample folder codes, such as `PP001`, and the full folder name, such as `PP001_Ananya_Baruah`, are searchable aliases in `external_aliases`. Both IDs appear in the doctor's patient context where an external alias exists. A name search may return multiple patients; the user chooses one explicitly. Doctors can only search their assigned patients.
 
-The importer scans `datasets/PrepPulse Dataset/PP*_*` and creates registry rows and document metadata without moving the original files. It is idempotent by full folder path alias and source path. **The folder name wins over `manifest.json.patient_folder`**, because at least one supplied sample folder and manifest disagree. Colliding short aliases are not assigned twice. New intake uses only PrepPulse IDs, so future dataset numbering cannot collide with application IDs.
+Option 3 in New patient intake accepts one browser-selected folder named `ID_Patient_Name`, such as `PP001_Ananya_Baruah`. The folder name supplies the external ID and display name; a new `PRP-` ID is assigned internally. The short ID and full folder name are searchable aliases. The browser uploads the selected files and their relative paths, and the API copies every file to patient-scoped private storage. PDF, PNG, and JPEG files become clinical documents; auxiliary files such as `manifest.json` and `RECORD_INDEX.txt` are retained but not sent through OCR. A manifest can supply visit date and document type, but cannot override the folder identity. Reimporting an unchanged relative path and hash skips that file; a changed file becomes a new stored version. Colliding external IDs are rejected rather than assigned to a different patient. The old all-dataset scanner was removed.
 
 Admins register the patient name, optional birth date and sex, and an assigned doctor. They may immediately attach initial records or later select the same patient to append visit documents. Doctors may append records for assigned patients from the Patients and Records pages. Each file gets a distinct `DOC-` record ID, visit date, document type, and private source path. Accepted formats: PDF, PNG, JPEG; maximum upload size: 30 MB. The browser never receives a filesystem path. Generated OCR is written to the existing `patient_documents` collection using the internal PrepPulse ID, so RAG patient filtering stays consistent across imported and new patients.
 
@@ -84,11 +84,11 @@ Guidance library has an empty approved-content state. No clinical guidance is ge
 
 ## 5. Admin screens
 
-**New patient intake:** register a patient, assign a doctor, then upload initial documents. The same form area can select a registered patient to append later records. A separate import action registers local synthetic sample folders for a chosen doctor. Registration rejects missing active doctor assignment.
+**New patient intake:** Option 1 registers a patient and doctor; option 2 appends a single document to an existing patient; option 3 uploads exactly one patient folder and all its files. Folder intake reports saved/unchanged file counts and an OCR/analysis job with ready/failed document counts. Registration and folder intake reject a missing active doctor assignment.
 
 **Patient appointments:** choose registered patient and assigned doctor, visit date/time, and a scheduling note. Create, edit, and cancel appointments. The doctor sees scheduled appointments on Today after the next refresh. Appointment status and clinical visit status are separate.
 
-**Patient directory:** browse registry cards with internal and optional external IDs and assign an additional doctor. **Accounts:** create doctor/admin accounts and disable accounts; self-disable is rejected. **Settings:** show the current admin context and local deployment notes.
+**Patient directory:** browse registry cards with internal and optional external IDs and assign an additional doctor. Clicking a card opens an admin-only overview with assigned doctors, document states, visit log, and all appointments; clinical notes and the consultation brief are excluded. **Accounts:** create doctor/admin accounts and disable accounts; self-disable is rejected. **Settings:** show the current admin context and local deployment notes. Theme and other preference ideas remain research only.
 
 ## 6. API and data contracts
 
@@ -98,7 +98,8 @@ All routes start with `/api`; JSON except multipart upload/transcription and PNG
 |---|---|---|
 | `POST /auth/login`, `GET /auth/me`, `POST /auth/logout` | Both | Session and CSRF |
 | `GET /patients?q=`, `GET /patients/{id}` | Both, scoped | Search and select |
-| `POST /patients`, `POST /admin/import-samples`, `POST /patients/{id}/assign/{doctor_id}` | Admin | Register/import/assign |
+| `POST /patients`, `POST /admin/import-folder`, `POST /patients/{id}/assign/{doctor_id}` | Admin | Register/upload one folder/assign |
+| `GET /admin/patients/{id}/overview` | Admin | Patient administration history, without clinical brief or notes |
 | `GET/POST /patients/{id}/documents`, `GET /patients/{id}/documents/{record_id}/page/{page}` | Scoped | Append and inspect source records |
 | `POST /patients/{id}/brief/jobs`, `GET /patients/{id}/brief/jobs/latest`, `GET /patients/{id}/brief` | Doctor | Build and read agent brief |
 | `GET/POST /appointments`, `PATCH /appointments/{id}`, `POST /appointments/{id}/cancel` | Admin writes; doctor reads own | Scheduling |
@@ -119,5 +120,7 @@ The downloaded `mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF` is intended for o
 ## 8. Run, test, and limitations
 
 Install Python dependencies from `requirements.txt` and frontend dependencies with `npm install` in `web/`. Set a random `PREPPULSE_SESSION_SECRET` of at least 32 characters and local MongoDB. Set `PREPPULSE_ADMIN_USER`, `PREPPULSE_ADMIN_NAME`, and a 12+ character `PREPPULSE_ADMIN_PASSWORD`; run `python scripts/bootstrap_ui_admin.py` once. Start `python -m uvicorn preppulse_api.app:app --host 127.0.0.1 --port 8000` and `npm run dev` in `web/`; open the Vite local URL. Vite proxies `/api` to loopback port 8000.
+
+For the owner-approved fresh start, `scripts/reset_ui_patient_data.py` previews collection counts and `--apply --confirm preppulse` clears patient-linked MongoDB collections after the API is stopped. It retains both login accounts, database indexes, and original local dataset files. It also clears patient audit events so old patient IDs do not remain in the workspace.
 
 The current integration is local-only. It has no shared-host HTTPS, production secret management, backups, or approved content library. A working GGUF audio runtime remains to be connected, and the sidebar checklist's temporary check marks are not persisted. `scripts/audit_dataset_pipeline.py` is **not** a UI entry point; it clears MongoDB. Existing agent citation generation and fixed freshness score remain backend limitations. The UI therefore hides unverified highlights and avoids a clinical freshness claim.

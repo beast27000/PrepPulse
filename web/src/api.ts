@@ -34,6 +34,36 @@ export type Doc = {
   error?: string;
   page_count?: number;
 };
+export type ProcessingJob = {
+  job_id: string;
+  status: string;
+  stage?: string;
+  documents_total?: number;
+  documents_ready?: number;
+  documents_failed?: number;
+  error?: string;
+};
+export type FolderImportResult = {
+  patient_id: string;
+  patient_name: string;
+  external_id: string;
+  folder_alias: string;
+  patient_created: boolean;
+  files_selected: number;
+  files_saved: number;
+  files_unchanged: number;
+  documents_queued: number;
+  job?: ProcessingJob;
+};
+export type AdminPatientOverview = {
+  patient: Patient;
+  doctors: { user_id: string; name: string }[];
+  documents: Doc[];
+  visits: Visit[];
+  appointments: Appointment[];
+  stored_files: number;
+  latest_job: ProcessingJob | null;
+};
 export type Citation = {
   document_id: string;
   document_title?: string;

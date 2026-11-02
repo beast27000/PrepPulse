@@ -29,10 +29,12 @@ import {
   X,
 } from "lucide-react";
 import {
+  AdminPatientOverview,
   Appointment,
   Brief,
   Citation,
   Doc,
+  FolderImportResult,
   Finding,
   Patient,
   User,
@@ -138,7 +140,7 @@ function Login({ onLogin }: { onLogin: (u: User) => void }) {
           </span>
           <span>
             <strong>PrepPulse</strong>
-            <small>CLINICAL CHART REVIEW</small>
+            <small>DIABETES CLINICAL INTELLIGENCE</small>
           </span>
         </div>
         <div className="eyebrow teal">SECURE WORKSPACE</div>
@@ -927,7 +929,7 @@ export default function App() {
           </span>
           <span>
             <strong>PrepPulse</strong>
-            <small>CLINICAL CHART REVIEW</small>
+            <small>DIABETES CLINICAL INTELLIGENCE</small>
           </span>
         </div>
         <nav aria-label="Main navigation">
@@ -2295,10 +2297,70 @@ function AdminPages({
   const [accountName, setAccountName] = useState("");
   const [role, setRole] = useState<"doctor" | "admin">("doctor");
   const [intakePatient, setIntakePatient] = useState<Patient | null>(null);
+  const folderInput = useRef<HTMLInputElement | null>(null);
+  const [folderFiles, setFolderFiles] = useState<File[]>([]);
+  const [folderError, setFolderError] = useState("");
+  const [folderBusy, setFolderBusy] = useState(false);
+  const [folderResult, setFolderResult] = useState<FolderImportResult | null>(
+    null,
+  );
+  const [directoryPatient, setDirectoryPatient] = useState<Patient | null>(
+    null,
+  );
+  const [directoryOverview, setDirectoryOverview] =
+    useState<AdminPatientOverview | null>(null);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryError, setDirectoryError] = useState("");
   const [editAppointment, setEditAppointment] = useState<Appointment | null>(
     null,
   );
   const selectedDoctor = doctor || doctors[0]?.user_id || "";
+  useEffect(() => {
+    folderInput.current?.setAttribute("webkitdirectory", "");
+    folderInput.current?.setAttribute("directory", "");
+  }, [page]);
+  useEffect(() => {
+    if (!directoryPatient || page !== "Patient directory") return;
+    let active = true;
+    setDirectoryLoading(true);
+    setDirectoryOverview(null);
+    setDirectoryError("");
+    request<AdminPatientOverview>(
+      `/admin/patients/${directoryPatient.patient_id}/overview`,
+    )
+      .then((result) => {
+        if (active) setDirectoryOverview(result);
+      })
+      .catch((error) => {
+        if (active) setDirectoryError((error as Error).message);
+      })
+      .finally(() => {
+        if (active) setDirectoryLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [directoryPatient?.patient_id, page]);
+  useEffect(() => {
+    if (
+      !folderResult?.job ||
+      !["queued", "running"].includes(folderResult.job.status)
+    )
+      return;
+    const timer = setInterval(async () => {
+      try {
+        const next = await request<AdminPatientOverview>(
+          `/admin/patients/${folderResult.patient_id}/overview`,
+        );
+        setFolderResult((current) =>
+          current ? { ...current, job: next.latest_job || undefined } : current,
+        );
+      } catch {
+        /* The last visible status remains until retry. */
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [folderResult?.patient_id, folderResult?.job?.status]);
   async function addPatient(e: React.FormEvent) {
     e.preventDefault();
     const result = await run(
@@ -2365,19 +2427,32 @@ function AdminPages({
       setAccountName("");
     }
   }
-  async function importSamples() {
-    if (!selectedDoctor) return;
+  async function importFolder(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedDoctor || !folderFiles.length) return;
+    setFolderBusy(true);
+    setFolderError("");
+    setFolderResult(null);
     const form = new FormData();
     form.append("doctor_id", selectedDoctor);
-    const result = await run(
-      () =>
-        request<{ patients_created: number }>("/admin/import-samples", {
-          method: "POST",
-          body: form,
-        }),
-      "Sample registry import finished",
-    );
-    if (result) reloadPatients();
+    for (const file of folderFiles) {
+      form.append("files", file, file.name);
+      form.append("paths", file.webkitRelativePath);
+    }
+    try {
+      const result = await request<FolderImportResult>("/admin/import-folder", {
+        method: "POST",
+        body: form,
+      });
+      setFolderResult(result);
+      reloadPatients();
+      setFolderFiles([]);
+      if (folderInput.current) folderInput.current.value = "";
+    } catch (error) {
+      setFolderError((error as Error).message);
+    } finally {
+      setFolderBusy(false);
+    }
   }
   return (
     <>
@@ -2488,27 +2563,115 @@ function AdminPages({
             <section className="panel admin-form">
               <div className="panel-heading">
                 <div>
-                  <div className="eyebrow teal">03 · EXISTING DATA</div>
-                  <h3>Import sample patients</h3>
+                  <div className="eyebrow teal">03 · FOLDER INTAKE</div>
+                  <h3>Upload one patient folder</h3>
                 </div>
                 <FolderOpen size={18} />
               </div>
               <p>
-                Import the local dataset once. PrepPulse IDs stay separate from
-                folder aliases such as PP001. Repeating the import does not
-                create duplicate patients.
+                Choose one folder such as PP001_Ananya_Baruah. PrepPulse stores
+                every file, creates a separate permanent patient ID, and
+                processes the clinical documents.
               </p>
-              <p className="small-muted">
-                Folder names are authoritative when a manifest contains a
-                conflicting ID.
-              </p>
-              <button
-                className="secondary"
-                onClick={importSamples}
-                disabled={!selectedDoctor}
-              >
-                Import local sample registry
-              </button>
+              <form onSubmit={importFolder}>
+                <label>
+                  Patient folder
+                  <input
+                    ref={folderInput}
+                    type="file"
+                    multiple
+                    onChange={(event) => {
+                      const chosen = Array.from(event.target.files || []);
+                      const roots = new Set(
+                        chosen.map(
+                          (file) => file.webkitRelativePath.split("/")[0],
+                        ),
+                      );
+                      setFolderFiles(chosen);
+                      setFolderResult(null);
+                      setFolderError(
+                        !chosen.length
+                          ? ""
+                          : roots.size !== 1 ||
+                              chosen.some((file) => !file.webkitRelativePath)
+                            ? "Choose exactly one folder in a browser that supports folder selection."
+                            : "",
+                      );
+                    }}
+                  />
+                </label>
+                {folderFiles.length > 0 && (
+                  <div className="folder-summary">
+                    <strong>
+                      {folderFiles[0].webkitRelativePath.split("/")[0]}
+                    </strong>
+                    <span>
+                      {folderFiles.length} files ·{" "}
+                      {(
+                        folderFiles.reduce((sum, file) => sum + file.size, 0) /
+                        1024 /
+                        1024
+                      ).toFixed(1)}{" "}
+                      MB
+                    </span>
+                    <span>
+                      Assign to{" "}
+                      {doctors.find((d) => d.user_id === selectedDoctor)
+                        ?.name || "a doctor"}
+                    </span>
+                  </div>
+                )}
+                {folderError && (
+                  <p className="small-error" role="alert">
+                    {folderError}
+                  </p>
+                )}
+                <button
+                  className="secondary"
+                  disabled={
+                    !selectedDoctor ||
+                    !folderFiles.length ||
+                    !!folderError ||
+                    folderBusy
+                  }
+                >
+                  {folderBusy
+                    ? "Uploading folder…"
+                    : "Upload this patient folder"}
+                </button>
+              </form>
+              {folderResult && (
+                <div className="folder-result" role="status">
+                  <strong>
+                    {folderResult.patient_name} · {folderResult.patient_id}
+                  </strong>
+                  <span>
+                    Folder ID {folderResult.external_id} ·{" "}
+                    {folderResult.files_saved} files saved ·{" "}
+                    {folderResult.files_unchanged} unchanged
+                  </span>
+                  <span>
+                    {folderResult.documents_queued} clinical documents queued
+                    for OCR and analysis.
+                  </span>
+                  {folderResult.job && (
+                    <span>
+                      Processing:{" "}
+                      {folderResult.job.stage || folderResult.job.status} ·{" "}
+                      {folderResult.job.documents_ready || 0}/
+                      {folderResult.job.documents_total ||
+                        folderResult.documents_queued}{" "}
+                      ready
+                      {folderResult.job.documents_failed
+                        ? ` · ${folderResult.job.documents_failed} failed`
+                        : ""}
+                      {folderResult.job.error
+                        ? ` · ${folderResult.job.error}`
+                        : ""}
+                    </span>
+                  )}
+                </div>
+              )}
             </section>
           </div>
         </>
@@ -2655,28 +2818,56 @@ function AdminPages({
           />
           <div className="card-carousel compact">
             {patients.map((p) => (
-              <div key={p.patient_id} className="patient-card">
-                <div className="patient-avatar">
-                  {p.name.slice(0, 2).toUpperCase()}
-                </div>
-                <strong>{p.name}</strong>
-                <small>{p.patient_id}</small>
-                <div className="card-meta">
-                  {alias(p) || "PrepPulse intake"}
-                </div>
+              <div
+                key={p.patient_id}
+                className={
+                  "patient-card " +
+                  (directoryPatient?.patient_id === p.patient_id
+                    ? "chosen"
+                    : "")
+                }
+              >
+                <button
+                  className="directory-card-button"
+                  onClick={() => setDirectoryPatient(p)}
+                  aria-label={`View admin details for ${p.name}`}
+                >
+                  <div className="patient-avatar">
+                    {p.name.slice(0, 2).toUpperCase()}
+                  </div>
+                  <strong>{p.name}</strong>
+                  <small>{p.patient_id}</small>
+                  <div className="card-meta">
+                    {alias(p) || "PrepPulse intake"}
+                  </div>
+                  <span className="card-open">
+                    View admin details <ChevronRight size={15} />
+                  </span>
+                </button>
                 <select
                   aria-label={`Assign doctor to ${p.name}`}
                   defaultValue=""
-                  onChange={(e) =>
-                    run(
+                  onChange={async (e) => {
+                    const assigned = await run(
                       () =>
                         post(
                           `/patients/${p.patient_id}/assign/${e.target.value}`,
                           {},
                         ),
                       "Doctor assigned",
-                    )
-                  }
+                    );
+                    if (assigned && directoryPatient?.patient_id === p.patient_id) {
+                      try {
+                        setDirectoryOverview(
+                          await request<AdminPatientOverview>(
+                            `/admin/patients/${p.patient_id}/overview`,
+                          ),
+                        );
+                      } catch (error) {
+                        setDirectoryError((error as Error).message);
+                      }
+                    }
+                  }}
                 >
                   <option value="">Assign another doctor</option>
                   {doctors.map((d) => (
@@ -2688,6 +2879,109 @@ function AdminPages({
               </div>
             ))}
           </div>
+          {directoryPatient && (
+            <section className="panel directory-overview">
+              <div className="panel-heading">
+                <div>
+                  <div className="eyebrow teal">ADMIN PATIENT RECORD</div>
+                  <h3>{directoryPatient.name}</h3>
+                  <p>
+                    {directoryPatient.patient_id} ·{" "}
+                    {directoryPatient.external_aliases?.join(" · ") ||
+                      "No external ID"}
+                  </p>
+                </div>
+                <button
+                  className="icon-button"
+                  title="Close patient details"
+                  onClick={() => setDirectoryPatient(null)}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+              {directoryLoading && <p>Loading patient details…</p>}
+              {directoryError && (
+                <p className="small-error" role="alert">
+                  {directoryError}
+                </p>
+              )}
+              {directoryOverview && (
+                <div className="overview-grid">
+                  <div>
+                    <span className="overview-label">Assigned doctors</span>
+                    <strong>
+                      {directoryOverview.doctors
+                        .map((d) => d.name)
+                        .join(", ") || "None"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="overview-label">Date of birth / sex</span>
+                    <strong>
+                      {directoryOverview.patient.dob || "Not recorded"} ·{" "}
+                      {directoryOverview.patient.sex || "Not recorded"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="overview-label">Stored files</span>
+                    <strong>
+                      {directoryOverview.stored_files ||
+                        directoryOverview.documents.length}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="overview-label">Processing</span>
+                    <strong>
+                      {directoryOverview.latest_job
+                        ? `${directoryOverview.latest_job.status} · ${directoryOverview.latest_job.documents_ready || 0}/${directoryOverview.latest_job.documents_total || directoryOverview.documents.length} ready`
+                        : "No analysis job"}
+                    </strong>
+                  </div>
+                  <div className="overview-section">
+                    <h4>Appointments</h4>
+                    {directoryOverview.appointments.length ? (
+                      directoryOverview.appointments.map((a) => (
+                        <p key={a.appointment_id}>
+                          {shortDate(a.date)} · {a.time} · {a.status} ·{" "}
+                          {directoryOverview.doctors.find(
+                            (d) => d.user_id === a.doctor_id,
+                          )?.name || "Doctor"}
+                        </p>
+                      ))
+                    ) : (
+                      <p>No appointments recorded.</p>
+                    )}
+                  </div>
+                  <div className="overview-section">
+                    <h4>Visit log</h4>
+                    {directoryOverview.visits.length ? (
+                      directoryOverview.visits.map((v) => (
+                        <p key={v.visit_id}>
+                          {shortDate(v.started_at.slice(0, 10))} · {v.status} ·{" "}
+                          {v.admitted ? "Caregiver pathway" : "Family pathway"}
+                        </p>
+                      ))
+                    ) : (
+                      <p>No visits recorded.</p>
+                    )}
+                  </div>
+                  <div className="overview-section wide">
+                    <h4>Documents</h4>
+                    {directoryOverview.documents.length ? (
+                      directoryOverview.documents.map((d) => (
+                        <p key={d.record_id}>
+                          {shortDate(d.visit_date)} · {d.filename} · {d.status}
+                          {d.error ? ` · ${d.error}` : ""}
+                        </p>
+                      ))
+                    ) : (
+                      <p>No clinical documents recorded.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
         </>
       )}
       {page === "Accounts" && (

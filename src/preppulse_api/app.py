@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import secrets
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
@@ -16,12 +15,12 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from preppulse_api.clinical import answer_chat, process_patient, render_page
 from preppulse_api.config import (
-    DATASET_ROOT,
     PRIVATE_ROOT,
     SESSION_SECRET,
     STT_MODEL,
     TTS_MODEL_PATH,
 )
+from preppulse_api.folder_import import save_patient_folder
 from preppulse_api.store import WorkspaceStore, new_id, now
 from preppulse_api.voice import ready as tts_ready
 from preppulse_api.voice import synthesize
@@ -203,6 +202,45 @@ def patient(patient_id: str, current: dict = Depends(user), store: WorkspaceStor
     return {k: v for k, v in found.items() if k not in {"_id", "source_root"}}
 
 
+@app.get("/api/admin/patients/{patient_id}/overview")
+def admin_patient_overview(
+    patient_id: str, current: dict = Depends(admin), store: WorkspaceStore = Depends(db)
+):
+    found = patient_access(patient_id, current, store)
+    assigned = list(store.db.patient_access.find({"patient_id": patient_id}, {"_id": 0}))
+    doctors = []
+    for link in assigned:
+        doctor = store.db.users.find_one(
+            {"user_id": link["doctor_id"]}, {"_id": 0, "password_hash": 0}
+        )
+        if doctor:
+            doctors.append({"user_id": doctor["user_id"], "name": doctor["name"]})
+    documents = list(
+        store.db.workspace_documents.find(
+            {"patient_id": patient_id}, {"_id": 0, "source_path": 0}
+        ).sort("visit_date", -1)
+    )
+    visits = list(
+        store.db.visits.find({"patient_id": patient_id}, {"_id": 0, "doctor_notes": 0}).sort(
+            "started_at", -1
+        )
+    )
+    appointments = list(
+        store.db.appointments.find({"patient_id": patient_id}, {"_id": 0}).sort("date", -1)
+    )
+    job = store.db.jobs.find_one({"patient_id": patient_id}, {"_id": 0}, sort=[("created_at", -1)])
+    store.audit(current, "admin_patient_overview", patient_id)
+    return {
+        "patient": {k: v for k, v in found.items() if k != "source_root"},
+        "doctors": doctors,
+        "documents": documents,
+        "visits": visits,
+        "appointments": appointments,
+        "stored_files": store.db.workspace_files.count_documents({"patient_id": patient_id}),
+        "latest_job": job,
+    }
+
+
 @app.post("/api/patients")
 def register_patient(
     body: PatientIn, current: dict = Depends(admin), store: WorkspaceStore = Depends(db)
@@ -234,70 +272,27 @@ def register_patient(
     return {k: v for k, v in found.items() if k != "_id"}
 
 
-@app.post("/api/admin/import-samples")
-def import_samples(
-    doctor_id: str = Form(...), current: dict = Depends(admin), store: WorkspaceStore = Depends(db)
+@app.post("/api/admin/import-folder")
+async def import_folder(
+    doctor_id: str = Form(...),
+    paths: list[str] = Form(...),
+    files: list[UploadFile] = File(...),
+    current: dict = Depends(admin),
+    store: WorkspaceStore = Depends(db),
 ):
     if not store.db.users.find_one({"user_id": doctor_id, "role": "doctor", "disabled": False}):
         raise HTTPException(400, "Active doctor required")
-    created = 0
-    for folder in sorted(DATASET_ROOT.glob("PP*_*")):
-        manifest_path = folder / "manifest.json"
-        if not manifest_path.is_file():
-            continue
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        # Folder name is authoritative. Some source manifests contain conflicting folder IDs.
-        alias = folder.name.split("_", 1)[0]
-        alias_link = store.db.patient_aliases.find_one({"alias": folder.name})
-        existing = store.patient(alias_link["patient_id"]) if alias_link else None
-        if existing:
-            patient_id = existing["patient_id"]
-        else:
-            collision = store.db.patient_aliases.find_one({"alias": alias})
-            aliases = [folder.name] if collision else [alias, folder.name]
-            patient_id = new_id("PRP")
-            store.db.patients.insert_one(
-                {
-                    "patient_id": patient_id,
-                    "name": manifest.get("name") or folder.name.split("_", 1)[-1].replace("_", " "),
-                    "name_search": (manifest.get("name") or folder.name).lower(),
-                    "dob": manifest.get("dob"),
-                    "sex": manifest.get("sex"),
-                    "external_aliases": aliases,
-                    "created_at": now(),
-                }
-            )
-            for item in aliases:
-                store.db.patient_aliases.insert_one({"alias": item, "patient_id": patient_id})
-            created += 1
-        store.db.patient_access.update_one(
-            {"patient_id": patient_id, "doctor_id": doctor_id},
-            {"$setOnInsert": {"patient_id": patient_id, "doctor_id": doctor_id}},
-            upsert=True,
-        )
-        for record in manifest.get("records", []):
-            filename = record.get("file") or record.get("filename")
-            path = (folder / filename).resolve() if filename else None
-            if not path or not path.is_file() or not path.is_relative_to(DATASET_ROOT):
-                continue
-            store.db.workspace_documents.update_one(
-                {"patient_id": patient_id, "source_path": str(path)},
-                {
-                    "$setOnInsert": {
-                        "record_id": new_id("DOC"),
-                        "patient_id": patient_id,
-                        "filename": filename,
-                        "source_path": str(path),
-                        "document_type": record.get("type", "consult"),
-                        "visit_date": record.get("date"),
-                        "status": "pending",
-                        "created_at": now(),
-                    }
-                },
-                upsert=True,
-            )
-    store.audit(current, "samples_imported", extra={"created": created})
-    return {"patients_created": created}
+    store.indexes()
+    result = await save_patient_folder(store, doctor_id, files, paths)
+    if result["documents_queued"]:
+        result["job"] = queue_brief_job(store, result["patient_id"])
+    store.audit(
+        current,
+        "folder_imported",
+        result["patient_id"],
+        {"files_saved": result["files_saved"], "documents_queued": result["documents_queued"]},
+    )
+    return result
 
 
 @app.post("/api/patients/{patient_id}/assign/{doctor_id}")
@@ -409,11 +404,35 @@ def _job(job_id: str, patient_id: str):
     store = WorkspaceStore()
     try:
         store.db.jobs.update_one(
-            {"job_id": job_id}, {"$set": {"status": "running", "updated_at": now()}}
+            {"job_id": job_id}, {"$set": {"status": "running", "stage": "ocr", "updated_at": now()}}
         )
-        process_patient(store, patient_id)
+        total = store.db.workspace_documents.count_documents({"patient_id": patient_id})
+
+        def progress(stage: str = "ocr") -> None:
+            ready = store.db.workspace_documents.count_documents(
+                {"patient_id": patient_id, "status": "ready"}
+            )
+            failed = store.db.workspace_documents.count_documents(
+                {"patient_id": patient_id, "status": "failed"}
+            )
+            store.db.jobs.update_one(
+                {"job_id": job_id},
+                {
+                    "$set": {
+                        "documents_total": total,
+                        "documents_ready": ready,
+                        "documents_failed": failed,
+                        "stage": stage,
+                        "updated_at": now(),
+                    }
+                },
+            )
+
+        progress()
+        process_patient(store, patient_id, progress=progress)
         store.db.jobs.update_one(
-            {"job_id": job_id}, {"$set": {"status": "complete", "updated_at": now()}}
+            {"job_id": job_id},
+            {"$set": {"status": "complete", "stage": "complete", "updated_at": now()}},
         )
     except Exception as exc:
         store.db.jobs.update_one(
@@ -424,11 +443,7 @@ def _job(job_id: str, patient_id: str):
         store.client.close()
 
 
-@app.post("/api/patients/{patient_id}/brief/jobs")
-def create_brief_job(
-    patient_id: str, current: dict = Depends(clinician), store: WorkspaceStore = Depends(db)
-):
-    patient_access(patient_id, current, store)
+def queue_brief_job(store: WorkspaceStore, patient_id: str) -> dict:
     running = store.db.jobs.find_one(
         {"patient_id": patient_id, "status": {"$in": ["queued", "running"]}}, {"_id": 0}
     )
@@ -438,12 +453,22 @@ def create_brief_job(
         "job_id": new_id("JOB"),
         "patient_id": patient_id,
         "status": "queued",
+        "stage": "ocr",
         "created_at": now(),
     }
     store.db.jobs.insert_one(job)
     workers.submit(_job, job["job_id"], patient_id)
-    store.audit(current, "brief_job_started", patient_id)
     return {k: v for k, v in job.items() if k != "_id"}
+
+
+@app.post("/api/patients/{patient_id}/brief/jobs")
+def create_brief_job(
+    patient_id: str, current: dict = Depends(clinician), store: WorkspaceStore = Depends(db)
+):
+    patient_access(patient_id, current, store)
+    job = queue_brief_job(store, patient_id)
+    store.audit(current, "brief_job_started", patient_id)
+    return job
 
 
 @app.get("/api/patients/{patient_id}/brief/jobs/latest")

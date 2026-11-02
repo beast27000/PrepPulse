@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -59,7 +60,9 @@ def render_page(record: dict, page_number: int) -> bytes:
         return image_doc[0].get_pixmap(matrix=fitz.Matrix(1.6, 1.6), alpha=False).tobytes("png")
 
 
-def process_patient(store: WorkspaceStore, patient_id: str) -> dict:
+def process_patient(
+    store: WorkspaceStore, patient_id: str, progress: Callable[[str], None] | None = None
+) -> dict:
     patient = store.patient(patient_id)
     if not patient:
         raise ValueError("Patient not found")
@@ -103,10 +106,13 @@ def process_patient(store: WorkspaceStore, patient_id: str) -> dict:
                     {"record_id": rec["record_id"]},
                     {"$set": {"status": "failed", "error": str(exc)[:300]}},
                 )
-                raise
+            if progress:
+                progress("ocr")
         docs = mongo.get_patient_documents(patient_id)
         if not docs:
             raise ValueError("No processed patient documents")
+        if progress:
+            progress("analysis")
         chunker = ClinicalProvenanceChunker()
         chunks = [chunk for doc in docs for chunk in chunker.chunk_mongo_document(doc)]
         retriever = HybridEnsembleRetriever(chunks)

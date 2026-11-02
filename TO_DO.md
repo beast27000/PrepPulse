@@ -6,7 +6,10 @@ Implementation status and backlog.
 
 - [x] Created `UI` branch and removed the tracked Tkinter OCR test UI on that branch.
 - [x] Added React/TypeScript browser workspace with screenshot-inspired Patients page, doctor/admin navigation, Today cards, Records, Care pathways, Source Proof, expandable chat, movable assistant bubble, login, intake, appointments, and accounts.
-- [x] Added local FastAPI integration layer for admin-managed accounts, signed sessions with CSRF, doctor-to-patient assignments, permanent PrepPulse IDs and dataset aliases, document uploads, sample registry import, appointments, visit state, clinician review decisions, pathways, source page rendering, chat retrieval, and background brief jobs.
+- [x] Added local FastAPI integration layer for admin-managed accounts, signed sessions with CSRF, doctor-to-patient assignments, permanent PrepPulse IDs and folder aliases, document uploads, one-folder intake, appointments, visit state, clinician review decisions, pathways, source page rendering, chat retrieval, and background brief jobs.
+- [x] Changed the UI tagline to “Diabetes Clinical Intelligence”; replaced global sample import with one-folder upload and background processing; added admin patient overview with visits, appointments, documents, and assigned doctors.
+- [x] Cleared local patient, alias, document, appointment, visit, job, pathway, review, and audit records on 2 November 2026; verified both login accounts remain. The local API was stopped for the reset and must be restarted.
+- [ ] Settings research only: consider Light/Dark/System appearance, text size and contrast, doctor voice preferences, and admin scheduling defaults. No settings controls are implemented yet.
 - [x] Added local faster-whisper dictation endpoint with transcript review in the UI. Added blank `PREPPULSE_TTS_MODEL_PATH` placeholder and disabled Read aloud control for the pending local GGUF runtime.
 - [x] Rewrote `docs/FRONTEND_INTEGRATION_SPEC.md` as a handoff matching actual code contracts and known gaps.
 - [ ] Validate the full doctor/admin flow against a running local MongoDB and real downloaded models. Static build and isolated tests are not a substitute for this live check.

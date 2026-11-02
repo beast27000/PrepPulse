@@ -36,6 +36,11 @@ class WorkspaceStore:
             [("patient_id", ASCENDING), ("doctor_id", ASCENDING)], unique=True
         )
         db.workspace_documents.create_index("record_id", unique=True)
+        db.workspace_files.create_index("file_id", unique=True)
+        db.workspace_files.create_index(
+            [("patient_id", ASCENDING), ("relative_path", ASCENDING), ("sha256", ASCENDING)],
+            unique=True,
+        )
         db.appointments.create_index("appointment_id", unique=True)
         db.appointments.create_index([("doctor_id", ASCENDING), ("date", ASCENDING)])
         db.visits.create_index("visit_id", unique=True)

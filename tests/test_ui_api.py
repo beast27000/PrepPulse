@@ -6,12 +6,14 @@ import os
 
 import mongomock
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 os.environ.setdefault("PREPPULSE_SESSION_SECRET", "test-session-secret-with-more-than-32-chars")
 
 from preppulse_api.app import app, db, password_hash
 from preppulse_api.clinical import validate_citation
+from preppulse_api.folder_import import checked_paths
 from preppulse_api.store import WorkspaceStore
 
 
@@ -200,22 +202,32 @@ def test_citation_requires_matching_ocr_span(workspace):
     assert not validate_citation(workspace, "PRP-1", {**citation, "snippet": "insulin dose"})
 
 
-def test_sample_import_is_idempotent_and_uses_folder_alias(workspace, tmp_path, monkeypatch):
-    folder = tmp_path / "PP001_Ananya_Baruah"
-    folder.mkdir()
-    (folder / "record.pdf").write_bytes(b"%PDF-1.4\n")
-    (folder / "manifest.json").write_text(
-        json.dumps(
-            {
-                "patient_folder": "PP002_Ananya_Baruah",
-                "name": "Ananya Baruah",
-                "records": [{"file": "record.pdf", "date": "2026-10-30", "type": "lab"}],
-            }
-        ),
-        encoding="utf-8",
-    )
+def test_one_folder_import_preserves_files_ids_and_admin_overview(workspace, tmp_path, monkeypatch):
     api_module = importlib.import_module("preppulse_api.app")
-    monkeypatch.setattr(api_module, "DATASET_ROOT", tmp_path)
+    folder_module = importlib.import_module("preppulse_api.folder_import")
+    private = tmp_path / "private"
+    monkeypatch.setattr(folder_module, "PRIVATE_ROOT", private)
+    monkeypatch.setattr(api_module.workers, "submit", lambda *args: None)
+    manifest = json.dumps(
+        {
+            "patient_folder": "PP002_Ananya_Baruah",
+            "name": "Wrong Manifest Name",
+            "records": [{"file": "record.pdf", "date": "2026-10-30", "type": "lab"}],
+        }
+    ).encode()
+    paths = [
+        "PP001_Ananya_Baruah/record.pdf",
+        "PP001_Ananya_Baruah/manifest.json",
+        "PP001_Ananya_Baruah/RECORD_INDEX.txt",
+    ]
+
+    def upload_files():
+        return [
+            ("files", ("record.pdf", b"%PDF-1.4\n", "application/pdf")),
+            ("files", ("manifest.json", manifest, "application/json")),
+            ("files", ("RECORD_INDEX.txt", b"One record", "text/plain")),
+        ]
+
     with TestClient(app) as client:
         headers = login(client, "admin", "correct-long-password")
         doctor = client.post(
@@ -228,17 +240,56 @@ def test_sample_import_is_idempotent_and_uses_folder_alias(workspace, tmp_path, 
             },
             headers=headers,
         ).json()
-        for expected in (1, 0):
+        patient_id = None
+        for saved in (3, 0):
             response = client.post(
-                "/api/admin/import-samples", data={"doctor_id": doctor["user_id"]}, headers=headers
+                "/api/admin/import-folder",
+                data={"doctor_id": doctor["user_id"], "paths": paths},
+                files=upload_files(),
+                headers=headers,
             )
             assert response.status_code == 200, response.text
-            assert response.json()["patients_created"] == expected
+            assert response.json()["files_saved"] == saved
+            if patient_id:
+                assert response.json()["patient_id"] == patient_id
+            patient_id = response.json()["patient_id"]
         assert workspace.db.patients.count_documents({}) == 1
         assert workspace.db.workspace_documents.count_documents({}) == 1
+        assert workspace.db.workspace_files.count_documents({}) == 3
         patient = workspace.db.patients.find_one()
+        assert patient["name"] == "Ananya Baruah"
         assert "PP001" in patient["external_aliases"]
         assert "PP002" not in patient["external_aliases"]
+        assert list(private.rglob("record.pdf"))
+        doc = workspace.db.workspace_documents.find_one()
+        assert doc["source_path"].startswith(str(private))
+        overview = client.get(f"/api/admin/patients/{patient_id}/overview")
+        assert overview.status_code == 200
+        assert overview.json()["stored_files"] == 3
+        assert len(overview.json()["documents"]) == 1
+        assert "source_path" not in overview.text
+        assert "password_hash" not in overview.text
+        assert (
+            client.post(
+                "/api/admin/import-folder",
+                data={"doctor_id": doctor["user_id"], "paths": ["PP001_Other_Name/record.pdf"]},
+                files=[upload_files()[0]],
+                headers=headers,
+            ).status_code
+            == 409
+        )
+    with TestClient(app) as doctor_client:
+        doctor_headers = login(doctor_client, "anika", "doctor-long-password")
+        assert doctor_client.get(f"/api/admin/patients/{patient_id}/overview").status_code == 403
+        assert (
+            doctor_client.post(
+                "/api/admin/import-folder",
+                data={"doctor_id": doctor["user_id"], "paths": paths},
+                files=upload_files(),
+                headers=doctor_headers,
+            ).status_code
+            == 403
+        )
 
 
 def test_read_aloud_requires_assigned_doctor_and_audio_runtime(workspace, monkeypatch):
@@ -273,3 +324,17 @@ def test_read_aloud_requires_assigned_doctor_and_audio_runtime(workspace, monkey
         assert response.status_code == 200
         assert response.headers["content-type"] == "audio/wav"
         assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize(
+    "paths",
+    [
+        ["PP001_Ananya_Baruah/record.pdf", "PP002_Other_Patient/other.pdf"],
+        ["PP001_Ananya_Baruah/../escape.pdf"],
+        ["PP001_Ananya_Baruah/record.pdf", "PP001_Ananya_Baruah/RECORD.pdf"],
+        ["invalid-folder/record.pdf"],
+    ],
+)
+def test_folder_selection_rejects_unsafe_or_ambiguous_paths(paths):
+    with pytest.raises(HTTPException):
+        checked_paths(paths)
