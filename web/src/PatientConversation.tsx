@@ -215,6 +215,7 @@ export default function PatientConversation({
   const [error, setError] = useState("");
   const [activeArtifact, setActiveArtifact] = useState<string | null>(null);
   const [chartCollapsed, setChartCollapsed] = useState(false);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
   const [activeSource, setActiveSource] = useState<Citation | null>(null);
   const [recording, setRecording] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
@@ -242,6 +243,7 @@ export default function PatientConversation({
     }
     setActiveArtifact(id);
     setChartCollapsed(false);
+    setActiveSource(null);
   }
   function focusSource(citation: Citation) {
     if (!full && onExpand) {
@@ -253,6 +255,8 @@ export default function PatientConversation({
       return;
     }
     setActiveSource(citation);
+    setChartCollapsed(true);
+    setChatCollapsed(false);
   }
   async function loadBundle(id: string, openResponse = false) {
     const bundle = await request<ChatBundle>(`/chat/sessions/${id}`);
@@ -282,6 +286,7 @@ export default function PatientConversation({
     setError("");
     setActiveSource(null);
     setActiveArtifact(null);
+    setChatCollapsed(false);
     setTurn(null);
     setMessages([]);
     setArtifacts([]);
@@ -318,7 +323,7 @@ export default function PatientConversation({
     }
     request<ChatSession[]>(`/chat/sessions?patient_id=${patient.patient_id}`)
       .then(async (items) => {
-        if (!active) return;
+        if (!active || sessionRef.current) return;
         setSessions(items);
         const saved = localStorage.getItem(storageKey);
         const id =
@@ -484,6 +489,26 @@ export default function PatientConversation({
           </div>
         </div>
         <div className="conversation-tools">
+          {full &&
+            (activeSource ||
+              (artifact && !chartCollapsed) ||
+              chatCollapsed) && (
+              <button
+                className="secondary"
+                onClick={() => setChatCollapsed(!chatCollapsed)}
+              >
+                {chatCollapsed ? "Show chat" : "Collapse chat"}
+              </button>
+            )}
+          {full && artifact && chartCollapsed && (
+            <button
+              className="secondary"
+              aria-label="Expand chart"
+              onClick={() => focusChart(artifact.artifact_id)}
+            >
+              Show chart
+            </button>
+          )}
           {full && (
             <select
               aria-label="Chat session"
@@ -547,50 +572,63 @@ export default function PatientConversation({
           ))}
         </div>
       )}
-      {artifact && (
-        <section
-          className={`conversation-chart panel ${chartCollapsed ? "collapsed" : ""}`}
+      <div
+        className={`conversation-body ${activeSource || (artifact && !chartCollapsed) ? "with-inspector" : ""} ${chatCollapsed ? "only-inspector" : ""}`}
+      >
+        {artifact && !chartCollapsed && (
+          <section
+            className={`conversation-chart panel ${chartCollapsed ? "collapsed" : ""}`}
+          >
+            <header>
+              <div>
+                <span className="eyebrow teal">SAVED SESSION CHART</span>
+                <h2>{artifact.title}</h2>
+              </div>
+              <div>
+                <button
+                  className="icon-button"
+                  aria-label={
+                    chartCollapsed ? "Expand chart" : "Collapse chart"
+                  }
+                  onClick={() => {
+                    setChartCollapsed(true);
+                    setChatCollapsed(false);
+                  }}
+                >
+                  {chartCollapsed ? (
+                    <ChevronDown size={17} />
+                  ) : (
+                    <ChevronUp size={17} />
+                  )}
+                </button>
+                <button
+                  className="icon-button"
+                  aria-label="Close chart"
+                  onClick={() => {
+                    setActiveArtifact(null);
+                    setChatCollapsed(false);
+                  }}
+                >
+                  <X size={17} />
+                </button>
+              </div>
+            </header>
+            {!chartCollapsed && (
+              <div className="conversation-chart-scroll">
+                <Suspense fallback={<p>Opening saved chart…</p>}>
+                  <ChartArtifactView
+                    artifact={artifact}
+                    onCitation={focusSource}
+                  />
+                </Suspense>
+              </div>
+            )}
+          </section>
+        )}
+        <div
+          className="conversation-thread panel"
+          style={chatCollapsed ? { display: "none" } : undefined}
         >
-          <header>
-            <div>
-              <span className="eyebrow teal">SAVED SESSION CHART</span>
-              <h2>{artifact.title}</h2>
-            </div>
-            <div>
-              <button
-                className="icon-button"
-                aria-label={chartCollapsed ? "Expand chart" : "Collapse chart"}
-                onClick={() => setChartCollapsed(!chartCollapsed)}
-              >
-                {chartCollapsed ? (
-                  <ChevronDown size={17} />
-                ) : (
-                  <ChevronUp size={17} />
-                )}
-              </button>
-              <button
-                className="icon-button"
-                aria-label="Close chart"
-                onClick={() => setActiveArtifact(null)}
-              >
-                <X size={17} />
-              </button>
-            </div>
-          </header>
-          {!chartCollapsed && (
-            <div className="conversation-chart-scroll">
-              <Suspense fallback={<p>Opening saved chart…</p>}>
-                <ChartArtifactView
-                  artifact={artifact}
-                  onCitation={focusSource}
-                />
-              </Suspense>
-            </div>
-          )}
-        </section>
-      )}
-      <div className={`conversation-body ${activeSource ? "with-source" : ""}`}>
-        <div className="conversation-thread panel">
           <div
             className="conversation-messages"
             ref={messagesRef}
@@ -763,7 +801,10 @@ export default function PatientConversation({
           <SourceDock
             patient={patient}
             citation={activeSource}
-            onClose={() => setActiveSource(null)}
+            onClose={() => {
+              setActiveSource(null);
+              setChatCollapsed(false);
+            }}
             onExpand={() => onOpenRecord?.(activeSource)}
           />
         )}

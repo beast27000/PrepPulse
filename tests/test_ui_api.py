@@ -367,6 +367,25 @@ def test_chart_request_never_waits_for_embedding_or_chat_model(workspace, monkey
     assert "| Measurement |" in result["text"]
 
 
+@pytest.mark.parametrize(
+    "question",
+    ["Chart the heart disease journey", "Plot cardiac history", "Chart ejection fraction"],
+)
+def test_cardiac_chart_requests_explain_scope_without_unrelated_plot(workspace, question):
+    seed_chat_patient(workspace)
+    result = run_chat_turn(
+        workspace,
+        {"patient_id": "PRP-CHAT", "session_id": "CHAT-1"},
+        question,
+        [],
+        lambda *args: None,
+    )
+    assert result["artifacts"] == []
+    assert "Chart scope warning" in result["text"]
+    assert "blood pressure" in result["text"]
+    assert "outside the current diabetes agent's scope" in result["text"]
+
+
 def test_chart_catalog_preserves_different_same_day_reports(workspace):
     seed_chat_patient(workspace)
     record = workspace.db.workspace_documents.find_one({}, {"_id": 0})

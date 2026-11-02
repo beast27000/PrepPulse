@@ -2,6 +2,9 @@
 
 Implementation status and backlog.
 
+- [x] Changed full chat to a left/right layout with independently collapsible chat and chart views; the remaining panel fills the available width. Source Proof continues to open from selected citations in the right panel.
+- [x] Added an explicit diabetes-agent scope warning for heart-disease chart requests, listing supported OCR measurements and offering cited cardiac text summaries.
+
 ## UI branch implementation (30 October 2026)
 
 - [x] Created `UI` branch and removed the tracked Tkinter OCR test UI on that branch.

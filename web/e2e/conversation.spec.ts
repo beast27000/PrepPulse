@@ -64,7 +64,16 @@ test("record history and requested chart, citation, session layout", async ({
   await expect(page.locator(".artifact-series")).toHaveCount(2);
   const chartBounds = await page.locator(".conversation-chart").boundingBox();
   const threadBounds = await page.locator(".conversation-thread").boundingBox();
-  expect(chartBounds!.y).toBeLessThan(threadBounds!.y);
+  expect(chartBounds!.x).toBeGreaterThan(threadBounds!.x);
+  expect(Math.abs(chartBounds!.y - threadBounds!.y)).toBeLessThan(2);
+  await page
+    .getByRole("button", { name: "Collapse chat", exact: true })
+    .click();
+  await expect(page.locator(".conversation-thread")).toBeHidden();
+  await expect(page.locator(".conversation-body")).toHaveClass(
+    /only-inspector/,
+  );
+  await page.getByRole("button", { name: "Show chat", exact: true }).click();
   const composerBounds = await page
     .locator(".conversation-composer")
     .boundingBox();
@@ -74,6 +83,10 @@ test("record history and requested chart, citation, session layout", async ({
     "cannot create a visual chart",
   );
   await expect(page.locator(".reply-markdown")).not.toContainText("**");
+  await page.screenshot({
+    path: testInfo.outputPath("side-by-side-chart.png"),
+    fullPage: false,
+  });
   await expect(page.locator(".inline-citation").first()).toBeVisible();
   await page.locator(".inline-citation").first().click();
   await expect(page.locator(".conversation-source")).toBeVisible();
@@ -109,6 +122,7 @@ test("record history and requested chart, citation, session layout", async ({
     .getByRole("button", { name: "Close source proof", exact: true })
     .click();
   await expect(page.locator(".conversation-source")).toHaveCount(0);
+  await page.locator(".message-artifacts button").first().click();
   await page
     .locator('.recharts-line-dots circle[role="button"]')
     .first()
@@ -128,6 +142,10 @@ test("record history and requested chart, citation, session layout", async ({
     .getByRole("button", { name: "Collapse chart", exact: true })
     .click();
   await expect(page.locator(".conversation-chart-scroll")).toHaveCount(0);
+  await expect(page.locator(".conversation-body")).not.toHaveClass(
+    /with-inspector/,
+  );
+  await page.getByRole("button", { name: "Expand chart", exact: true }).click();
   await page.getByRole("button", { name: "Close chart", exact: true }).click();
   await expect(page.locator(".conversation-chart")).toHaveCount(0);
   await page.locator(".message-artifacts button").first().click();

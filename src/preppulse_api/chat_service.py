@@ -19,10 +19,27 @@ def chart_requested(question: str) -> bool:
     )
 
 
+def cardiac_chart_requested(question: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(heart|cardiac|coronary|cardiovascular|cardiology|ejection|lvef|troponin|ecg|ekg|echocardiogram|echocardiography)\b",
+            question,
+            re.IGNORECASE,
+        )
+    )
+
+
+SUPPORTED_CHARTS = (
+    "HbA1c, fasting/post-meal glucose, eGFR, urine ACR, creatinine, LDL, and blood pressure"
+)
+
+
 def make_chart_artifact(
     catalog: dict, question: str, session_id: str, patient_id: str
 ) -> dict | None:
     """Select real OCR measurements; no model-generated plot coordinates or values."""
+    if cardiac_chart_requested(question):
+        return None
     lower = question.lower()
     available = catalog["metric_series"]
     names = []
@@ -299,10 +316,22 @@ def run_chat_turn(
     )
     if artifacts:
         answer = chart_answer(artifacts[0])
+    elif wants_chart and cardiac_chart_requested(question):
+        answer = (
+            "### Chart scope warning\n\n"
+            "**Heart-disease charts are outside the current diabetes agent's scope.** "
+            "I can only generate charts from these supported OCR measurements: **"
+            + SUPPORTED_CHARTS
+            + "**. Ask for one of these measurements by name.\n\n"
+            "You can still ask for a cited text summary of the documented cardiac records. "
+            "No cardiac chart has been generated."
+        )
     elif wants_chart:
         answer = (
             "### Chart data unavailable\n\nNo supported, dated measurements match this chart request. No values were invented.\n\n**Available measurements:** "
             + ", ".join(item["metric_name"] for item in catalog["metric_series"])
+            + ".\n\n**Supported chart scope:** "
+            + SUPPORTED_CHARTS
             + "."
         )
     elif isinstance(model, MockClinicalChatModel):
