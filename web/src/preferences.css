@@ -1,0 +1,121 @@
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.settings-section {
+  padding: 25px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.settings-section h3 {
+  font-size: 18px;
+  margin: 0;
+}
+.settings-section p {
+  margin: 0;
+  font-size: 12px;
+}
+.settings-section label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.settings-section select,
+.settings-section input[type="time"] {
+  border: 1px solid #dfe6ee;
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #273245;
+}
+.settings-section .settings-check {
+  flex-direction: row;
+  align-items: center;
+}
+.settings-account {
+  grid-column: 1/-1;
+}
+[data-text-size="large"] {
+  font-size: 112%;
+}
+[data-text-size="large"] .content {
+  zoom: 1.08;
+}
+[data-contrast="high"] .panel,
+[data-contrast="high"] input,
+[data-contrast="high"] select {
+  border-color: #526b7b !important;
+}
+[data-contrast="high"] p,
+[data-contrast="high"] small {
+  color: #42596b !important;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  background: #172133;
+  color: #eef4f6;
+}
+[data-theme="dark"] body,
+[data-theme="dark"] .content,
+[data-theme="dark"] .main-area {
+  background: #172133 !important;
+  color: #eef4f6;
+}
+[data-theme="dark"] .topbar,
+[data-theme="dark"] .panel,
+[data-theme="dark"] .consultation-panel,
+[data-theme="dark"] .brief-card,
+[data-theme="dark"] .patient-card,
+[data-theme="dark"] .info-banner,
+[data-theme="dark"] .visit-strip,
+[data-theme="dark"] .record-page-controls button,
+[data-theme="dark"] .record-file-list button,
+[data-theme="dark"] .record-search-results button {
+  background: #243247 !important;
+  color: #eef4f6 !important;
+  border-color: #40556b !important;
+}
+[data-theme="dark"] h1,
+[data-theme="dark"] h2,
+[data-theme="dark"] h3,
+[data-theme="dark"] h4,
+[data-theme="dark"] strong,
+[data-theme="dark"] .breadcrumb,
+[data-theme="dark"] .record-file-list strong {
+  color: #f1f7f8 !important;
+}
+[data-theme="dark"] p,
+[data-theme="dark"] small,
+[data-theme="dark"] .card-meta {
+  color: #b8c7d4 !important;
+}
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  background: #1b293a !important;
+  color: #f1f7f8 !important;
+  border-color: #526b7b !important;
+}
+[data-theme="dark"] .record-page-wrap {
+  background: #111a29;
+}
+[data-theme="dark"] .record-file-list button.active {
+  background: #20464c !important;
+  border-color: #73d1c4 !important;
+}
+[data-theme="dark"][data-contrast="high"] p,
+[data-theme="dark"][data-contrast="high"] small {
+  color: #e1edf2 !important;
+}
+@media (max-width: 800px) {
+  .settings-grid {
+    grid-template-columns: 1fr;
+  }
+  .settings-account {
+    grid-column: auto;
+  }
+}

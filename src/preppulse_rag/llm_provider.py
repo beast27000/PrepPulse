@@ -24,7 +24,9 @@ class MockClinicalChatModel(BaseChatModel):
         from langchain_core.outputs import ChatGeneration, ChatResult
 
         last_prompt = messages[-1].content if messages else ""
-        response_text = f"Clinical assessment response based on retrieved evidence for: {last_prompt[:100]}"
+        response_text = (
+            f"Clinical assessment response based on retrieved evidence for: {last_prompt[:100]}"
+        )
         generation = ChatGeneration(message=AIMessage(content=response_text))
         return ChatResult(generations=[generation])
 
@@ -69,9 +71,14 @@ class LLMFactory:
     # Resolves and instantiates chat models and embeddings from configuration
 
     @staticmethod
-    def _is_local_server_available(url: str = "http://192.168.1.16:1234/v1/models") -> bool:
+    def _is_local_server_available(url: str | None = None) -> bool:
         # Fast non-blocking check if local LM Studio server is live
         import urllib.request
+
+        url = (
+            url
+            or os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1").rstrip("/") + "/models"
+        )
         try:
             req = urllib.request.Request(url)
             with urllib.request.urlopen(req, timeout=1.0) as resp:
@@ -104,9 +111,8 @@ class LLMFactory:
                 from langchain_openai import ChatOpenAI
 
                 resolved_model = model_name or os.getenv("LOCAL_CHAT_MODEL", "qwen/qwen3-4b-2507")
-                resolved_base_url = (
-                    base_url
-                    or os.getenv("LOCAL_LLM_BASE_URL", "http://192.168.1.16:1234/v1")
+                resolved_base_url = base_url or os.getenv(
+                    "LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1"
                 )
                 return ChatOpenAI(
                     model=resolved_model,
@@ -114,6 +120,8 @@ class LLMFactory:
                     api_key="lm-studio",
                     temperature=temperature,
                     max_tokens=max_tokens,
+                    timeout=float(os.getenv("LOCAL_LLM_TIMEOUT", "45")),
+                    max_retries=0,
                 )
             except Exception:  # noqa: BLE001
                 return MockClinicalChatModel(model_name="qwen/qwen3-4b-2507")
@@ -128,9 +136,8 @@ class LLMFactory:
                     or os.getenv("SARVAM_API_KEY")
                     or "dummy-key"
                 )
-                resolved_base_url = (
-                    base_url
-                    or os.getenv("SARVAM_BASE_URL", "https://api.sarvam.ai/v1")
+                resolved_base_url = base_url or os.getenv(
+                    "SARVAM_BASE_URL", "https://api.sarvam.ai/v1"
                 )
                 resolved_model = model_name or os.getenv("SARVAM_MODEL", "sarvam-2b")
                 return ChatOpenAI(
@@ -184,15 +191,16 @@ class LLMFactory:
                 resolved_model = model_name or os.getenv(
                     "LOCAL_EMBED_MODEL", "text-embedding-qwen3-embedding-0.6b"
                 )
-                resolved_base_url = (
-                    base_url
-                    or os.getenv("LOCAL_LLM_BASE_URL", "http://192.168.1.16:1234/v1")
+                resolved_base_url = base_url or os.getenv(
+                    "LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1"
                 )
                 return OpenAIEmbeddings(
                     model=resolved_model,
                     base_url=resolved_base_url,
                     api_key="lm-studio",
                     check_embedding_ctx_length=False,
+                    request_timeout=8,
+                    max_retries=0,
                 )
             except Exception:  # noqa: BLE001
                 return MockEmbeddings()

@@ -2,6 +2,36 @@
 
 Implementation status and backlog.
 
+- [x] Changed full chat to a left/right layout with independently collapsible chat and chart views; the remaining panel fills the available width. Source Proof continues to open from selected citations in the right panel.
+- [x] Added an explicit diabetes-agent scope warning for heart-disease chart requests, listing supported OCR measurements and offering cited cardiac text summaries.
+
+## UI branch implementation (30 October 2026)
+
+- [x] Created `UI` branch and removed the tracked Tkinter OCR test UI on that branch.
+- [x] Added React/TypeScript browser workspace with screenshot-inspired Patients page, doctor/admin navigation, Today cards, Records, Care pathways, Source Proof, expandable chat, movable assistant bubble, login, intake, appointments, and accounts.
+- [x] Added local FastAPI integration layer for admin-managed accounts, signed sessions with CSRF, doctor-to-patient assignments, permanent PrepPulse IDs and folder aliases, document uploads, one-folder intake, appointments, visit state, clinician review decisions, pathways, source page rendering, chat retrieval, and background brief jobs.
+- [x] Changed the UI tagline to “Diabetes Clinical Intelligence”; replaced global sample import with one-folder upload and background processing; added admin patient overview with visits, appointments, documents, and assigned doctors.
+- [x] Cleared local patient, alias, document, appointment, visit, job, pathway, review, and audit records on 2 November 2026; verified both login accounts remain. The local API was stopped for the reset and must be restarted.
+- [x] Added per-account browser Settings for Light/Dark/System appearance, text size, contrast, dictation language, opt-in Read aloud visibility, and admin appointment defaults. Preferences are local to one browser.
+- [x] Added a top-level Analyze records action, clearer job progress, a full patient record workspace with page controls and searchable file tiles, tight OCR citation highlights, and source-backed metric findings. Verified the imported patient's 15 processed documents, 422 evidence chunks, eight source-backed priority observations and earlier events, and a multi-year chat answer against the local model.
+- [x] Replaced plain-text chat with safe Markdown/GFM rendering, real tables, emphasized values, inline citation links, and saved doctor/patient chat sessions in MongoDB.
+- [x] Added real chart artifacts per request using dated OCR values, saved chart links/session library, collapsible charts above chat, and an optional Source Proof dock that opens from a citation or explicit source request. Removed the permanently displayed chat source/context/chart column.
+- [x] Added actual stage bubbles for review agents, retrieval, chart generation, and response synthesis; added retry states for interrupted sessions and analysis jobs.
+- [x] Added diabetes journey and other-history tiles across the uploaded records, narrative history synthesis, previous-measurement source links, and a collapsible navigation rail for both roles.
+- [x] Corrected the local inference default to loopback, bounded model/embedding timeouts, preserved BM25 after embedding failure, and made chart creation independent of inference availability.
+- [x] Completed browser regression checks in headless Edge against an isolated copy of the imported patient. Verified two independent charts, native reply tables, chart point/inline source links, OCR overlays with automatic source-span centering, full record expansion, panel collapse/reopen, session reload/new chat, and 1000px responsive width. Captured review screenshots outside version control.
+- [ ] Extend deterministic chart extraction to additional analytes and document layouts as needed; unsupported requests currently show a data gap instead of generated measurements.
+- [x] Added local faster-whisper dictation endpoint with transcript review in the UI. Added blank `PREPPULSE_TTS_MODEL_PATH` placeholder and disabled Read aloud control for the pending local GGUF runtime.
+- [x] Rewrote `docs/FRONTEND_INTEGRATION_SPEC.md` as a handoff matching actual code contracts and known gaps.
+- [ ] Validate the full doctor/admin flow against a running local MongoDB and real downloaded models. Static build and isolated tests are not a substitute for this live check.
+- [ ] Resolve existing full-suite fixture assumptions: some legacy tests require a pre-seeded `PP001_Arvind_Narayanan` Mongo patient, and one agent expectation differs from the current mock-model output. The isolated UI/API suite passes without that seed.
+- [x] Add a historical pathway browser for clinician-approved versions.
+- [ ] Persist the sidebar checklist's temporary on-screen check marks. Finalized pathway items and doctor notes are persisted separately.
+- [x] Added authenticated opt-in Read aloud API and browser playback, gated by a real WAV-audio probe of a configured local endpoint.
+- [ ] Provide and test an audio-capable runtime for `mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF` and verify spoken languages. The reachable LM Studio server lists the model but returns `Unexpected endpoint or method` for `POST /v1/audio/speech`, so Read aloud remains disabled with that server.
+- [ ] Add owner-approved Guidance library content when supplied.
+- [ ] Complete a shared-deployment security review before exposing the app beyond local loopback.
+
 ## Implemented
 
 - [x] Streamlined architecture: consolidated into master modules (`engine.py` and `database.py`).
@@ -13,9 +43,9 @@ Implementation status and backlog.
 - [x] SQLite store (`patients`, `documents`, `pages`, `evidence_anchors`).
 - [x] Pack builder creating active 93-patient 4-document packs.
 - [x] Batch ingestion pipeline: 75 patients (300 documents, 34,797 anchors) ingested into SQLite.
-- [x] Desktop test UI in `temp_ui/mock_ui_ocr_testing.py` with document preview and bounding-box highlighting.
+- [x] Built the earlier desktop OCR test UI with document preview and bounding-box highlighting; removed it on `UI` after the browser workspace replaced it.
 - [x] Hybrid-PDF support: same-page extraction combining native digital text and embedded image region OCR.
-- [x] Full test suite (6 passing tests) and Ruff linting passing cleanly.
+- [x] Earlier OCR foundation suite (6 tests) and Ruff linting passed at that milestone. Current full-suite status is tracked in the UI branch section.
 - [x] OCR Foundation FROZEN: Native PDF, scanned OCR, table parsing, and same-page hybrid extraction locked.
 
 ## Active Roadmap (Updated Priorities)
@@ -44,11 +74,12 @@ Implementation status and backlog.
 - [x] Add plug-and-play `LLMFactory` supporting Ollama (`qwen2.5:7b`), Sarvam AI, OpenAI-compatible APIs, or offline mock providers via `.env`.
 - [x] Add automated retrieval test suite (`tests/test_hybrid_rag.py`) verifying exact precision, latency, patient isolation, and coordinate preservation.
 
-### Phase 4: Streamlit v1 Clinical Consultation UI
-- [ ] Build lightweight Streamlit UI (`streamlit_app/`) rendering consultation brief matching Figma/Replit prototype.
-- [ ] Display visual placement of KPIs (HbA1c, Fasting Glucose, eGFR) and patient trajectory cards.
-- [ ] Interactive Source Proof panel: clicking any citation renders the source document/page and highlights the normalized `[0, 1000]` bounding box.
-- [ ] Add dynamic toggleable English / Hindi (EN / हि) translations for caregiver handoff checklist.
+### Phase 4: React browser consultation UI
+The owner approved a React browser UI on the `UI` branch in place of the earlier Streamlit proposal.
+- [x] Build a screenshot-inspired consultation workspace in `web/` using the actual `ConsultationBrief` schema.
+- [x] Display KPI and trajectory cards from available agent output.
+- [x] Render source pages and normalized `[0, 1000]` highlights only when citation validation succeeds; unverified claims show a source-unavailable state.
+- [x] Add six-language client-side checklist switching (English, Hindi, Tamil, Bengali, Odia, Telugu).
 
 ### Phase 5: LangGraph Multi-Agent Orchestration & Clinical Brief (COMPLETED)
 - [x] Define strict Pydantic schemas (`src/preppulse_agents/schemas.py`) for:
@@ -73,7 +104,7 @@ Implementation status and backlog.
   - `TimeSeriesPoint`, `LongitudinalMetricSeries` (10-year tabular matrix and chart coordinates).
   - `SmartPromptBubble` (non-intrusive assistive prompt suggestions).
   - `CaregiverPrep` (dynamically switching between Caregiver Handoff and Caregiver Prep Sheet with `EN`, `हि`, `த` translations).
-- [x] Configured pluggable `LLMFactory` with native local LM Studio inference (`qwen/qwen3-4b-2507` and `text-embedding-qwen3-embedding-0.6b` at `http://192.168.1.16:1234/v1`), VRAM safeguard for RTX 4060, Sarvam AI credit preservation (`SARVAM_AI_CREDITS`), and offline mock fallback.
+- [x] Configured pluggable `LLMFactory` with native local LM Studio inference (`qwen/qwen3-4b-2507` and `text-embedding-qwen3-embedding-0.6b`), defaulting to loopback `http://127.0.0.1:1234/v1` and allowing `LOCAL_LLM_BASE_URL` overrides; retained the RTX 4060 safeguard, Sarvam fallback, and offline mock provider.
 - [x] Implemented 8-node LangGraph multi-agent review machine in `src/preppulse_agents/graph.py`:
   - Classification $\rightarrow$ Trajectory $\rightarrow$ Care Gaps $\rightarrow$ Mismatches $\rightarrow$ Comorbidities $\rightarrow$ Caregiver Prep $\rightarrow$ Assistive Bubbles $\rightarrow$ Brief Compiler.
 - [x] **Refactored All Agents to LLM-Driven Dynamic Inference (Zero Hardcoding)**:
@@ -84,7 +115,7 @@ Implementation status and backlog.
   - `assistive_bubbles_agent`: Dynamic bubble synthesis reflecting the actual clinical events and longitudinal series present in the patient's state.
   - Robust `_parse_llm_json_array` utility ensuring fail-safe JSON parsing across diverse LLM markdown outputs.
 - [x] Built and verified full end-to-end integration test suite (`tests/test_end_to_end_pipeline.py`) validating raw PDF $\rightarrow$ Stage 1 OCR $\rightarrow$ Chunker $\rightarrow$ Hybrid RAG $\rightarrow$ LangGraph Swarm $\rightarrow$ Unified Brief.
-- [x] 19 of 19 tests passing across full repository test suite with zero linter errors.
+- [x] Focused UI/API, RAG, pipeline, and browser regression checks pass; legacy full-suite fixtures that require a pre-seeded patient remain documented below.
 
 ### Phase 7: External YAML Prompt Engine & 6-Language Multi-Lingual Support (COMPLETED)
 - [x] Externalized all agent and RAG prompts into modular YAML configurations (`prompts/agents/` and `prompts/rag/`):
