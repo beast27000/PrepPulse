@@ -1,6 +1,7 @@
 export type User = {
   user_id: string;
   account_id?: string;
+  account_aliases?: string[];
   caregiver_type?: "family" | "professional";
   availability?: "free" | "active";
   name: string;
@@ -259,8 +260,16 @@ export async function request<T>(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    if (res.status === 404 && data?.detail === "Not Found" && /^(\/care\/|\/appointment-history|\/previous-patients|\/admin\/caregiver)/.test(path)) {
-      throw new Error("This API process does not contain the current UI routes. Restart it with scripts/start_ui_api.ps1, refresh, and sign in again.");
+    if (
+      res.status === 404 &&
+      data?.detail === "Not Found" &&
+      /^(\/care\/|\/appointment-history|\/previous-patients|\/admin\/caregiver)/.test(
+        path,
+      )
+    ) {
+      throw new Error(
+        "This API process does not contain the current UI routes. Restart it with scripts/start_ui_api.ps1, refresh, and sign in again.",
+      );
     }
     const detail = Array.isArray(data?.detail)
       ? data.detail

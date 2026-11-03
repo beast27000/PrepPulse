@@ -78,6 +78,11 @@ test("doctor checklist, signed plan, caregiver ticks, records and charts", async
   await page
     .getByRole("button", { name: "Back to Patients", exact: true })
     .click();
+  await page.getByLabel("Care pathway language").selectOption("ta");
+  await expect(page.locator(".care-card-preview")).toContainText(
+    "வீட்டுப் பதிவைக் கொண்டு வாருங்கள்",
+  );
+  await page.getByLabel("Care pathway language").selectOption("en");
   await page
     .getByRole("button", { name: "Start visit", exact: true })
     .first()
@@ -207,11 +212,27 @@ test("doctor checklist, signed plan, caregiver ticks, records and charts", async
     fullPage: false,
   });
   await carePage.getByLabel("Care pathway language").selectOption("hi");
+  await expect(carePage.locator(".signed-plan")).toContainText(
+    "घर का रिकॉर्ड लाएँ",
+  );
   const download = carePage.waitForEvent("download");
   await carePage
-    .getByRole("button", { name: "Download pathway · हिन्दी", exact: true })
+    .getByRole("button", { name: "योजना डाउनलोड करें · हिन्दी", exact: true })
     .click();
   expect((await download).suggestedFilename()).toContain("-hi.pdf");
+  await carePage.getByLabel("Care pathway language").selectOption("ta");
+  await expect(carePage.locator(".signed-plan")).toContainText(
+    "வீட்டுப் பதிவைக் கொண்டு வாருங்கள்",
+  );
+  await expect(carePage.locator(".care-table")).not.toContainText("One tablet");
+  await expect(
+    carePage.getByRole("button", { name: "குறிப்பை அனுப்பு", exact: true }),
+  ).toBeVisible();
+  await expect(carePage.getByRole("checkbox").first()).toBeChecked();
+  await carePage.screenshot({
+    path: info.outputPath("translated-caregiver.png"),
+    fullPage: true,
+  });
   await page
     .getByText("Previous caregiver pathways and follow-up", { exact: true })
     .click();
@@ -260,7 +281,7 @@ test("admin accounts, caregiver assignment, two-row appointments and editable di
     .click();
   await expect(page.getByRole("status")).toContainText("Created Review Nurse");
   await page.getByLabel("Search accounts", { exact: true }).fill("nurse");
-  await expect(page.locator(".admin-scroll-list code")).toContainText("CGV-");
+  await expect(page.locator(".admin-scroll-list code")).toContainText("HCW-");
   await page.getByRole("button", { name: "Caregivers", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Register caregiver", exact: true }),
@@ -290,6 +311,21 @@ test("admin accounts, caregiver assignment, two-row appointments and editable di
   await expect(
     page.getByText("Patient assignment saved", { exact: true }),
   ).toBeVisible();
+  // Either text search or dropdowns can resolve an assignment independently.
+  await page.getByLabel("Find caregiver", { exact: true }).fill("nurse");
+  await page.getByLabel("Find patient", { exact: true }).fill("PP-REVIEW");
+  await expect(
+    page.getByRole("combobox", {
+      name: "Registered professional caregiver",
+      exact: true,
+    }),
+  ).toHaveValue((await nurseOption.getAttribute("value"))!);
+  await expect(
+    page.getByRole("combobox", { name: "Patient", exact: true }),
+  ).toHaveValue("PRP-REVIEW");
+  await expect(
+    page.getByRole("button", { name: "Assign patient", exact: true }),
+  ).toBeEnabled();
   await page
     .getByLabel("Availability for nurse", { exact: true })
     .selectOption("active");

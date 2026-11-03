@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Patient, request } from "./api";
 import { languages } from "./CareWorkspace";
-import { notifyCareChanged, subscribeCare, useCareLanguage } from "./careView";
+import {
+  notifyCareChanged,
+  subscribeCare,
+  useCareLanguage,
+  useCareLabels,
+  useCareTranslation,
+  requestCareLanguage,
+} from "./careView";
 import "./care.css";
 
 type Item = {
@@ -14,10 +21,31 @@ type Item = {
   frequency?: string;
 };
 type Bundle = {
-  draft: { items: Item[]; checks?: Record<string, boolean> } | null;
+  draft: {
+    items: Item[];
+    revision: number;
+    language_status?: Record<
+      string,
+      { status: string; completed: number; total: number }
+    >;
+    checks?: Record<string, boolean>;
+  } | null;
   visit: { visit_id: string } | null;
-  plans: { pathway_id: string; items: Item[] }[];
+  plans: {
+    pathway_id: string;
+    revision?: number;
+    items: Item[];
+    language_status?: Record<
+      string,
+      { status: string; completed: number; total: number }
+    >;
+  }[];
   suggestions: Item[];
+  suggestion_revision?: number;
+  suggestion_status?: Record<
+    string,
+    { status: string; completed: number; total: number }
+  >;
   followup: {
     tasks: { item_id?: string; report?: { completed: boolean } }[];
   } | null;
@@ -34,6 +62,35 @@ export default function CareChecklist({
 }) {
   const [data, setData] = useState<Bundle | null>(null);
   const [language, setLanguage] = useCareLanguage(patient.patient_id);
+  const label = useCareLabels(language);
+  const kind =
+    data?.draft?.items.length || (data?.draft && !data?.plans.length)
+      ? "draft"
+      : data?.plans.length
+        ? "signed"
+        : "preview";
+  const identity =
+    kind === "draft"
+      ? data?.visit?.visit_id
+      : kind === "signed"
+        ? data?.plans[0]?.pathway_id
+        : data?.suggestions.length
+          ? patient.patient_id
+          : undefined;
+  const revision =
+    (kind === "draft"
+      ? data?.draft?.revision
+      : kind === "signed"
+        ? data?.plans[0]?.revision
+        : data?.suggestion_revision) || 0;
+  useCareTranslation(patient.patient_id, kind, identity, revision, language);
+  const translation = (
+    kind === "draft"
+      ? data?.draft?.language_status
+      : kind === "signed"
+        ? data?.plans[0]?.language_status
+        : data?.suggestion_status
+  )?.[language];
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const checking = useRef(false);
@@ -57,13 +114,13 @@ export default function CareChecklist({
     }
     load();
     const unsubscribe = subscribeCare(patient.patient_id, load);
-    const timer = setInterval(load, 5000);
+    const timer = setInterval(load, language === "en" ? 5000 : 1500);
     return () => {
       active = false;
       clearInterval(timer);
       unsubscribe();
     };
-  }, [patient.patient_id]);
+  }, [patient.patient_id, language]);
   const draft =
     !!data?.draft && (!!data.draft.items.length || !data.plans.length);
   const signed = !draft && !!data?.plans.length;
@@ -140,7 +197,7 @@ export default function CareChecklist({
     >
       {!summary && (
         <div className="panel-heading">
-          <h3>Visit checklist</h3>
+          <h3>{label("Visit checklist")}</h3>
           <select
             aria-label="Care pathway language"
             value={language}
@@ -156,10 +213,10 @@ export default function CareChecklist({
       )}
       <p className="small-muted">
         {signed
-          ? "Signed checklist · caregiver-reported completion"
+          ? label("Signed checklist · caregiver-reported completion")
           : draft
-            ? "Visit preparation · checked by the clinician"
-            : "Suggested preparation · review with the clinician"}
+            ? label("Visit preparation · checked by the clinician")
+            : label("Suggested preparation · review with the clinician")}
       </p>
       {rows.slice(0, summary ? 3 : rows.length).map((item, index) => {
         const translated =
@@ -184,14 +241,16 @@ export default function CareChecklist({
             />
             <span>
               {translated || item.text || item.text_en}
-              {!translated && <small>Source text · translation pending</small>}
+              {!translated && (
+                <small>{label("Source text · translation pending")}</small>
+              )}
             </span>
           </label>
         );
       })}
       {!rows.length && (
         <p className="small-muted">
-          No checklist instructions yet. Add them in Care pathways.
+          {label("No checklist instructions yet. Add them in Care pathways.")}
         </p>
       )}
       {error && (
@@ -201,14 +260,52 @@ export default function CareChecklist({
       )}
       <div className="care-checklist-actions">
         <button className="text-button" onClick={onEdit}>
-          Edit pathway
+          {label("Edit pathway")}
         </button>
         {!summary && !!data?.plans.length && (
           <button className="secondary" onClick={download}>
-            Download pathway · {languages[language]}
+            {label("Download pathway")} · {languages[language]}
           </button>
         )}
       </div>
+      {translation && translation.status !== "complete" && (
+        <p className="small-muted" role="status">
+          {label(
+            translation.status === "queued" || translation.status === "running"
+              ? "Translating…"
+              : "Translation incomplete",
+          )}{" "}
+          {translation.completed}/{translation.total}{" "}
+          {!["queued", "running"].includes(translation.status) && identity && (
+            <button
+              className="text-button"
+              onClick={() =>
+                requestCareLanguage(
+                  patient.patient_id,
+                  kind,
+                  identity,
+                  revision,
+                  language,
+                  true,
+                ).catch((e) => setError(e.message))
+              }
+            >
+              {label("Retry translation")}
+            </button>
+          )}
+        </p>
+      )}
     </div>
+  );
+}
+
+export function CareCardHeading({ patient }: { patient: Patient }) {
+  const [language] = useCareLanguage(patient.patient_id);
+  const label = useCareLabels(language);
+  return (
+    <>
+      <span className="eyebrow">{label("Family / caregiver handoff")}</span>
+      <h3>{label("Family / caregiver pathway")}</h3>
+    </>
   );
 }

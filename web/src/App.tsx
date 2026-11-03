@@ -47,7 +47,7 @@ import UnifiedIntake from "./UnifiedIntake";
 import CaregiverAdmin from "./CaregiverAdmin";
 import AccountsAdmin from "./AccountsAdmin";
 import AdminPatientDetails from "./AdminPatientDetails";
-import CareChecklist from "./CareChecklist";
+import CareChecklist, { CareCardHeading } from "./CareChecklist";
 import "./administration.css";
 import VisitHistory, { AppointmentHistory } from "./VisitHistory";
 import PatientConversation from "./PatientConversation";
@@ -569,7 +569,7 @@ export default function App() {
       try {
         const r = await fetch("/api/runtime");
         const value = r.ok ? await r.json() : null;
-        setApiMismatch(value?.contract !== "preppulse-ui-care-3");
+        setApiMismatch(value?.contract !== "preppulse-ui-care-4");
       } catch {
         setApiMismatch(true);
       }
@@ -1283,10 +1283,7 @@ export default function App() {
                                     <div className="card-head">
                                       <span className="card-no">04</span>
                                       <div>
-                                        <span className="eyebrow">
-                                          FAMILY / CAREGIVER HANDOFF
-                                        </span>
-                                        <h3>Family / caregiver pathway</h3>
+                                        <CareCardHeading patient={selected} />
                                       </div>
                                       <ClipboardCheck size={17} />
                                     </div>
@@ -1386,7 +1383,10 @@ export default function App() {
                                           ),
                                         )}
                                       </div>
-                                      <div className="finding-controls" hidden={!!historical}>
+                                      <div
+                                        className="finding-controls"
+                                        hidden={!!historical}
+                                      >
                                         <div>
                                           <button
                                             onClick={() =>
@@ -2366,7 +2366,6 @@ function AdminPages({
                         ),
                       "Doctor assigned",
                     );
-
                   }}
                 >
                   <option value="">Assign another doctor</option>

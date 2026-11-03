@@ -2,6 +2,19 @@
 
 Implementation status and backlog.
 
+## Caregiver types, assignment search and language switching — UI review (3 November 2026)
+
+- [x] Accounts requires an explicit family/in-hospital choice when creating a caregiver. New hospital IDs use `HCW-`; families use `FAM-`; existing identities remain valid.
+- [x] Admins can correct a caregiver's type in Accounts; internal identity/history stay intact, the former public ID remains searchable, and old assignments are revoked before reassignment.
+- [x] Assignment search resolves unique names/usernames/IDs/aliases and synchronizes with dropdowns; ambiguous names require selection. Roster search stays independent.
+- [x] Server checks caregiver account type, patient assignment and signed pathway mode for list/view/translation/download/report/note access.
+- [x] Language selection automatically requests the selected language, reuses independent revision/source-hash caches, retains successful segments on partial failures, and exposes progress/retry states. Doctor card/checklist/editor language remains synchronized.
+- [x] Localized care controls/headings/status captions; separate derived doctor-note/checklist/dose text leaves signed source instructions and completion reports unchanged.
+- [x] Pre-visit suggestions use the same language cache without starting a visit; incomplete translations from a previous local API process can resume on the next request.
+- [x] Modestly enlarged only admin patient IDs/account details and doctor finding/citation text. OCR, RAG, chart routing and chat synthesis are unchanged.
+- [x] Verification: 71 focused API/care/chart/RAG/geometry/table tests, three Edge browser flows including Tamil/Hindi switching and downloads, TypeScript/production build, and targeted lint passed. Synthetic browser translations test mechanics, not clinical meaning.
+- [ ] Review semantic translation quality and multilingual PDFs with the configured model and a fluent clinical reviewer; target-script/number validation is not proof of correct meaning. A synthetic live Tamil request exposed wording limitations.
+
 ## Final chart routing, voice feedback and documentation — UI review (3 November 2026)
 
 - [x] Fixed the plural `charts` request falling into text-only synthesis. Added deterministic chart/graph/plot/visualization routing, generic patient-chart selection, topic inheritance for follow-ups and explicit date-window filtering for 1–10 years, including number words.

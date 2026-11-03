@@ -15,6 +15,13 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from preppulse_api.care_labels import CARE_LABELS
+from preppulse_api.care_translation import (
+    overlay,
+    request_language,
+    source_hash,
+    source_locale,
+    usable,
+)
 from preppulse_api.config import PRIVATE_ROOT
 from preppulse_api.store import new_id, now
 
@@ -90,6 +97,27 @@ def care_suggestions(store, patient_id: str) -> list[dict]:
             "Bring current medicine packets and any home readings already requested by the doctor.",
         )
     ]
+
+
+def suggestion_plan(store, patient_id):
+    """Derived preview only: choosing a language never starts a clinical visit."""
+    plan = {
+        "items": [
+            {
+                "item_id": str(i),
+                "text": item["text_en"],
+                "text_en": item["text_en"],
+                "source_language": "en",
+                "source": "agent",
+                "texts": {
+                    lang: item[f"text_{lang}"] for lang in LANGUAGES if item.get(f"text_{lang}")
+                },
+            }
+            for i, item in enumerate(care_suggestions(store, patient_id))
+        ]
+    }
+    plan["revision"] = int(source_hash(plan)[:12], 16)
+    return plan
 
 
 def ensure_draft(store, visit: dict) -> dict:
@@ -231,17 +259,7 @@ def translate_draft_job(visit_id: str, revision: int) -> None:
         )
         if not draft:
             return
-        try:
-            translated = translate_plan(draft)
-            changes = {
-                key: translated[key] for key in ("items", "notes_texts", "translation_status")
-            }
-        except Exception:
-            changes = {"translation_status": "unavailable"}
-        # A late translation must never overwrite a more recent clinician edit.
-        store.db.care_drafts.update_one(
-            {"visit_id": visit_id, "revision": revision}, {"$set": changes}
-        )
+        request_language(store, draft, "draft", visit_id, revision, "en")
     finally:
         store.client.close()
 
@@ -260,7 +278,7 @@ def end_date(medication: dict) -> date:
 
 def resolved_plan(store, plan: dict) -> dict:
     translated = store.db.care_translations.find_one({"pathway_id": plan["pathway_id"]}, {"_id": 0})
-    return {
+    result = {
         **plan,
         **(
             {
@@ -272,6 +290,7 @@ def resolved_plan(store, plan: dict) -> dict:
             else {}
         ),
     }
+    return overlay(store, result, "signed", plan["pathway_id"], plan.get("revision", 0))
 
 
 def public_plan(plan: dict, current: dict) -> dict:
@@ -304,13 +323,8 @@ def translate_signed_job(pathway_id: str) -> None:
         plan = store.db.pathways.find_one({"pathway_id": pathway_id}, {"_id": 0})
         if not plan:
             return
-        try:
-            translated = translate_plan(resolved_plan(store, plan))
-            data = {key: translated[key] for key in ("items", "notes_texts", "translation_status")}
-        except Exception:
-            data = {"translation_status": "unavailable"}
-        store.db.care_translations.update_one(
-            {"pathway_id": pathway_id}, {"$set": {**data, "pathway_id": pathway_id}}, upsert=True
+        request_language(
+            store, resolved_plan(store, plan), "signed", pathway_id, plan.get("revision", 0), "en"
         )
     finally:
         store.client.close()
@@ -415,12 +429,21 @@ def pdf_bytes(plan: dict, patient: dict, language: str, source_archive: bool = F
         else:
             raise HTTPException(409, "Notes translation is pending")
     labels = CARE_LABELS[language]
+
+    def dose(med):
+        value = med.get("dose_texts", {}).get(language)
+        if not value and usable(med["dose"], med["dose"], language, source_locale(med["dose"])):
+            value = med["dose"]
+        if not value and not source_archive:
+            raise HTTPException(409, "Dose instruction translation is pending")
+        return esc(value or med["dose"])
+
     rows = "".join(
         f"<li>{text(x)} ({esc(labels[x.get('frequency', 'once')])})</li>"
         for x in plan.get("items", [])
     )
     meds = "".join(
-        f"<tr><td>{esc(m['name'])}<br>{esc(m['dose'])}</td><td>{esc(', '.join(labels[slot] for slot in m['times']))}<br>{esc(labels[m['food']])}</td><td>{esc(m['start_date'])} — {end_date(m).isoformat()}</td></tr>"
+        f"<tr><td>{esc(m['name'])}<br>{dose(m)}</td><td>{esc(', '.join(labels[slot] for slot in m['times']))}<br>{esc(labels[m['food']])}</td><td>{esc(m['start_date'])} — {end_date(m).isoformat()}</td></tr>"
         for m in plan.get("medications", [])
     )
     content = f"""<html><body><h1>PrepPulse</h1><h2>{esc(plan["mode"].title())} pathway</h2>
@@ -602,6 +625,9 @@ def register_care_routes(app, db, user, admin, clinician, patient_access, own_vi
             for p in store.db.pathways.find({"patient_id": patient_id}, {"_id": 0}).sort(
                 "approved_at", -1
             )
+            if current["role"] != "caregiver"
+            or p.get("mode")
+            == ("caregiver" if current.get("caregiver_type") == "professional" else "family")
         ]
         active = (
             store.db.visits.find_one(
@@ -611,7 +637,15 @@ def register_care_routes(app, db, user, admin, clinician, patient_access, own_vi
             else None
         )
         latest = plans[0] if plans else None
+        preview = (
+            suggestion_plan(store, patient_id)
+            if current["role"] == "doctor" and not plans
+            else {"items": [], "revision": 0}
+        )
+        preview = overlay(store, preview, "preview", patient_id, preview["revision"])
         draft = ensure_draft(store, active) if active else None
+        if draft:
+            draft = overlay(store, draft, "draft", active["visit_id"], draft["revision"])
         if draft:
             draft["checks"] = {
                 row["item_id"]: row["completed"]
@@ -623,9 +657,9 @@ def register_care_routes(app, db, user, admin, clinician, patient_access, own_vi
             "plans": [public_plan(p, current) for p in plans],
             "followup": followup(store, latest, day or local_day()) if latest else None,
             "day": (day or local_day()).isoformat(),
-            "suggestions": care_suggestions(store, patient_id)
-            if current["role"] == "doctor" and not plans
-            else [],
+            "suggestions": preview["items"],
+            "suggestion_revision": preview["revision"],
+            "suggestion_status": preview["language_status"],
         }
 
     class VisitCheckIn(BaseModel):
@@ -714,15 +748,32 @@ def register_care_routes(app, db, user, admin, clinician, patient_access, own_vi
         )
         return {**old, **data}
 
+    @app.post("/api/care/patients/{patient_id}/translate-preview")
+    def translate_preview(
+        patient_id: str, language: str = "en", current: dict = Depends(clinician), store=Depends(db)
+    ):
+        patient_access(patient_id, current, store)
+        if language not in LANGUAGES:
+            raise HTTPException(400, "Unsupported language")
+        plan = suggestion_plan(store, patient_id)
+        return request_language(store, plan, "preview", patient_id, plan["revision"], language)
+
     @app.post("/api/care/visits/{visit_id}/translate")
-    def retry_translation(visit_id: str, current: dict = Depends(clinician), store=Depends(db)):
+    def retry_translation(
+        visit_id: str, language: str = "en", current: dict = Depends(clinician), store=Depends(db)
+    ):
+        if language not in LANGUAGES:
+            raise HTTPException(400, "Unsupported language")
         visit = own_visit(visit_id, current, store)
         draft = ensure_draft(store, visit)
-        store.db.care_drafts.update_one(
-            {"visit_id": visit_id}, {"$set": {"translation_status": "pending"}}
+        return request_language(
+            store,
+            overlay(store, draft, "draft", visit_id, draft["revision"]),
+            "draft",
+            visit_id,
+            draft["revision"],
+            language,
         )
-        workers.submit(translate_draft_job, visit_id, draft["revision"])
-        return {"ok": True}
 
     class Assignment(BaseModel):
         patient_id: str
@@ -770,6 +821,10 @@ def register_care_routes(app, db, user, admin, clinician, patient_access, own_vi
         if not plan:
             raise HTTPException(404, "Pathway not found")
         care_access(plan["patient_id"], current, store)
+        if current["role"] == "caregiver" and plan.get("mode") != (
+            "caregiver" if current.get("caregiver_type") == "professional" else "family"
+        ):
+            raise HTTPException(403, "This pathway is for a different caregiver type")
         if current["role"] not in {"caregiver", "doctor"}:
             raise HTTPException(403, "Clinical access required")
         return resolved_plan(store, plan)
@@ -783,13 +838,18 @@ def register_care_routes(app, db, user, admin, clinician, patient_access, own_vi
         return {"plan": public_plan(plan, current), **followup(store, plan, day or local_day())}
 
     @app.post("/api/care/pathways/{pathway_id}/translate")
-    def translate_signed(pathway_id: str, current: dict = Depends(user), store=Depends(db)):
+    def translate_signed(
+        pathway_id: str, language: str = "en", current: dict = Depends(user), store=Depends(db)
+    ):
+        if language not in LANGUAGES:
+            raise HTTPException(400, "Unsupported language")
         plan = permitted_plan(pathway_id, current, store)
-        workers.submit(translate_signed_job, pathway_id)
         store.audit(
             current, "signed_translation_requested", plan["patient_id"], {"pathway_id": pathway_id}
         )
-        return {"ok": True}
+        return request_language(
+            store, plan, "signed", pathway_id, plan.get("revision", 0), language
+        )
 
     class ReportIn(BaseModel):
         task_id: str = Field(max_length=200)

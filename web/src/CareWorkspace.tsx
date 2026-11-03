@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Patient, User, post, request } from "./api";
 import "./care.css";
-import { notifyCareChanged, subscribeCare, useCareLanguage } from "./careView";
+import {
+  notifyCareChanged,
+  subscribeCare,
+  useCareLanguage,
+  useCareLabels,
+  useCareTranslation,
+  requestCareLanguage,
+} from "./careView";
 
 export const languages: Record<string, string> = {
   en: "English",
@@ -27,6 +34,7 @@ type Medication = {
   medication_id: string;
   name: string;
   dose: string;
+  dose_texts?: Record<string, string>;
   kind: string;
   start_date: string;
   duration: number;
@@ -43,6 +51,10 @@ type Draft = {
   notes_language: string;
   notes_texts?: Record<string, string>;
   translation_status: string;
+  language_status?: Record<
+    string,
+    { status: string; completed: number; total: number }
+  >;
 };
 type Plan = Draft & {
   pathway_id: string;
@@ -77,7 +89,12 @@ type Followup = {
   past_due_unreported: number;
 };
 type Bundle = {
-  suggestions?: { text_en: string }[];
+  suggestions?: { text_en: string; texts?: Record<string, string> }[];
+  suggestion_revision?: number;
+  suggestion_status?: Record<
+    string,
+    { status: string; completed: number; total: number }
+  >;
   draft: Draft | null;
   visit: { visit_id: string; admitted: boolean } | null;
   plans: Plan[];
@@ -142,15 +159,7 @@ export default function CareWorkspace({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [language, setLanguage] = useCareLanguage(patient.patient_id);
   const [editingItems, setEditingItems] = useState(new Set<string>());
-  const [words, setWords] = useState<Record<string, Record<string, string>>>(
-    {},
-  );
-  useEffect(() => {
-    request<typeof words>("/care/labels")
-      .then(setWords)
-      .catch(() => {});
-  }, []);
-  const label = (value: string) => words[language]?.[value] || value;
+  const label = useCareLabels(language);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reporting, setReporting] = useState(false);
@@ -189,6 +198,10 @@ export default function CareWorkspace({
       );
       if (!planId || planId === data.plans[0]?.pathway_id)
         setFollow(data.followup);
+      else if (data.plans.some((x) => x.pathway_id === planId))
+        setFollow(
+          await request<Followup>(`/care/pathways/${planId}?day=${day}`),
+        );
     } catch (err) {
       setError((err as Error).message);
     }
@@ -206,20 +219,23 @@ export default function CareWorkspace({
   }, [patient.patient_id]);
   useEffect(() => {
     const unsubscribe = subscribeCare(patient.patient_id, load);
-    const timer = setInterval(() => {
-      const next = dayNow(),
-        previous = lastDay.current;
-      if (next !== previous) {
-        setDay((current) => (current === previous ? next : current));
-        lastDay.current = next;
-      }
-      load();
-    }, 5000);
+    const timer = setInterval(
+      () => {
+        const next = dayNow(),
+          previous = lastDay.current;
+        if (next !== previous) {
+          setDay((current) => (current === previous ? next : current));
+          lastDay.current = next;
+        }
+        load();
+      },
+      language === "en" ? 5000 : 1500,
+    );
     return () => {
       clearInterval(timer);
       unsubscribe();
     };
-  }, [patient.patient_id, day, planId]);
+  }, [patient.patient_id, day, planId, language]);
   useEffect(() => {
     if (!planId) return;
     let active = true;
@@ -430,6 +446,31 @@ export default function CareWorkspace({
     }
   }
   const plan = bundle?.plans.find((x) => x.pathway_id === planId);
+  useCareTranslation(
+    patient.patient_id,
+    "draft",
+    draft ? bundle?.visit?.visit_id : undefined,
+    draft?.revision || 0,
+    language,
+  );
+  useCareTranslation(
+    patient.patient_id,
+    "signed",
+    plan?.pathway_id,
+    plan?.revision || 0,
+    language,
+  );
+  const translation = (draft || plan)?.language_status?.[language];
+  useCareTranslation(
+    patient.patient_id,
+    "preview",
+    !draft && !plan && bundle?.suggestions?.length
+      ? patient.patient_id
+      : undefined,
+    bundle?.suggestion_revision || 0,
+    language,
+  );
+  const doseText = (med: Medication) => med.dose_texts?.[language] || med.dose;
   const translated = (item: Item) =>
     item.texts?.[language] ||
     (item.source_language === language ? item.text : "");
@@ -448,10 +489,10 @@ export default function CareWorkspace({
         <div>
           <div className="eyebrow teal">
             {bundle?.visit?.admitted || plan?.mode === "caregiver"
-              ? "CAREGIVER HANDOFF"
-              : "FAMILY PATHWAY"}
+              ? label("CAREGIVER HANDOFF")
+              : label("FAMILY PATHWAY")}
           </div>
-          <h3>{compact ? "Visit checklist" : patient.name}</h3>
+          <h3>{compact ? label("Visit checklist") : patient.name}</h3>
         </div>
         <select
           aria-label="Care pathway language"
@@ -475,16 +516,27 @@ export default function CareWorkspace({
               load();
             }}
           >
-            Reload
+            {label("Reload")}
           </button>
         </p>
       )}
-      {!bundle && !error && <p role="status">Loading care plan…</p>}
+      {!bundle && !error && <p role="status">{label("Loading care plan…")}</p>}
+      {translation && translation.status !== "complete" && (
+        <p className="small-muted" role="status">
+          {label(
+            ["queued", "running"].includes(translation.status)
+              ? "Translating…"
+              : "Translation incomplete",
+          )}{" "}
+          {translation.completed}/{translation.total}
+        </p>
+      )}
       {draft && role === "doctor" && (
         <>
           <p className="small-muted">
-            Draft · edits save automatically. Agent suggestions require your
-            review before sign-off.
+            {label(
+              "Draft · edits save automatically. Agent suggestions require your review before sign-off.",
+            )}
           </p>
           {draft.items.map((item, i) => (
             <div className="care-edit-item" key={item.item_id}>
@@ -502,7 +554,9 @@ export default function CareWorkspace({
                     <span>
                       {translated(item) || item.text}
                       {!translated(item) && (
-                        <small>Source text · translation pending</small>
+                        <small>
+                          {label("Source text · translation pending")}
+                        </small>
                       )}
                     </span>
                   </label>
@@ -513,7 +567,7 @@ export default function CareWorkspace({
                       setEditingItems(new Set([...editingItems, item.item_id]))
                     }
                   >
-                    Edit
+                    {label("Edit")}
                   </button>
                 </div>
               )}
@@ -533,7 +587,9 @@ export default function CareWorkspace({
                     }
                   />
                   {!translated(item) && (
-                    <small>Source text shown · translation pending</small>
+                    <small>
+                      {label("Source text shown · translation pending")}
+                    </small>
                   )}
                   <div className="care-row">
                     <select
@@ -550,8 +606,8 @@ export default function CareWorkspace({
                     </select>
                     <span className="small-muted">
                       {item.source === "agent"
-                        ? "Agent suggestion"
-                        : "Clinician edited"}
+                        ? label("Agent suggestion")
+                        : label("Clinician edited")}
                     </span>
                     <button
                       className="text-button"
@@ -562,7 +618,7 @@ export default function CareWorkspace({
                         })
                       }
                     >
-                      Remove
+                      {label("Remove")}
                     </button>
                     <button
                       className="text-button"
@@ -574,7 +630,7 @@ export default function CareWorkspace({
                         })
                       }
                     >
-                      Done editing
+                      {label("Done editing")}
                     </button>
                   </div>
                 </>
@@ -584,7 +640,7 @@ export default function CareWorkspace({
           <div className="inline-form">
             <input
               aria-label="Add checklist instruction"
-              placeholder="Add a checklist instruction"
+              placeholder={label("Add a checklist instruction")}
               value={newItem}
               onChange={(e) => setNewItem(e.target.value)}
             />
@@ -609,25 +665,39 @@ export default function CareWorkspace({
                 setNewItem("");
               }}
             >
-              Add
+              {label("Add")}
             </button>
           </div>
           <p className="small-muted" role="status">
-            {busy
-              ? "Saving…"
-              : dirty
-                ? "Unsaved changes"
-                : status || "Saved draft"}{" "}
-            · Translation: {draft.translation_status}
+            {label(
+              busy
+                ? "Saving…"
+                : dirty
+                  ? "Unsaved changes"
+                  : status || "Saved draft",
+            )}{" "}
+            · {label("Translation")}:{" "}
+            {label(
+              translation?.status === "complete"
+                ? "Complete"
+                : translation?.status === "partial" ||
+                    translation?.status === "unavailable"
+                  ? "Translation incomplete"
+                  : "Translating…",
+            )}
           </p>
           <button
             className="text-button"
             disabled={busy || dirty}
             onClick={async () => {
               try {
-                await post(
-                  `/care/visits/${bundle!.visit!.visit_id}/translate`,
-                  {},
+                await requestCareLanguage(
+                  patient.patient_id,
+                  "draft",
+                  bundle!.visit!.visit_id,
+                  draft.revision,
+                  language,
+                  true,
                 );
                 setStatus("Translation queued");
                 await load();
@@ -636,7 +706,7 @@ export default function CareWorkspace({
               }
             }}
           >
-            Refresh translations
+            {label("Refresh translations")}
           </button>
           {!compact && (
             <>
@@ -645,11 +715,11 @@ export default function CareWorkspace({
                 onClick={() => onAdmission?.(!bundle?.visit?.admitted)}
               >
                 {bundle?.visit?.admitted
-                  ? "Switch to family pathway"
+                  ? label("Switch to family pathway")
                   : "Admit · caregiver pathway"}
               </button>
               <label>
-                Doctor notes ({languages[language]})
+                {label("notes")} ({languages[language]})
                 <textarea
                   rows={5}
                   value={draft.notes_texts?.[language] || draft.doctor_notes}
@@ -665,13 +735,14 @@ export default function CareWorkspace({
               </label>
               {draft.doctor_notes && !draft.notes_texts?.[language] && (
                 <p className="small-muted">
-                  Source notes shown · translation pending
+                  {label("Source notes shown · translation pending")}
                 </p>
               )}
               <h3>{label("prescriptions")}</h3>
               <p className="small-muted">
-                Enter the prescribed name and exact dose / application
-                instructions. Choose the schedule below.
+                {label(
+                  "Enter the prescribed name and exact dose / application instructions. Choose the schedule below.",
+                )}
               </p>
               {draft.medications.map((med, i) => {
                 const change = (value: Partial<Medication>) =>
@@ -683,10 +754,12 @@ export default function CareWorkspace({
                   });
                 return (
                   <fieldset className="care-med" key={med.medication_id}>
-                    <legend>Prescription {i + 1}</legend>
+                    <legend>
+                      {label("Prescription")} {i + 1}
+                    </legend>
                     <div className="form-grid">
                       <label>
-                        Name
+                        {label("Name")}
                         <input
                           aria-label={`Medication name ${i + 1}`}
                           value={med.name}
@@ -694,28 +767,38 @@ export default function CareWorkspace({
                         />
                       </label>
                       <label>
-                        Dose / application
+                        {label("Dose / application")}
                         <input
                           aria-label={`Medication dose ${i + 1}`}
-                          value={med.dose}
-                          onChange={(e) => change({ dose: e.target.value })}
+                          title={med.dose}
+                          value={doseText(med)}
+                          onChange={(e) =>
+                            change({
+                              dose: e.target.value,
+                              dose_texts: { [language]: e.target.value },
+                            })
+                          }
                         />
                       </label>
                     </div>
                     <div className="form-grid">
                       <label>
-                        Type
+                        {label("Type")}
                         <select
                           value={med.kind}
                           onChange={(e) => change({ kind: e.target.value })}
                         >
-                          <option value="medicine">Medicine</option>
-                          <option value="injection">Injection</option>
-                          <option value="treatment">Treatment / pack</option>
+                          <option value="medicine">{label("Medicine")}</option>
+                          <option value="injection">
+                            {label("Injection")}
+                          </option>
+                          <option value="treatment">
+                            {label("Treatment / pack")}
+                          </option>
                         </select>
                       </label>
                       <label>
-                        Start date
+                        {label("Start date")}
                         <input
                           type="date"
                           value={med.start_date}
@@ -725,7 +808,7 @@ export default function CareWorkspace({
                         />
                       </label>
                       <label>
-                        Duration
+                        {label("Duration")}
                         <input
                           type="number"
                           min="1"
@@ -737,15 +820,15 @@ export default function CareWorkspace({
                         />
                       </label>
                       <label>
-                        Unit
+                        {label("Unit")}
                         <select
                           value={med.duration_unit}
                           onChange={(e) =>
                             change({ duration_unit: e.target.value })
                           }
                         >
-                          <option value="days">Days</option>
-                          <option value="months">Months</option>
+                          <option value="days">{label("Days")}</option>
+                          <option value="months">{label("Months")}</option>
                         </select>
                       </label>
                     </div>
@@ -776,7 +859,7 @@ export default function CareWorkspace({
                       )}
                     </div>
                     <label>
-                      Food timing
+                      {label("Food timing")}
                       <select
                         value={med.food}
                         onChange={(e) => change({ food: e.target.value })}
@@ -804,7 +887,7 @@ export default function CareWorkspace({
                         })
                       }
                     >
-                      Remove prescription
+                      {label("Remove prescription")}
                     </button>
                   </fieldset>
                 );
@@ -831,25 +914,25 @@ export default function CareWorkspace({
                   })
                 }
               >
-                + Add medication / treatment
+                {label("+ Add medication / treatment")}
               </button>
               <div className="form-actions">
                 <button className="secondary" disabled={busy} onClick={save}>
-                  Save draft
+                  {label("Save draft")}
                 </button>
                 <button
                   className="primary"
                   disabled={busy}
                   onClick={() => finalize()}
                 >
-                  Sign off and end session
+                  {label("Sign off and end session")}
                 </button>
                 <button
                   className="secondary"
                   disabled={busy}
                   onClick={() => finalize(true)}
                 >
-                  Download and end session
+                  {label("Download and end session")}
                 </button>
               </div>
             </>
@@ -859,11 +942,15 @@ export default function CareWorkspace({
       {!draft && role === "doctor" && !historyOnly && (
         <p>
           {bundle?.plans.length
-            ? "Previous signed checklist and completion are preserved below."
-            : "Start the first visit to edit and approve this patient's checklist."}{" "}
+            ? label(
+                "Previous signed checklist and completion are preserved below.",
+              )
+            : label(
+                "Start the first visit to edit and approve this patient's checklist.",
+              )}{" "}
           {onStart && (
             <button className="secondary" disabled={busy} onClick={beginVisit}>
-              Start visit and edit checklist
+              {label("Start visit and edit checklist")}
             </button>
           )}
         </p>
@@ -874,9 +961,18 @@ export default function CareWorkspace({
         !bundle?.plans.length &&
         !!bundle?.suggestions?.length && (
           <div className="care-suggestion-preview">
-            <h4>Patient-specific suggestions · awaiting clinician review</h4>
+            <h4>
+              {label(
+                "Patient-specific suggestions · awaiting clinician review",
+              )}
+            </h4>
             {bundle.suggestions.map((x, i) => (
-              <p key={i}>{x.text_en}</p>
+              <p key={i}>
+                {x.texts?.[language] || x.text_en}
+                {!x.texts?.[language] && language !== "en" && (
+                  <small>{label("Source text · translation pending")}</small>
+                )}
+              </p>
             ))}
           </div>
         )}
@@ -884,8 +980,8 @@ export default function CareWorkspace({
         <div className="signed-plan">
           <h3>
             {draft
-              ? "Previous signed plan · caregiver follow-up"
-              : "Signed pathways"}
+              ? label("Previous signed plan · caregiver follow-up")
+              : label("Signed pathways")}
           </h3>
           <select
             aria-label="Signed care pathway"
@@ -894,7 +990,7 @@ export default function CareWorkspace({
           >
             {bundle.plans.map((x) => (
               <option key={x.pathway_id} value={x.pathway_id}>
-                {x.approved_at.slice(0, 10)} · {x.mode} ·{" "}
+                {x.approved_at.slice(0, 10)} · {label(x.mode)} ·{" "}
                 {x.approved_name || "Clinician"}
               </option>
             ))}
@@ -902,8 +998,9 @@ export default function CareWorkspace({
           {plan && (
             <>
               <p className="small-muted">
-                Signed {new Date(plan.approved_at).toLocaleString()} ·{" "}
-                {plan.approved_name}. Completion below is caregiver-reported.
+                {label("Signed")} {new Date(plan.approved_at).toLocaleString()}{" "}
+                · {plan.approved_name}.{" "}
+                {label("Completion below is caregiver-reported.")}
               </p>
               {!compact && (
                 <>
@@ -911,21 +1008,23 @@ export default function CareWorkspace({
                   <p className="care-notes">
                     {plan.notes_texts?.[language] ||
                       plan.doctor_notes ||
-                      "No additional notes"}
+                      label("No additional notes")}
                   </p>
                   {plan.doctor_notes &&
                     !plan.notes_texts?.[language] &&
                     plan.notes_language !== language && (
-                      <small>Source language · translation unavailable</small>
+                      <small>
+                        {label("Source language · translation unavailable")}
+                      </small>
                     )}
                   {!!plan.medications?.length && (
                     <div className="care-table">
                       <table>
                         <thead>
                           <tr>
-                            <th>Prescription / dose</th>
-                            <th>Schedule</th>
-                            <th>Duration</th>
+                            <th>{label("Prescription / dose")}</th>
+                            <th>{label("Schedule")}</th>
+                            <th>{label("Duration")}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -934,7 +1033,7 @@ export default function CareWorkspace({
                               <td>
                                 {m.name}
                                 <br />
-                                <strong>{m.dose}</strong>
+                                <strong title={m.dose}>{doseText(m)}</strong>
                               </td>
                               <td>
                                 {m.times.map(label).join(", ")} ·{" "}
@@ -953,7 +1052,7 @@ export default function CareWorkspace({
                 </>
               )}
               <label>
-                Follow-up date
+                {label("Follow-up date")}
                 <input
                   type="date"
                   max={dayNow()}
@@ -964,8 +1063,8 @@ export default function CareWorkspace({
               {follow && (
                 <>
                   <p className="care-due">
-                    {follow.past_due_unreported} past-due tasks not reported
-                    complete
+                    {follow.past_due_unreported}{" "}
+                    {label("past-due tasks not reported complete")}
                   </p>
                   {follow.tasks.map((task) => (
                     <label className="check-row" key={task.task_id}>
@@ -980,20 +1079,25 @@ export default function CareWorkspace({
                         {task.kind === "medication" && (
                           <strong>
                             {" "}
-                            · {task.medication?.dose} · {label(task.slot || "")}{" "}
-                            · {label(task.medication?.food || "")}
+                            · {task.medication
+                              ? doseText(task.medication)
+                              : ""}{" "}
+                            · {label(task.slot || "")} ·{" "}
+                            {label(task.medication?.food || "")}
                           </strong>
                         )}
                         {task.kind === "checklist" &&
                           !task.texts?.[language] && (
-                            <small>Source text · translation pending</small>
+                            <small>
+                              {label("Source text · translation pending")}
+                            </small>
                           )}
                         {task.report && (
                           <small>
                             {task.report.completed
-                              ? "Reported complete"
-                              : "Marked incomplete"}{" "}
-                            by {task.report.reported_name} ·{" "}
+                              ? label("Reported complete")
+                              : label("Marked incomplete")}{" "}
+                            {label("by")} {task.report.reported_name} ·{" "}
                             {new Date(task.report.reported_at).toLocaleString()}
                           </small>
                         )}
@@ -1001,12 +1105,13 @@ export default function CareWorkspace({
                     </label>
                   ))}
                   {!follow.tasks.length && (
-                    <p>No tasks scheduled on this date.</p>
+                    <p>{label("No tasks scheduled on this date.")}</p>
                   )}
                   {!!follow.reports.length && (
                     <details>
                       <summary>
-                        Reported completion history · {follow.reports.length}
+                        {label("Reported completion history")} ·{" "}
+                        {follow.reports.length}
                       </summary>
                       {follow.reports
                         .slice()
@@ -1033,7 +1138,7 @@ export default function CareWorkspace({
                                 {item
                                   ? item.texts?.[language] || item.text
                                   : med
-                                    ? `${med.name} · ${med.dose} · ${label(row.task_id.split(":").at(-1) || "")}`
+                                    ? `${med.name} · ${doseText(med)} · ${label(row.task_id.split(":").at(-1) || "")}`
                                     : row.task_id}
                                 <small>
                                   {row.day} · {row.reported_name} ·{" "}
@@ -1045,13 +1150,14 @@ export default function CareWorkspace({
                         })}
                       {follow.reports.length > 200 && (
                         <p>
-                          Latest 200 reports shown. Select a follow-up date
-                          above to inspect that day's tasks.
+                          {label(
+                            "Latest 200 reports shown. Select a follow-up date above to inspect that day's tasks.",
+                          )}
                         </p>
                       )}
                     </details>
                   )}
-                  <h4>Caregiver notes</h4>
+                  <h4>{label("Caregiver notes")}</h4>
                   {follow.notes.map((x) => (
                     <div className="care-note" key={x.note_id}>
                       <p>{x.text}</p>
@@ -1067,7 +1173,9 @@ export default function CareWorkspace({
                 <>
                   <textarea
                     aria-label="Caregiver note for doctor"
-                    placeholder="Share an observation or question with the doctor"
+                    placeholder={label(
+                      "Share an observation or question with the doctor",
+                    )}
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                   />
@@ -1090,7 +1198,7 @@ export default function CareWorkspace({
                       }
                     }}
                   >
-                    Send note
+                    {label("Send note")}
                   </button>
                 </>
               )}
@@ -1098,17 +1206,24 @@ export default function CareWorkspace({
                 className="text-button"
                 onClick={async () => {
                   try {
-                    await post(`/care/pathways/${planId}/translate`, {});
+                    await requestCareLanguage(
+                      patient.patient_id,
+                      "signed",
+                      planId,
+                      plan.revision || 0,
+                      language,
+                      true,
+                    );
                     setStatus("Translation queued");
                   } catch (e) {
                     setError((e as Error).message);
                   }
                 }}
               >
-                Refresh signed translations
+                {label("Refresh signed translations")}
               </button>
               <span role="status" className="small-muted">
-                {status}
+                {label(status)}
               </span>
               <button
                 className="secondary"
@@ -1116,14 +1231,14 @@ export default function CareWorkspace({
                   downloadPdf(planId).catch((e) => setError(e.message))
                 }
               >
-                Download pathway · {languages[language]}
+                {label("Download pathway")} · {languages[language]}
               </button>
             </>
           )}
         </div>
       )}
       {bundle && !bundle.plans.length && !draft && (
-        <p>No signed pathway has been shared yet.</p>
+        <p>{label("No signed pathway has been shared yet.")}</p>
       )}
     </div>
   );

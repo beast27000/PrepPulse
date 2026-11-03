@@ -57,6 +57,10 @@ class WorkspaceStore:
             [("visit_id", ASCENDING), ("item_id", ASCENDING)], unique=True
         )
         db.care_translations.create_index("pathway_id", unique=True)
+        db.care_language_cache.create_index(
+            [("kind", 1), ("identity", 1), ("revision", 1), ("language", 1), ("source_hash", 1)],
+            unique=True,
+        )
         db.caregiver_access.create_index(
             [("patient_id", ASCENDING), ("caregiver_id", ASCENDING)], unique=True
         )
@@ -87,7 +91,7 @@ class WorkspaceStore:
         prefix = {
             "doctor": "DOC",
             "admin": "ADM",
-            "caregiver": "CGV" if kind == "professional" else "FAM",
+            "caregiver": "HCW" if kind == "professional" else "FAM",
         }[account["role"]]
         if not account.get("account_id"):
             self.db.users.update_one(
@@ -110,6 +114,7 @@ class WorkspaceStore:
             for k in (
                 "user_id",
                 "account_id",
+                "account_aliases",
                 "name",
                 "username",
                 "role",
@@ -132,7 +137,11 @@ class WorkspaceStore:
         if user["role"] == "caregiver":
             return (
                 self.db.caregiver_access.find_one(
-                    {"patient_id": patient_id, "caregiver_id": user["user_id"]}
+                    {
+                        "patient_id": patient_id,
+                        "caregiver_id": user["user_id"],
+                        "kind": user.get("caregiver_type", "family"),
+                    }
                 )
                 is not None
             )
@@ -160,7 +169,18 @@ class WorkspaceStore:
             )
             key = "caregiver_id" if user["role"] == "caregiver" else "doctor_id"
             ids = [
-                x["patient_id"] for x in collection.find({key: user["user_id"]}, {"patient_id": 1})
+                x["patient_id"]
+                for x in collection.find(
+                    {
+                        key: user["user_id"],
+                        **(
+                            {"kind": user.get("caregiver_type", "family")}
+                            if user["role"] == "caregiver"
+                            else {}
+                        ),
+                    },
+                    {"patient_id": 1},
+                )
             ]
             criteria["patient_id"] = {"$in": ids}
         return list(self.db.patients.find(criteria, {"_id": 0, "source_root": 0}).limit(limit))

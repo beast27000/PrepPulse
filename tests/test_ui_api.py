@@ -24,6 +24,11 @@ def workspace(monkeypatch, tmp_path):
     # No test worker or generated pathway may touch the live local workspace.
     api_module = importlib.import_module("preppulse_api.app")
     monkeypatch.setattr(api_module.workers, "submit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        importlib.import_module("preppulse_api.care_translation").executor,
+        "submit",
+        lambda *args, **kwargs: None,
+    )
     for module_name in (
         "preppulse_api.app",
         "preppulse_api.care",

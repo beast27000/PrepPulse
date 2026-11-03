@@ -18,6 +18,26 @@
   overscroll-behavior: contain;
   padding-right: 8px;
 }
+.accounts-grid .admin-scroll-list small {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.accounts-grid .admin-scroll-list code {
+  font-size: 14px;
+}
+.patient-card .directory-card-button small {
+  font-size: 13px;
+}
+.finding .finding-main p {
+  font-size: 14px;
+}
+.finding .source-link {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.finding .finding-controls button {
+  font-size: 12px;
+}
 .caregiver-roster .appointment-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 140px;

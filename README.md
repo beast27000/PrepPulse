@@ -481,13 +481,17 @@ Public account IDs distinguish roles:
 | `ADM-` | Administrator |
 | `DOC-` | Doctor |
 | `FAM-` | Family caregiver |
-| `CGV-` | Professional caregiver |
+| `HCW-` | In-hospital / professional caregiver (new accounts) |
 
 Existing internal `user_id` values remain unchanged. The non-secret `staff_directory` mirror supports staff identity/status tracking without duplicating password hashes.
+
+Selecting **Caregiver** in Accounts reveals a required **Family caregiver / In-hospital caregiver** choice; new accounts have no implicit family default. Existing `CGV-` professional IDs remain valid. An administrator can correct an existing caregiver's type in Account directory: this issues the corresponding `FAM-` or `HCW-` public ID, retains the old ID as a searchable alias, and revokes current patient assignments so the administrator can assign the appropriate patients again. Login credentials, internal identity, historical reports and notes are preserved. The change does not automatically classify existing family accounts as hospital staff.
 
 ### Caregivers
 
 The left panel assigns an already registered caregiver to a patient. The caregiver's registered family/professional type must match the assignment.
+
+Choose the caregiver type, then use either the search fields or the dropdowns. A unique exact name, username, public/internal account ID or old-ID alias resolves the caregiver; a unique patient name, PrepPulse ID or folder alias resolves the patient. A unique partial result also resolves automatically. Ambiguous names require selecting a matching result; the application never chooses between people with the same name. Dropdown selections populate the search fields. Roster search is independent of the assignment search.
 
 The right panel is a searchable caregiver roster with administrator-maintained **Free** and **Active** availability. Availability is separate from account enablement and patient access.
 
@@ -504,6 +508,8 @@ Database configuration and model connection secrets are not editable patient-fac
 ### My care plans
 
 A caregiver signs into the same PrepPulse address and receives a single-page **My care plans** workspace. Access is limited to patients assigned by an administrator.
+
+Family caregivers see only signed family pathways; in-hospital caregivers see only signed caregiver pathways. The server checks both patient assignment and account/pathway type for listing, reading, translation requests, downloads, completion reports and notes. Neither type obtains access to the other's pathway merely by knowing its ID.
 
 The portal displays approved instructions, scheduled tasks, supported-language rendering, downloads, and a place for caregiver notes. It does not expose raw clinical source files, unsigned drafts, clinical briefs, doctor chats, or appointment history.
 
@@ -527,7 +533,11 @@ Supported care languages are English, Hindi, Tamil, Bengali, Odia, and Telugu. T
 
 Text edits invalidate stale translations. While translation is pending or unavailable, the source text remains labeled; the application must not pretend that untranslated source text is a verified translation.
 
-Medicine names and exact doses are retained as entered. Fixed schedule labels have localized rendering. Clinical wording still requires review with the actual model and target language.
+Switching language requests only that language automatically. Fixed care controls/headings switch immediately; missing checklist items, doctor notes and dose/application display text are translated in small batches by the configured local text model. The first uncached request takes model processing time; the views poll for incremental results and show progress plus retry controls. Returning to a cached language avoids another generation. Card and lower checklist share the same patient language and saved preparation/completion state.
+
+Medicine names and the signed source dose remain exactly as entered. Dose/application instructions can have a separate translated display copy, with the source available in the prescription table tooltip. Numeric values and recognized units must survive translation; an English copy in a non-English slot is rejected. Each language is cached independently by draft/signed identity, text revision and source hash in `care_language_cache`. One failed segment does not discard successful segments. Edits invalidate the derived translations; signed text and caregiver reports are never rewritten by translation.
+
+Care interface labels, buttons, schedule labels and completion captions have fixed translations for all six supported languages. Names, medicine names, user-written caregiver notes and identifiers are not silently rewritten. Clinical free-text translation still requires review with the actual model and target language: script/number checks do not prove semantic accuracy. A local synthetic Tamil check confirmed that the provider returns translated text, but also showed wording that needs review. Do not use that check as clinical translation validation.
 
 Signed-plan PDFs paginate and remain downloadable in the selected language when a complete translation is available. An incomplete translation returns an explicit unavailable response. The active draft's current contents are not silently substituted into a previously signed download.
 
@@ -554,6 +564,7 @@ Names are not unique identifiers. Alias collisions with another patient are reje
 | Clinician preparation checks | `care_visit_checks` |
 | Caregiver access and follow-up | `caregiver_access`, `care_reports`, `care_notes` |
 | Derived signed translations | `care_translations` |
+| Per-language derived text and progress | `care_language_cache` |
 | Conversation persistence | `chat_sessions`, `chat_messages`, `chat_turns`, `chat_artifacts` |
 | Access/change events | `audit_events` |
 | Original private files/PDFs | Ignored private storage on disk |
@@ -623,7 +634,7 @@ The adapter requires a full `/v1/audio/speech` endpoint returning valid WAV byte
 | `src/preppulse_rag` | Provenance chunking, hybrid retrieval and model providers. |
 | `src/preppulse_agents` | Typed review state, specialized agents and graph compiler. |
 
-The current runtime compatibility contract is `preppulse-ui-care-3` at `GET /api/runtime`. Interactive API schemas are available from the running FastAPI service at `/docs`.
+The current runtime compatibility contract is `preppulse-ui-care-4` at `GET /api/runtime`. Interactive API schemas are available from the running FastAPI service at `/docs`.
 
 The browser's persisted conversation flow uses `/api/chat/sessions` and asynchronous turns. A legacy `/api/chat/query` route also exists; it is not the complete saved-chart conversation contract.
 

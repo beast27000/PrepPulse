@@ -43,6 +43,7 @@ def setup_people(workspace):
                 "username": role,
                 "password": "test-long-password",
                 "role": role,
+                **({"caregiver_type": "family"} if role == "caregiver" else {}),
             },
             headers=ah,
         )

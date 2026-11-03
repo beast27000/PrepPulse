@@ -14,15 +14,19 @@ export default function AccountsAdmin({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<User["role"]>("doctor");
-  const [kind, setKind] = useState("family");
+  const [kind, setKind] = useState("");
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const visible = accounts.filter((a) =>
-    [a.name, a.username, a.account_id, a.user_id].some((x) =>
-      x?.toLowerCase().includes(q.toLowerCase()),
-    ),
+    [
+      a.name,
+      a.username,
+      a.account_id,
+      a.user_id,
+      ...(a.account_aliases || []),
+    ].some((x) => x?.toLowerCase().includes(q.toLowerCase())),
   );
   return (
     <>
@@ -36,7 +40,7 @@ export default function AccountsAdmin({
           </p>
         </div>
       </div>
-      <div className="admin-grid">
+      <div className="admin-grid accounts-grid">
         <section className="panel admin-form">
           <h3>Create account</h3>
           <form
@@ -50,13 +54,14 @@ export default function AccountsAdmin({
                   username,
                   password,
                   role,
-                  caregiver_type: kind,
+                  ...(role === "caregiver" ? { caregiver_type: kind } : {}),
                 });
                 setAccounts([...accounts, row]);
                 setStatus(`Created ${row.name} · ${row.account_id}`);
                 setName("");
                 setUsername("");
                 setPassword("");
+                setKind("");
               } catch (e) {
                 setError((e as Error).message);
               } finally {
@@ -107,9 +112,15 @@ export default function AccountsAdmin({
             {role === "caregiver" && (
               <label>
                 Caregiver type
-                <select value={kind} onChange={(e) => setKind(e.target.value)}>
+                <select
+                  aria-label="Caregiver type"
+                  required
+                  value={kind}
+                  onChange={(e) => setKind(e.target.value)}
+                >
+                  <option value="">Choose caregiver type</option>
                   <option value="family">Family caregiver</option>
-                  <option value="professional">Professional caregiver</option>
+                  <option value="professional">In-hospital caregiver</option>
                 </select>
               </label>
             )}
@@ -146,6 +157,41 @@ export default function AccountsAdmin({
                   </small>
                   <code>{a.account_id || a.user_id}</code>
                   <small>{a.disabled ? "Disabled" : "Enabled"}</small>
+                  {a.role === "caregiver" && (
+                    <label>
+                      Caregiver type
+                      <select
+                        aria-label={`Caregiver type for ${a.username}`}
+                        value={a.caregiver_type || "family"}
+                        onChange={async (e) => {
+                          if (
+                            !confirm(
+                              "Change caregiver type? Existing patient access will be revoked; assign the appropriate patients again.",
+                            )
+                          )
+                            return;
+                          try {
+                            const updated = await patch<User>(
+                              `/admin/accounts/${a.user_id}/caregiver-type`,
+                              { caregiver_type: e.target.value },
+                            );
+                            setAccounts(
+                              accounts.map((x) =>
+                                x.user_id === a.user_id ? updated : x,
+                              ),
+                            );
+                          } catch (e) {
+                            setError((e as Error).message);
+                          }
+                        }}
+                      >
+                        <option value="family">Family caregiver</option>
+                        <option value="professional">
+                          In-hospital caregiver
+                        </option>
+                      </select>
+                    </label>
+                  )}
                 </div>
                 <button
                   className="text-button"

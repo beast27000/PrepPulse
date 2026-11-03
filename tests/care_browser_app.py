@@ -179,6 +179,24 @@ def fixture_translation(plan):
 care.translate_plan = fixture_translation
 
 
+def fixture_language_batch(batch, language):
+    """Deterministic synthetic-only translations, never a live model quality test."""
+    messages = {
+        "hi": "घर का रिकॉर्ड लाएँ",
+        "ta": "வீட்டுப் பதிவைக் கொண்டு வாருங்கள்",
+        "bn": "বাড়ির রেকর্ড আনুন",
+        "or": "ଘରର ରେକର୍ଡ ଆଣନ୍ତୁ",
+        "te": "ఇంటి రికార్డు తీసుకురండి",
+    }
+    return {
+        key: text if language == source else messages.get(language, "Bring the home log")
+        for key, text, source in batch
+    }
+
+
+importlib.import_module("preppulse_api.care_translation").translate_batch = fixture_language_batch
+
+
 def fixture_job(workspace, patient_id):
     """Upload checks use native test PDF reads, never an external Mongo/OCR worker."""
     from preppulse_api.store import new_id, now

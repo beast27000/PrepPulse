@@ -6,12 +6,49 @@ from typing import Literal
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from preppulse_api.store import now
+from preppulse_api.store import new_id, now
 
-API_CONTRACT = "preppulse-ui-care-3"
+API_CONTRACT = "preppulse-ui-care-4"
 
 
 def register_administration_routes(app, db, user, admin, clinician, patient_access):
+    class CaregiverTypeIn(BaseModel):
+        caregiver_type: Literal["family", "professional"]
+
+    @app.patch("/api/admin/accounts/{user_id}/caregiver-type")
+    def change_caregiver_type(
+        user_id: str, body: CaregiverTypeIn, current: dict = Depends(admin), store=Depends(db)
+    ):
+        account = store.db.users.find_one(
+            {"user_id": user_id, "role": "caregiver"}, {"_id": 0, "password_hash": 0}
+        )
+        if not account:
+            raise HTTPException(404, "Caregiver account not found")
+        account = store.account_identity(account)
+        if account.get("caregiver_type") != body.caregiver_type:
+            previous_id = account["account_id"]
+            changes = {
+                "caregiver_type": body.caregiver_type,
+                "account_id": new_id("HCW" if body.caregiver_type == "professional" else "FAM"),
+            }
+            store.db.users.update_one(
+                {"user_id": user_id},
+                {"$set": changes, "$addToSet": {"account_aliases": previous_id}},
+            )
+            store.db.caregiver_access.delete_many({"caregiver_id": user_id})
+            account.update(changes)
+            store.audit(
+                current,
+                "caregiver_type_changed",
+                extra={
+                    "user_id": user_id,
+                    "previous_id": previous_id,
+                    **changes,
+                    "assignments_revoked": True,
+                },
+            )
+        return store.account_identity(account)
+
     @app.get("/api/runtime")
     def runtime():
         return {

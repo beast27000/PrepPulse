@@ -17,7 +17,7 @@ def workspace(workspace_fixture):  # noqa: F811
 
 def test_runtime_and_public_account_ids_are_searchable_and_preserve_keys(workspace):
     admin, ah, doctor, _, _, _, _, accounts = setup_people(workspace)
-    assert admin.get("/api/runtime").json()["contract"] == "preppulse-ui-care-3"
+    assert admin.get("/api/runtime").json()["contract"] == "preppulse-ui-care-4"
     assert (
         "caregiver"
         in admin.get("/openapi.json").json()["components"]["schemas"]["AccountIn"]["properties"][
@@ -51,7 +51,7 @@ def test_runtime_and_public_account_ids_are_searchable_and_preserve_keys(workspa
         headers=ah,
     )
     assert created.status_code == 200, created.text
-    assert created.json()["account_id"].startswith("CGV-")
+    assert created.json()["account_id"].startswith("HCW-")
     assert "password_hash" not in created.json()
 
 

@@ -166,7 +166,7 @@ class AccountIn(BaseModel):
     username: str = Field(min_length=3)
     password: str = Field(min_length=12)
     role: Literal["doctor", "admin", "caregiver"] = "doctor"
-    caregiver_type: Literal["family", "professional"] = "family"
+    caregiver_type: Literal["family", "professional"] | None = None
 
 
 @app.get("/api/admin/accounts")
@@ -181,7 +181,7 @@ def accounts(q: str = "", _: dict = Depends(admin), store: WorkspaceStore = Depe
         if not query
         or any(
             query in str(a.get(k, "")).casefold()
-            for k in ("name", "username", "user_id", "account_id")
+            for k in ("name", "username", "user_id", "account_id", "account_aliases")
         )
     ]
 
@@ -190,6 +190,8 @@ def accounts(q: str = "", _: dict = Depends(admin), store: WorkspaceStore = Depe
 def add_account(
     body: AccountIn, current: dict = Depends(admin), store: WorkspaceStore = Depends(db)
 ):
+    if body.role == "caregiver" and not body.caregiver_type:
+        raise HTTPException(400, "Choose family or in-hospital caregiver explicitly")
     account = {
         "user_id": new_id("USR"),
         "name": body.name.strip(),

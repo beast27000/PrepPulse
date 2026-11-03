@@ -28,6 +28,7 @@ PATIENT_COLLECTIONS = (
     "care_drafts",
     "care_visit_checks",
     "care_translations",
+    "care_language_cache",
     "caregiver_access",
     "care_reports",
     "care_notes",
