@@ -53,6 +53,9 @@ class WorkspaceStore:
         db.pathways.create_index([("visit_id", ASCENDING), ("version", ASCENDING)], unique=True)
         db.pathway_items.create_index("item_id", unique=True)
         db.care_drafts.create_index("visit_id", unique=True)
+        db.care_visit_checks.create_index(
+            [("visit_id", ASCENDING), ("item_id", ASCENDING)], unique=True
+        )
         db.care_translations.create_index("pathway_id", unique=True)
         db.caregiver_access.create_index(
             [("patient_id", ASCENDING), ("caregiver_id", ASCENDING)], unique=True

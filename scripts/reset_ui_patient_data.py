@@ -26,6 +26,7 @@ PATIENT_COLLECTIONS = (
     "pathways",
     "pathway_items",
     "care_drafts",
+    "care_visit_checks",
     "care_translations",
     "caregiver_access",
     "care_reports",

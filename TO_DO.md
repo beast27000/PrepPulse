@@ -2,6 +2,19 @@
 
 Implementation status and backlog.
 
+## Care checklist simplification — UI review (3 November 2026)
+
+- [x] Patients: checkbox-only care panel with small Edit pathway link and signed-plan download; all text/add/delete/frequency/prescription editing stays on Care pathways.
+- [x] Pathway items default to checkboxes with per-item Edit / Done editing controls. Existing new-item entry, autosave, notes, prescriptions and sign-off remain.
+- [x] Shared language selection and persisted clinician preparation ticks between card, lower panel and editor; caregiver-reported completion remains separate and read-only for doctors.
+- [x] Family / caregiver pathway card shows three items with clinician-authored/edited items first.
+- [x] Plain-language caregiver prompt includes dated measurement context, avoids unrequested monitoring/treatment, and replaces raw clinical-value fallback tasks with general preparation reminders. Signed text remains immutable.
+- [x] Removed the separate Previous patients screen/nav; Records functionality retained, with spacing changes only around visit/record disclosures and links.
+- [x] Created and pushed `old-ui` from the existing `origin/main`; main remains untouched. This release is for UI branch review.
+- [ ] Live-model wording and multilingual meaning still require clinician/owner review.
+- [x] Verification: 47 focused API/OCR/RAG/prompt tests and two Edge browser flows passed; frontend production build and targeted lint passed. Browser mutations use only synthetic/in-memory data.
+- [ ] Existing live-model `test_langgraph_clinical_review_workflow` assertion failed because its care-gap output did not contain the expected foot-exam title (47 other tests passed in that run). The care-gap implementation and its test were left unchanged; this is not a claim of fully validated live clinical output.
+
 ## Admin and continuity repairs — UI review (3 November 2026)
 
 - [x] Diagnosed the running port-8000 API as an older release lacking caregiver roles, care routes and appointment history. Replaced it after checking no analysis/chat jobs were active; retained all patients, accounts and sources.

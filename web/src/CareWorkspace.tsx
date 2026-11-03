@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Patient, User, post, request } from "./api";
 import "./care.css";
+import { notifyCareChanged, subscribeCare, useCareLanguage } from "./careView";
 
 export const languages: Record<string, string> = {
   en: "English",
@@ -34,6 +35,7 @@ type Medication = {
   food: string;
 };
 type Draft = {
+  checks?: Record<string, boolean>;
   revision: number;
   items: Item[];
   medications: Medication[];
@@ -138,7 +140,8 @@ export default function CareWorkspace({
 }) {
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [language, setLanguage] = useState("en");
+  const [language, setLanguage] = useCareLanguage(patient.patient_id);
+  const [editingItems, setEditingItems] = useState(new Set<string>());
   const [words, setWords] = useState<Record<string, Record<string, string>>>(
     {},
   );
@@ -198,9 +201,11 @@ export default function CareWorkspace({
     setPlanId("");
     setFollow(null);
     setError("");
+    setEditingItems(new Set());
     load();
   }, [patient.patient_id]);
   useEffect(() => {
+    const unsubscribe = subscribeCare(patient.patient_id, load);
     const timer = setInterval(() => {
       const next = dayNow(),
         previous = lastDay.current;
@@ -210,7 +215,10 @@ export default function CareWorkspace({
       }
       load();
     }, 5000);
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      unsubscribe();
+    };
   }, [patient.patient_id, day, planId]);
   useEffect(() => {
     if (!planId) return;
@@ -250,7 +258,7 @@ export default function CareWorkspace({
       );
       if (activePatient.current !== patient.patient_id) return false;
       if (version === editVersion.current) {
-        setDraft(result);
+        setDraft({ ...result, checks: draftRef.current?.checks });
         dirtyRef.current = false;
         setDirty(false);
       } else
@@ -264,6 +272,7 @@ export default function CareWorkspace({
             ? { ...draftRef.current, revision: result.revision }
             : null;
       setStatus("Saved · translations updating");
+      notifyCareChanged(patient.patient_id);
       return version === editVersion.current;
     } catch (err) {
       setError((err as Error).message);
@@ -309,6 +318,35 @@ export default function CareWorkspace({
         i === index ? { ...x, ...changes } : x,
       ),
     });
+  }
+  async function checkDraftItem(itemId: string, completed: boolean) {
+    if (!bundle?.visit) return;
+    const before = draft?.checks;
+    setDraft((current) =>
+      current
+        ? { ...current, checks: { ...current.checks, [itemId]: completed } }
+        : current,
+    );
+    try {
+      await request(
+        `/care/visits/${bundle.visit.visit_id}/checks/${encodeURIComponent(itemId)}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ completed }),
+        },
+      );
+      setDraft((current) =>
+        current
+          ? { ...current, checks: { ...current.checks, [itemId]: completed } }
+          : current,
+      );
+      notifyCareChanged(patient.patient_id);
+    } catch (e) {
+      setDraft((current) =>
+        current ? { ...current, checks: before } : current,
+      );
+      setError((e as Error).message);
+    }
   }
   async function finalize(download = false) {
     if (!bundle?.visit || !(await save())) return;
@@ -450,52 +488,97 @@ export default function CareWorkspace({
           </p>
           {draft.items.map((item, i) => (
             <div className="care-edit-item" key={item.item_id}>
-              <input
-                aria-label={`Checklist item ${i + 1}`}
-                placeholder={item.text}
-                value={translated(item) || item.text}
-                onChange={(e) =>
-                  changeItem(i, {
-                    text: e.target.value,
-                    source_language: language,
-                    texts: { [language]: e.target.value },
-                    source: "doctor",
-                  })
-                }
-              />
-              {!translated(item) && (
-                <small>Source text shown · translation pending</small>
+              {!editingItems.has(item.item_id) && (
+                <div className="care-item-view">
+                  <label className="check-row">
+                    <input
+                      type="checkbox"
+                      aria-label={`Pathway checklist ${i + 1}`}
+                      checked={!!draft.checks?.[item.item_id]}
+                      onChange={(e) =>
+                        checkDraftItem(item.item_id, e.target.checked)
+                      }
+                    />
+                    <span>
+                      {translated(item) || item.text}
+                      {!translated(item) && (
+                        <small>Source text · translation pending</small>
+                      )}
+                    </span>
+                  </label>
+                  <button
+                    className="text-button"
+                    aria-label={`Edit checklist item ${i + 1}`}
+                    onClick={() =>
+                      setEditingItems(new Set([...editingItems, item.item_id]))
+                    }
+                  >
+                    Edit
+                  </button>
+                </div>
               )}
-              <div className="care-row">
-                <select
-                  aria-label={`Checklist frequency ${i + 1}`}
-                  value={item.frequency}
-                  onChange={(e) =>
-                    changeItem(i, {
-                      frequency: e.target.value as Item["frequency"],
-                    })
-                  }
-                >
-                  <option value="once">{label("once")}</option>
-                  <option value="daily">{label("daily")}</option>
-                </select>
-                <span className="small-muted">
-                  {item.source === "agent"
-                    ? "Agent suggestion"
-                    : "Clinician edited"}
-                </span>
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    edit({
-                      ...draft,
-                      items: draft.items.filter((_, n) => n !== i),
-                    })
-                  }
-                >
-                  Remove
-                </button>
-              </div>
+              {editingItems.has(item.item_id) && (
+                <>
+                  <input
+                    aria-label={`Checklist item ${i + 1}`}
+                    placeholder={item.text}
+                    value={translated(item) || item.text}
+                    onChange={(e) =>
+                      changeItem(i, {
+                        text: e.target.value,
+                        source_language: language,
+                        texts: { [language]: e.target.value },
+                        source: "doctor",
+                      })
+                    }
+                  />
+                  {!translated(item) && (
+                    <small>Source text shown · translation pending</small>
+                  )}
+                  <div className="care-row">
+                    <select
+                      aria-label={`Checklist frequency ${i + 1}`}
+                      value={item.frequency}
+                      onChange={(e) =>
+                        changeItem(i, {
+                          frequency: e.target.value as Item["frequency"],
+                        })
+                      }
+                    >
+                      <option value="once">{label("once")}</option>
+                      <option value="daily">{label("daily")}</option>
+                    </select>
+                    <span className="small-muted">
+                      {item.source === "agent"
+                        ? "Agent suggestion"
+                        : "Clinician edited"}
+                    </span>
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        edit({
+                          ...draft,
+                          items: draft.items.filter((_, n) => n !== i),
+                        })
+                      }
+                    >
+                      Remove
+                    </button>
+                    <button
+                      className="text-button"
+                      onClick={() =>
+                        setEditingItems((current) => {
+                          const next = new Set(current);
+                          next.delete(item.item_id);
+                          return next;
+                        })
+                      }
+                    >
+                      Done editing
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ))}
           <div className="inline-form">

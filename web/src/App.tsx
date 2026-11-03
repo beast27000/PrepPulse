@@ -47,8 +47,7 @@ import UnifiedIntake from "./UnifiedIntake";
 import CaregiverAdmin from "./CaregiverAdmin";
 import AccountsAdmin from "./AccountsAdmin";
 import AdminPatientDetails from "./AdminPatientDetails";
-import PreviousPatients from "./PreviousPatients";
-import CareSummary from "./CareSummary";
+import CareChecklist from "./CareChecklist";
 import "./administration.css";
 import VisitHistory, { AppointmentHistory } from "./VisitHistory";
 import PatientConversation from "./PatientConversation";
@@ -62,7 +61,6 @@ import {
 } from "./preferences";
 
 type Page =
-  | "Previous patients"
   | "Appointment history"
   | "Today"
   | "Patients"
@@ -81,7 +79,6 @@ const doctorPages: Page[] = [
   "Today",
   "Patients",
   "Records",
-  "Previous patients",
   "Care pathways",
   "Settings",
 ];
@@ -95,7 +92,6 @@ const adminPages: Page[] = [
 ];
 const navIcons: Record<string, typeof Activity> = {
   Today: CalendarDays,
-  "Previous patients": FolderOpen,
   Patients: HeartPulse,
   Records: FolderOpen,
   "Care pathways": ClipboardCheck,
@@ -573,7 +569,7 @@ export default function App() {
       try {
         const r = await fetch("/api/runtime");
         const value = r.ok ? await r.json() : null;
-        setApiMismatch(value?.contract !== "preppulse-ui-care-2");
+        setApiMismatch(value?.contract !== "preppulse-ui-care-3");
       } catch {
         setApiMismatch(true);
       }
@@ -970,9 +966,6 @@ export default function App() {
         >
           {user.role === "doctor" ? (
             <>
-              {page === "Previous patients" && (
-                <PreviousPatients onOpen={openHistorical} />
-              )}
               {page === "Appointment history" && (
                 <AppointmentHistory
                   full
@@ -1003,9 +996,9 @@ export default function App() {
                       </p>
                       <button
                         className="secondary"
-                        onClick={() => setPage("Previous patients")}
+                        onClick={() => setPage("Records")}
                       >
-                        Back to Previous patients
+                        Back to Records
                       </button>
                     </div>
                   )}
@@ -1293,17 +1286,15 @@ export default function App() {
                                         <span className="eyebrow">
                                           FAMILY / CAREGIVER HANDOFF
                                         </span>
-                                        <h3>
-                                          {activeVisit?.admitted
-                                            ? "Caregiver pathway"
-                                            : "Family pathway"}
-                                        </h3>
+                                        <h3>Family / caregiver pathway</h3>
                                       </div>
                                       <ClipboardCheck size={17} />
                                     </div>
-                                    <CareSummary
+                                    <CareChecklist
+                                      key={selected.patient_id}
                                       patient={selected}
-                                      onOpen={() => setPage("Care pathways")}
+                                      summary
+                                      onEdit={() => setPage("Care pathways")}
                                     />
                                   </div>
                                 )}
@@ -1526,12 +1517,10 @@ export default function App() {
                         {!historical && (
                           <CollapsePanel title="Caregiver handoff / checklist">
                             <section className="panel checklist-panel">
-                              <CareWorkspace
+                              <CareChecklist
                                 key={selected.patient_id}
                                 patient={selected}
-                                role="doctor"
-                                compact
-                                onStart={startVisit}
+                                onEdit={() => setPage("Care pathways")}
                               />
                             </section>
                           </CollapsePanel>

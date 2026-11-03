@@ -158,3 +158,59 @@
 .care-workspace .form-actions {
   flex-wrap: wrap;
 }
+.care-item-view {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.care-item-view .check-row {
+  flex: 1;
+  margin: 6px 0;
+  font-size: 16px;
+  line-height: 1.65;
+}
+.care-checklist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  margin-top: 18px;
+}
+.care-card-preview .check-row {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.care-card-preview .small-muted {
+  font-size: 11px;
+}
+.care-card-preview .care-checklist-actions {
+  margin-top: 12px;
+}
+.visit-records-panel > .panel-heading {
+  margin-bottom: 26px;
+}
+.visit-records-section {
+  padding: 20px 0;
+  border-top: 1px solid #dce5ed;
+}
+.visit-records-section > summary {
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 17px;
+  line-height: 1.6;
+}
+.visit-records-section[open] > summary {
+  margin-bottom: 18px;
+}
+.visit-records-panel .visit-section-title {
+  margin: 22px 0 12px;
+  font-size: 16px;
+}
+.visit-records-panel > .record-row {
+  padding: 18px 0;
+}
+.visit-records-panel > .record-row .text-button {
+  text-align: left;
+  line-height: 1.6;
+}

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from preppulse_api.store import now
 
-API_CONTRACT = "preppulse-ui-care-2"
+API_CONTRACT = "preppulse-ui-care-3"
 
 
 def register_administration_routes(app, db, user, admin, clinician, patient_access):

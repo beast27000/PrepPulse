@@ -22,6 +22,9 @@ test("doctor checklist, signed plan, caregiver ticks, records and charts", async
     page.getByRole("button", { name: "Guidance library", exact: true }),
   ).toHaveCount(0);
   await expect(
+    page.getByRole("button", { name: "Previous patients", exact: true }),
+  ).toHaveCount(0);
+  await expect(
     page.getByRole("button", { name: "− PrepPulse assistant", exact: true }),
   ).toBeVisible();
   const assistant = page.getByRole("button", {
@@ -72,16 +75,78 @@ test("doctor checklist, signed plan, caregiver ticks, records and charts", async
     .click();
   await expect(
     page.getByLabel("Checklist item 1", { exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
+  await expect(page.getByLabel("Add checklist instruction")).toHaveCount(0);
+  await page
+    .getByRole("checkbox", { name: "Visit checklist 1", exact: true })
+    .check();
+  await expect(
+    page.getByRole("checkbox", { name: "Card checklist 1", exact: true }),
+  ).toBeChecked();
+  await page.getByLabel("Care pathway language").selectOption("hi");
+  await expect(page.locator(".care-card-preview")).toContainText(
+    "घर का रिकॉर्ड लाएँ",
+  );
+  await page.getByLabel("Care pathway language").selectOption("en");
+  await page.screenshot({
+    path: info.outputPath("simple-patient-checklist.png"),
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Edit pathway", exact: true })
+    .last()
+    .click();
+  await expect(
+    page.getByRole("checkbox", { name: "Pathway checklist 1", exact: true }),
+  ).toBeChecked();
+  await expect(
+    page.getByLabel("Checklist item 1", { exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Edit checklist item 1", exact: true })
+    .click();
   await page
     .getByLabel("Checklist item 1", { exact: true })
     .fill("Bring the updated home log");
+  await page.getByRole("button", { name: "Done editing", exact: true }).click();
+  await expect(
+    page.getByRole("checkbox", { name: "Pathway checklist 1", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Edit checklist item 1", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await page.getByRole("button", { name: "Patients", exact: true }).click();
+  await expect(
+    page.getByRole("checkbox", { name: "Card checklist 1", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator(".care-card-preview")).toContainText(
+    "No checklist instructions yet",
+  );
+  await page
+    .getByRole("button", { name: "Edit pathway", exact: true })
+    .last()
+    .click();
+  await page
+    .getByLabel("Add checklist instruction")
+    .fill("Bring the updated home log");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page
+    .getByLabel("Add checklist instruction")
+    .fill("Bring the current prescription");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Patients", exact: true }).click();
+  await expect(page.locator(".care-card-preview")).toContainText(
+    "Bring the current prescription",
+  );
+  await expect(page.getByLabel("Add checklist instruction")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Care pathways", exact: true })
     .click();
-  await expect(
-    page.getByLabel("Checklist item 1", { exact: true }),
-  ).toHaveValue("Bring the updated home log");
+  await expect(page.locator(".care-item-view")).toContainText([
+    "Bring the updated home log",
+    "Bring the current prescription",
+  ]);
   await page
     .getByRole("button", { name: "+ Add medication / treatment", exact: true })
     .click();
@@ -148,33 +213,18 @@ test("doctor checklist, signed plan, caregiver ticks, records and charts", async
     .getByRole("button", { name: "Browse patient records", exact: true })
     .click();
   await expect(page.locator(".record-file-list button")).toHaveCount(2);
-  await page
-    .getByRole("button", { name: "Previous patients", exact: true })
-    .click();
-  await expect(page.getByLabel("Previous patient name or ID")).toBeVisible();
-  await expect(page.locator(".previous-patient-card")).toHaveCount(0);
-  await page.getByLabel("Previous patient name or ID").fill("Review Patient");
-  await page
-    .getByRole("button", { name: "Find previous patients", exact: true })
-    .click();
-  await page
-    .getByRole("button", { name: "Open patient history", exact: true })
-    .click();
-  await expect(page.locator(".historical-banner")).toBeVisible();
+  await page.getByRole("button", { name: "Patients", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Start visit", exact: true }),
-  ).toHaveCount(0);
+    page.getByRole("checkbox", { name: "Card checklist 1", exact: true }),
+  ).toBeChecked({ timeout: 15000 });
   await expect(
     page.getByRole("button", {
-      name: "− Caregiver handoff / checklist",
+      name: "Download pathway · English",
       exact: true,
     }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Open full chat workspace", exact: true }),
   ).toBeVisible();
   await page.screenshot({
-    path: info.outputPath("previous-patient-workspace.png"),
+    path: info.outputPath("signed-patient-checklist.png"),
     fullPage: false,
   });
   await context.close();
@@ -305,15 +355,13 @@ test("admin accounts, caregiver assignment, two-row appointments and editable di
     page.getByText("Reviewed laboratory record", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Add record", exact: true }).click();
-  await page
-    .locator('input[type="file"]')
-    .setInputFiles({
-      name: "admin-follow-up.pdf",
-      mimeType: "application/pdf",
-      buffer: (await import("node:fs")).readFileSync(
-        "../.tmp/care-browser/review_lab.pdf",
-      ),
-    });
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "admin-follow-up.pdf",
+    mimeType: "application/pdf",
+    buffer: (await import("node:fs")).readFileSync(
+      "../.tmp/care-browser/review_lab.pdf",
+    ),
+  });
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Upload record", exact: true })

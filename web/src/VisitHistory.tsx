@@ -236,7 +236,7 @@ export default function VisitHistory({
     };
   }, [patient.patient_id, visitId]);
   return (
-    <section className="panel pathway-panel">
+    <section className="panel pathway-panel visit-records-panel">
       <div className="panel-heading">
         <div>
           <div className="eyebrow teal">VISITS AND RECORDS</div>
@@ -246,7 +246,7 @@ export default function VisitHistory({
           Browse patient records
         </button>
       </div>
-      <details>
+      <details className="visit-records-section">
         <summary>Patient records</summary>
         <p>
           Browse every uploaded source and previous caregiver pathway in the
@@ -256,7 +256,7 @@ export default function VisitHistory({
           Open records workspace
         </button>
       </details>
-      <h4>Previous visits</h4>
+      <h4 className="visit-section-title">Previous visits</h4>
       {visits.map((visit, i) => (
         <div className="record-row" key={visit.visit_id}>
           <button
@@ -350,7 +350,7 @@ export default function VisitHistory({
           )}
         </div>
       )}
-      <details open={!!snapshot?.plan}>
+      <details className="visit-records-section" open={!!snapshot?.plan}>
         <summary>Previous caregiver pathways and follow-up</summary>
         <CareWorkspace
           key={`${patient.patient_id}-${snapshot?.plan?.pathway_id || "history"}`}

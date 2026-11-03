@@ -510,6 +510,13 @@ def caregiver_prep_agent(state: AgentReviewState) -> dict[str, Any]:
 
     mode = "handoff" if is_diabetic else "prep_sheet"
     stage_str = classification.stage if classification else "Pre-Diabetic"
+    measurement_history = " | ".join(
+        f"{series.metric_name}: " + "; ".join(
+            f"{point.date}: {point.value} {point.unit}"
+            for point in sorted(series.points, key=lambda p: p.date)[-8:]
+        )
+        for series in (state.get("metric_series") or [])[:8]
+    ) or "No dated measurement history supplied; do not infer changes."
 
     sys_msg, user_msg, params = format_agent_prompt(
         "caregiver_prep_agent",
@@ -522,6 +529,7 @@ def caregiver_prep_agent(state: AgentReviewState) -> dict[str, Any]:
         medications=med_text[:300],
         mismatches=mismatch_text,
         allergies=allergy_text[:200],
+        measurement_history=measurement_history,
     )
 
     checklist: list[ChecklistItem] = []

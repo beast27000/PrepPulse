@@ -17,7 +17,7 @@ def workspace(workspace_fixture):  # noqa: F811
 
 def test_runtime_and_public_account_ids_are_searchable_and_preserve_keys(workspace):
     admin, ah, doctor, _, _, _, _, accounts = setup_people(workspace)
-    assert admin.get("/api/runtime").json()["contract"] == "preppulse-ui-care-2"
+    assert admin.get("/api/runtime").json()["contract"] == "preppulse-ui-care-3"
     assert (
         "caregiver"
         in admin.get("/openapi.json").json()["components"]["schemas"]["AccountIn"]["properties"][

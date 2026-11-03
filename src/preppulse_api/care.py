@@ -71,25 +71,25 @@ GENERAL_PREPARATION = {
 
 def care_suggestions(store, patient_id: str) -> list[dict]:
     brief = (store.db.briefs.find_one({"patient_id": patient_id}) or {}).get("brief") or {}
+    if not brief:
+        return []
     suggestions = [
         x
         for x in brief.get("caregiver_prep", {}).get("checklist", [])
         if x.get("text_en", "").strip() not in GENERAL_PREPARATION
+        and not x.get("text_en", "").startswith("Review the documented finding with the clinician:")
     ]
     if suggestions:
         return suggestions
-    # When synthesis falls back to generic text, surface actual documented items for review.
-    # These are visit preparation questions, never new prescriptions or treatment advice.
-    for finding in brief.get("priority_findings", []):
-        if (finding.get("citation") or {}).get("source_verified"):
-            suggestions.append(
-                {
-                    "text_en": "Review the documented finding with the clinician: "
-                    + finding["title"],
-                    "citation": finding["citation"],
-                }
-            )
-    return suggestions[:8]
+    # General visit preparation, not a diagnosis, monitoring order or raw clinical finding.
+    return [
+        {"text_en": text}
+        for text in (
+            "Bring earlier test reports, prescriptions and hospital discharge papers to the visit.",
+            "Write down any new or returning symptoms and questions to share with the care team.",
+            "Bring current medicine packets and any home readings already requested by the doctor.",
+        )
+    ]
 
 
 def ensure_draft(store, visit: dict) -> dict:
@@ -98,7 +98,11 @@ def ensure_draft(store, visit: dict) -> dict:
         existing
         and existing.get("revision", 0) == 0
         and existing.get("items")
-        and all(x.get("text") in GENERAL_PREPARATION for x in existing["items"])
+        and all(x.get("source") == "agent" for x in existing["items"])
+        and any(
+            x.get("text", "").startswith("Review the documented finding with the clinician:")
+            for x in existing["items"]
+        )
     ):
         store.db.care_drafts.update_one(
             {"visit_id": visit["visit_id"], "revision": 0}, {"$set": {"items": []}}
@@ -607,8 +611,14 @@ def register_care_routes(app, db, user, admin, clinician, patient_access, own_vi
             else None
         )
         latest = plans[0] if plans else None
+        draft = ensure_draft(store, active) if active else None
+        if draft:
+            draft["checks"] = {
+                row["item_id"]: row["completed"]
+                for row in store.db.care_visit_checks.find({"visit_id": active["visit_id"]})
+            }
         return {
-            "draft": ensure_draft(store, active) if active else None,
+            "draft": draft,
             "visit": {k: v for k, v in active.items() if k != "_id"} if active else None,
             "plans": [public_plan(p, current) for p in plans],
             "followup": followup(store, latest, day or local_day()) if latest else None,
@@ -617,6 +627,32 @@ def register_care_routes(app, db, user, admin, clinician, patient_access, own_vi
             if current["role"] == "doctor" and not plans
             else [],
         }
+
+    class VisitCheckIn(BaseModel):
+        completed: bool
+
+    @app.put("/api/care/visits/{visit_id}/checks/{item_id}")
+    def check_visit_item(
+        visit_id: str,
+        item_id: str,
+        body: VisitCheckIn,
+        current: dict = Depends(clinician),
+        store=Depends(db),
+    ):
+        visit = own_visit(visit_id, current, store)
+        draft = ensure_draft(store, visit)
+        if not any(item["item_id"] == item_id for item in draft["items"]):
+            raise HTTPException(404, "Checklist item not found in this visit")
+        key = {"visit_id": visit_id, "item_id": item_id}
+        row = {
+            **key,
+            "completed": body.completed,
+            "checked_by": current["user_id"],
+            "checked_at": now(),
+        }
+        store.db.care_visit_checks.update_one(key, {"$set": row}, upsert=True)
+        store.audit(current, "visit_preparation_checked", visit["patient_id"], row)
+        return {"ok": True}
 
     @app.put("/api/care/visits/{visit_id}/draft")
     def save_draft(

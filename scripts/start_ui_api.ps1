@@ -9,7 +9,7 @@ if ($listener) {
     $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)"
     $existing = $null
     try { $existing = Invoke-RestMethod "http://127.0.0.1:$Port/api/runtime" -TimeoutSec 3 } catch { }
-    if ($existing.contract -eq 'preppulse-ui-care-2' -and -not $Restart) {
+    if ($existing.contract -eq 'preppulse-ui-care-3' -and -not $Restart) {
         Write-Output "Current PrepPulse API already runs on port $Port. Use -Restart after code updates."
         return
     }
