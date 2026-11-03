@@ -92,7 +92,12 @@ def _document_details(relative: str, manifest: dict) -> tuple[str, str | None]:
 
 
 async def save_patient_folder(
-    store: WorkspaceStore, doctor_id: str, files: list[UploadFile], paths: list[str]
+    store: WorkspaceStore,
+    doctor_id: str,
+    files: list[UploadFile],
+    paths: list[str],
+    patient_id: str | None = None,
+    details: dict | None = None,
 ) -> dict:
     if len(files) != len(paths):
         raise HTTPException(400, "File list and relative paths do not match")
@@ -105,7 +110,13 @@ async def save_patient_folder(
         and existing_folder["patient_id"] != existing_short["patient_id"]
     ):
         raise HTTPException(409, "Folder ID is assigned to a different patient")
-    if not existing_folder and existing_short:
+    if patient_id and any(
+        link and link["patient_id"] != patient_id for link in (existing_folder, existing_short)
+    ):
+        raise HTTPException(
+            409, "Folder alias belongs to another patient; select that patient instead"
+        )
+    if not patient_id and not existing_folder and existing_short:
         raise HTTPException(409, "Folder ID already belongs to a different patient")
 
     import_id = new_id("IMP")
@@ -135,7 +146,11 @@ async def save_patient_folder(
             staged.append((relative, destination, digest.hexdigest(), size))
 
         manifest = _manifest(stage)
-        patient = store.patient(existing_folder["patient_id"]) if existing_folder else None
+        patient = (
+            store.patient(patient_id)
+            if patient_id
+            else (store.patient(existing_folder["patient_id"]) if existing_folder else None)
+        )
         created = False
         if not patient:
             patient_id = new_id("PRP")
@@ -165,6 +180,23 @@ async def save_patient_folder(
                 ) from None
             created = True
         patient_id = patient["patient_id"]
+        if not created:
+            for alias in (external_id, folder):
+                store.db.patient_aliases.update_one(
+                    {"alias": alias},
+                    {"$setOnInsert": {"alias": alias, "patient_id": patient_id}},
+                    upsert=True,
+                )
+            store.db.patients.update_one(
+                {"patient_id": patient_id},
+                {"$addToSet": {"external_aliases": {"$each": [external_id, folder]}}},
+            )
+        if details:
+            changes = {**details, "age_recorded_on": now()[:10]}
+            if changes.get("name"):
+                changes["name_search"] = changes["name"].strip().lower()
+            store.db.patients.update_one({"patient_id": patient_id}, {"$set": changes})
+            patient.update(changes)
         store.db.patient_access.update_one(
             {"patient_id": patient_id, "doctor_id": doctor_id},
             {"$setOnInsert": {"patient_id": patient_id, "doctor_id": doctor_id}},

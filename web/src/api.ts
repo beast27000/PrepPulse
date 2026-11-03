@@ -1,7 +1,8 @@
 export type User = {
   user_id: string;
   name: string;
-  role: "doctor" | "admin";
+  role: "doctor" | "admin" | "caregiver";
+  disabled?: boolean;
   csrf: string;
   username: string;
 };
@@ -9,10 +10,12 @@ export type Patient = {
   patient_id: string;
   name: string;
   dob?: string;
+  age?: number;
   sex?: string;
   external_aliases: string[];
 };
 export type Appointment = {
+  visit_id?: string;
   appointment_id: string;
   patient_id: string;
   patient_name: string;
@@ -86,6 +89,7 @@ export type Finding = {
   related_citations?: Citation[];
 };
 export type Brief = {
+  gender?: string;
   patient_id: string;
   patient_name: string;
   age_sex: string;
@@ -249,7 +253,15 @@ export async function request<T>(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw new Error(data?.detail || `${res.status}: ${res.statusText}`);
+    const detail = Array.isArray(data?.detail)
+      ? data.detail
+          .map(
+            (x: { loc?: string[]; msg: string }) =>
+              `${x.loc?.slice(1).join(" / ") || "Input"}: ${x.msg}`,
+          )
+          .join("; ")
+      : data?.detail;
+    throw new Error(detail || `${res.status}: ${res.statusText}`);
   }
   return res.json() as Promise<T>;
 }

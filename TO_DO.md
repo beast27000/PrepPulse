@@ -2,6 +2,21 @@
 
 Implementation status and backlog.
 
+## Caregiver and continuity release — UI review (3 November 2026)
+
+- [x] Main Patients rail: chat first, Source Proof second, editable checklist third; independent and whole-rail collapses preserve dedicated workspace expansion.
+- [x] Unified demographics, existing-patient selection, record/folder uploads and processing progress. Recorded age does not invent a DOB; folder aliases map to permanent PrepPulse IDs.
+- [x] Shared autosaved, revision-checked care draft; editable checklist, doctor notes and prescription controls for doses, timings, food and duration.
+- [x] Six-language translation invalidation/retry, number preservation, source/pending states and fixed localized schedule labels. Medication names/doses bypass the LLM.
+- [x] Admin caregiver registration, professional/family assignment/revocation and one-page caregiver portal; server-enforced patient access and withheld briefs/raw records/unsigned drafts.
+- [x] Immutable signed plans, patient/brief snapshots, paginated multilingual PDFs and source PDF patient records; separate persisted caregiver completion/notes.
+- [x] Dated daily tasks, past-due unreported counts, future-completion rejection and next-plan supersession. Completion is caregiver-reported, not verified administration.
+- [x] Expandable appointment history by date/name/either ID; appointment/visit links; Records opens saved visits and the full document workspace.
+- [x] Removed Guidance library. README explains actual classifier inputs, fallback limitations and supported diabetes-related chart measures.
+- [x] Verification: 37 focused API/OCR/RAG/pipeline tests and 2 Edge browser flows pass; frontend production build and targeted Ruff pass. Browser fixtures are synthetic/in-memory with deterministic translations.
+- [ ] Owner review with the actual LLM, including translation meaning and PDF wording across all six languages. Fixture tests do not establish live-model translation quality.
+- [ ] Review on `UI` before any later merge into `main`.
+
 - [x] Changed full chat to a left/right layout with independently collapsible chat and chart views; the remaining panel fills the available width. Source Proof continues to open from selected citations in the right panel.
 - [x] Added an explicit diabetes-agent scope warning for heart-disease chart requests, listing supported OCR measurements and offering cited cardiac text summaries.
 
@@ -26,10 +41,10 @@ Implementation status and backlog.
 - [ ] Validate the full doctor/admin flow against a running local MongoDB and real downloaded models. Static build and isolated tests are not a substitute for this live check.
 - [ ] Resolve existing full-suite fixture assumptions: some legacy tests require a pre-seeded `PP001_Arvind_Narayanan` Mongo patient, and one agent expectation differs from the current mock-model output. The isolated UI/API suite passes without that seed.
 - [x] Add a historical pathway browser for clinician-approved versions.
-- [ ] Persist the sidebar checklist's temporary on-screen check marks. Finalized pathway items and doctor notes are persisted separately.
+- [x] Replaced temporary sidebar marks with the shared draft and persistent caregiver reports (3 November release).
 - [x] Added authenticated opt-in Read aloud API and browser playback, gated by a real WAV-audio probe of a configured local endpoint.
 - [ ] Provide and test an audio-capable runtime for `mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF` and verify spoken languages. The reachable LM Studio server lists the model but returns `Unexpected endpoint or method` for `POST /v1/audio/speech`, so Read aloud remains disabled with that server.
-- [ ] Add owner-approved Guidance library content when supplied.
+- [x] Removed Guidance library at the owner's request (3 November release).
 - [ ] Complete a shared-deployment security review before exposing the app beyond local loopback.
 
 ## Implemented

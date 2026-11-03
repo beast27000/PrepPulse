@@ -49,6 +49,15 @@ class WorkspaceStore:
         )
         db.pathways.create_index([("visit_id", ASCENDING), ("version", ASCENDING)], unique=True)
         db.pathway_items.create_index("item_id", unique=True)
+        db.care_drafts.create_index("visit_id", unique=True)
+        db.care_translations.create_index("pathway_id", unique=True)
+        db.caregiver_access.create_index(
+            [("patient_id", ASCENDING), ("caregiver_id", ASCENDING)], unique=True
+        )
+        db.care_reports.create_index(
+            [("pathway_id", ASCENDING), ("task_id", ASCENDING)], unique=True
+        )
+        db.care_notes.create_index([("pathway_id", ASCENDING), ("created_at", ASCENDING)])
         db.jobs.create_index("job_id", unique=True)
         db.chat_sessions.create_index("session_id", unique=True)
         db.chat_sessions.create_index(
@@ -65,6 +74,13 @@ class WorkspaceStore:
     def allowed(self, user: dict, patient_id: str) -> bool:
         if user["role"] == "admin":
             return True
+        if user["role"] == "caregiver":
+            return (
+                self.db.caregiver_access.find_one(
+                    {"patient_id": patient_id, "caregiver_id": user["user_id"]}
+                )
+                is not None
+            )
         return (
             self.db.patient_access.find_one(
                 {"patient_id": patient_id, "doctor_id": user["user_id"]}
@@ -82,12 +98,13 @@ class WorkspaceStore:
                 {"patient_id": {"$regex": safe, "$options": "i"}},
                 {"external_aliases": {"$regex": safe, "$options": "i"}},
             ]
-        if user["role"] == "doctor":
+        if user["role"] in {"doctor", "caregiver"}:
+            collection = (
+                self.db.caregiver_access if user["role"] == "caregiver" else self.db.patient_access
+            )
+            key = "caregiver_id" if user["role"] == "caregiver" else "doctor_id"
             ids = [
-                x["patient_id"]
-                for x in self.db.patient_access.find(
-                    {"doctor_id": user["user_id"]}, {"patient_id": 1}
-                )
+                x["patient_id"] for x in collection.find({key: user["user_id"]}, {"patient_id": 1})
             ]
             criteria["patient_id"] = {"$in": ids}
         return list(self.db.patients.find(criteria, {"_id": 0, "source_root": 0}).limit(limit))

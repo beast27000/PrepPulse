@@ -1,5 +1,7 @@
 # PrepPulse: High-Priority Requirements & Architectural Directives
 
+> Release scope (3 November 2026): [README](README.md) and [the frontend handoff](docs/FRONTEND_INTEGRATION_SPEC.md) define current behavior. Broader visualization/language proposals below are historical requirements, not implemented promises. Charts use supported diabetes-related measures only. The current React release adds six-language care plans and restricted caregiver access; Guidance library has been removed.
+
 This document tracks the core requirements, clinical boundaries, and design directives for the PrepPulse Longitudinal RAG & Multi-Agent Engine.
 
 ---

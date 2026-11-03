@@ -5,15 +5,23 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from pathlib import Path
+from threading import Lock
 from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pwdlib import PasswordHash
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from pymongo.errors import DuplicateKeyError
 from starlette.middleware.sessions import SessionMiddleware
 
+from preppulse_api.care import (
+    archive_pdf,
+    ensure_draft,
+    local_day,
+    register_care_routes,
+    translate_signed_job,
+)
 from preppulse_api.chat_service import run_chat_turn
 from preppulse_api.clinical import answer_chat, locate_citation, process_patient, render_page
 from preppulse_api.config import (
@@ -36,11 +44,19 @@ active_chat_turns: set[str] = set()
 active_brief_jobs: set[str] = set()
 password_hash = PasswordHash.recommended()
 _stt_model = None
+_schema_ready = False
+_schema_lock = Lock()
 
 
 def db() -> WorkspaceStore:
+    global _schema_ready
     store = WorkspaceStore()
     try:
+        if not _schema_ready:
+            with _schema_lock:
+                if not _schema_ready:
+                    store.indexes()
+                    _schema_ready = True
         yield store
     finally:
         store.client.close()
@@ -73,6 +89,8 @@ def clinician(current: dict = Depends(user)) -> dict:
 
 
 def patient_access(patient_id: str, current: dict, store: WorkspaceStore) -> dict:
+    if current["role"] == "caregiver":
+        raise HTTPException(403, "Use the caregiver portal for signed instructions")
     patient = store.patient(patient_id)
     if not patient:
         raise HTTPException(404, "Patient not found")
@@ -144,7 +162,7 @@ class AccountIn(BaseModel):
     name: str = Field(min_length=2)
     username: str = Field(min_length=3)
     password: str = Field(min_length=12)
-    role: Literal["doctor", "admin"] = "doctor"
+    role: Literal["doctor", "admin", "caregiver"] = "doctor"
 
 
 @app.get("/api/admin/accounts")
@@ -190,7 +208,8 @@ def disable_account(
 class PatientIn(BaseModel):
     name: str = Field(min_length=2)
     dob: str | None = None
-    sex: str | None = None
+    age: int | None = Field(default=None, ge=0, le=130)
+    sex: Literal["Female", "Male", "Other"] | None = None
     doctor_id: str
 
 
@@ -264,6 +283,8 @@ def register_patient(
         "name": body.name.strip(),
         "name_search": body.name.strip().lower(),
         "dob": body.dob,
+        "age": body.age,
+        "age_recorded_on": local_day().isoformat(),
         "sex": body.sex,
         "external_aliases": [],
         "created_at": now(),
@@ -281,13 +302,47 @@ async def import_folder(
     doctor_id: str = Form(...),
     paths: list[str] = Form(...),
     files: list[UploadFile] = File(...),
+    patient_id: str | None = Form(None),
+    name: str | None = Form(None),
+    dob: str | None = Form(None),
+    age: int | None = Form(None),
+    sex: str | None = Form(None),
     current: dict = Depends(admin),
     store: WorkspaceStore = Depends(db),
 ):
     if not store.db.users.find_one({"user_id": doctor_id, "role": "doctor", "disabled": False}):
         raise HTTPException(400, "Active doctor required")
     store.indexes()
-    result = await save_patient_folder(store, doctor_id, files, paths)
+    try:
+        details = PatientIn(
+            name=name or "Folder patient",
+            dob=dob or None,
+            age=age,
+            sex=sex or None,
+            doctor_id=doctor_id,
+        )
+    except ValidationError:
+        raise HTTPException(400, "Check patient name, age and sex") from None
+    if details.dob:
+        try:
+            if date.fromisoformat(details.dob) > local_day():
+                raise ValueError()
+        except ValueError:
+            raise HTTPException(400, "Invalid date of birth") from None
+    if patient_id:
+        patient_access(patient_id, current, store)
+    result = await save_patient_folder(
+        store,
+        doctor_id,
+        files,
+        paths,
+        patient_id=patient_id,
+        details={
+            k: v
+            for k, v in {"name": name, "dob": dob, "age": age, "sex": sex}.items()
+            if v is not None and v != ""
+        },
+    )
     if result["documents_queued"]:
         result["job"] = queue_brief_job(store, result["patient_id"])
     store.audit(
@@ -296,6 +351,65 @@ async def import_folder(
         result["patient_id"],
         {"files_saved": result["files_saved"], "documents_queued": result["documents_queued"]},
     )
+    return result
+
+
+@app.patch("/api/patients/{patient_id}/demographics")
+def update_demographics(
+    patient_id: str,
+    body: PatientIn,
+    current: dict = Depends(admin),
+    store: WorkspaceStore = Depends(db),
+):
+    patient_access(patient_id, current, store)
+    if not store.db.users.find_one(
+        {"user_id": body.doctor_id, "role": "doctor", "disabled": False}
+    ):
+        raise HTTPException(400, "Active doctor required")
+    if body.dob:
+        try:
+            if date.fromisoformat(body.dob) > local_day():
+                raise ValueError()
+        except ValueError:
+            raise HTTPException(400, "Invalid date of birth") from None
+    changes = {
+        "name": body.name.strip(),
+        "name_search": body.name.strip().lower(),
+        "dob": body.dob,
+        "age": body.age,
+        "sex": body.sex,
+        "age_recorded_on": local_day().isoformat(),
+    }
+    store.db.patients.update_one({"patient_id": patient_id}, {"$set": changes})
+    store.db.patient_access.update_one(
+        {"patient_id": patient_id, "doctor_id": body.doctor_id},
+        {"$setOnInsert": {"patient_id": patient_id, "doctor_id": body.doctor_id}},
+        upsert=True,
+    )
+    store.audit(current, "demographics_updated", patient_id)
+    return store.patient(patient_id)
+
+
+@app.post("/api/patients/{patient_id}/folder")
+async def append_folder(
+    patient_id: str,
+    paths: list[str] = Form(...),
+    files: list[UploadFile] = File(...),
+    current: dict = Depends(user),
+    store: WorkspaceStore = Depends(db),
+):
+    patient_access(patient_id, current, store)
+    if current["role"] == "doctor":
+        doctor_id = current["user_id"]
+    else:
+        assignment = store.db.patient_access.find_one({"patient_id": patient_id})
+        if not assignment:
+            raise HTTPException(400, "Assign a doctor before uploading")
+        doctor_id = assignment["doctor_id"]
+    result = await save_patient_folder(store, doctor_id, files, paths, patient_id=patient_id)
+    if result["documents_queued"]:
+        result["job"] = queue_brief_job(store, patient_id)
+    store.audit(current, "folder_appended", patient_id, {"files_saved": result["files_saved"]})
     return result
 
 
@@ -615,7 +729,9 @@ def appointments(
     current: dict = Depends(user),
     store: WorkspaceStore = Depends(db),
 ):
-    day = date_filter or date.today().isoformat()
+    if current["role"] == "caregiver":
+        raise HTTPException(403, "Doctor or admin access required")
+    day = date_filter or local_day().isoformat()
     criteria = {"date": day}
     if current["role"] == "doctor":
         criteria["doctor_id"] = current["user_id"]
@@ -625,7 +741,13 @@ def appointments(
         row["patient_name"] = p["name"] if p else "Unknown patient"
         row["external_aliases"] = p.get("external_aliases", []) if p else []
         row["sex"] = p.get("sex") if p else None
-        row["age"] = date.today().year - int(p["dob"][:4]) if p and p.get("dob") else None
+        row["age"] = (
+            date.today().year - int(p["dob"][:4])
+            if p and p.get("dob")
+            else p.get("age")
+            if p
+            else None
+        )
     return rows
 
 
@@ -723,7 +845,17 @@ def start_visit(
     )
     if active:
         return active
+    appointment = store.db.appointments.find_one(
+        {
+            "patient_id": patient_id,
+            "doctor_id": current["user_id"],
+            "date": local_day().isoformat(),
+            "status": "scheduled",
+        },
+        sort=[("time", 1)],
+    )
     row = {
+        "appointment_id": appointment["appointment_id"] if appointment else None,
         "visit_id": new_id("VIS"),
         "patient_id": patient_id,
         "doctor_id": current["user_id"],
@@ -733,6 +865,11 @@ def start_visit(
         "doctor_notes": "",
     }
     store.db.visits.insert_one(row)
+    if appointment:
+        store.db.appointments.update_one(
+            {"appointment_id": appointment["appointment_id"]},
+            {"$set": {"visit_id": row["visit_id"], "status": "in_progress"}},
+        )
     store.audit(current, "visit_started", patient_id, {"visit_id": row["visit_id"]})
     return {k: v for k, v in row.items() if k != "_id"}
 
@@ -923,6 +1060,7 @@ def pathway(visit_id: str, current: dict = Depends(clinician), store: WorkspaceS
 class EndIn(BaseModel):
     confirm: bool
     confirm_evidence_only: bool = False
+    draft_revision: int | None = None
 
 
 @app.post("/api/visits/{visit_id}/end")
@@ -943,6 +1081,10 @@ def end_visit(
             "Review the pathway and provide notes or explicitly confirm an evidence-only record",
         )
     draft = pathway(visit_id, current, store)
+    care = ensure_draft(store, visit)
+    if body.draft_revision is not None and body.draft_revision != care["revision"]:
+        raise HTTPException(409, "Care draft changed. Reload and review before sign-off")
+    draft.update({k: v for k, v in care.items() if k not in {"visit_id", "patient_id", "_id"}})
     version = store.db.pathways.count_documents({"visit_id": visit_id}) + 1
     saved = {
         **draft,
@@ -951,16 +1093,51 @@ def end_visit(
         "patient_id": visit["patient_id"],
         "version": version,
         "approved_by": current["user_id"],
+        "approved_name": current["name"],
+        "approved_day": local_day().isoformat(),
+        "patient_snapshot": store.patient(visit["patient_id"]),
+        "brief_snapshot": (
+            store.db.briefs.find_one({"patient_id": visit["patient_id"]}, {"_id": 0}) or {}
+        ).get("brief"),
+        "document_ids": [
+            r["record_id"]
+            for r in store.db.workspace_documents.find(
+                {"patient_id": visit["patient_id"]}, {"record_id": 1}
+            )
+        ],
         "approved_at": now(),
         "needs_review": False,
     }
-    store.db.pathways.insert_one(saved)
+    saved.pop("_id", None)
+    claimed = store.db.visits.update_one(
+        {"visit_id": visit_id, "status": "active"}, {"$set": {"status": "finalizing"}}
+    )
+    if not claimed.matched_count:
+        raise HTTPException(409, "Visit is already being finalized")
+    try:
+        store.db.pathways.insert_one(saved)
+    except Exception:
+        store.db.visits.update_one({"visit_id": visit_id}, {"$set": {"status": "active"}})
+        raise
     store.db.visits.update_one(
         {"visit_id": visit_id},
         {"$set": {"status": "ended", "ended_at": now(), "pathway_id": saved["pathway_id"]}},
     )
+    if visit.get("appointment_id"):
+        store.db.appointments.update_one(
+            {"appointment_id": visit["appointment_id"]},
+            {"$set": {"status": "completed", "visit_id": visit_id}},
+        )
+    try:
+        archive_pdf(store, saved)
+    except Exception:
+        logging.getLogger(__name__).exception("Signed pathway saved; PDF archive can be retried")
     store.audit(current, "visit_ended", visit["patient_id"], {"pathway_id": saved["pathway_id"]})
+    workers.submit(translate_signed_job, saved["pathway_id"])
     return {k: v for k, v in saved.items() if k != "_id"}
+
+
+register_care_routes(app, db, user, admin, clinician, patient_access, own_visit, workers)
 
 
 class QueryIn(BaseModel):
