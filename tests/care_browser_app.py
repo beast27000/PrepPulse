@@ -6,6 +6,7 @@ Requires the dev dependency mongomock. All data below is synthetic test data.
 
 import importlib
 import os
+from datetime import timedelta
 from pathlib import Path
 
 import fitz
@@ -176,3 +177,43 @@ def fixture_translation(plan):
 
 
 care.translate_plan = fixture_translation
+
+
+def fixture_job(workspace, patient_id):
+    """Upload checks use native test PDF reads, never an external Mongo/OCR worker."""
+    from preppulse_api.store import new_id, now
+
+    for record in workspace.db.workspace_documents.find(
+        {"patient_id": patient_id, "status": "pending"}
+    ):
+        with fitz.open(record["source_path"]) as pdf:
+            workspace.db.workspace_documents.update_one(
+                {"record_id": record["record_id"]},
+                {"$set": {"status": "ready", "page_count": len(pdf)}},
+            )
+    total = workspace.db.workspace_documents.count_documents({"patient_id": patient_id})
+    job = {
+        "job_id": new_id("JOB"),
+        "patient_id": patient_id,
+        "status": "complete",
+        "stage": "Fixture PDF saved",
+        "documents_total": total,
+        "documents_ready": total,
+        "created_at": now(),
+    }
+    workspace.db.jobs.insert_one(job)
+    return {k: v for k, v in job.items() if k != "_id"}
+
+
+api.queue_brief_job = fixture_job
+store.db.appointments.insert_one(
+    {
+        "appointment_id": "APT-PREVIOUS",
+        "patient_id": "PRP-REVIEW",
+        "doctor_id": "doctor",
+        "date": (local_day() - timedelta(days=1)).isoformat(),
+        "time": "09:30",
+        "status": "completed",
+        "reason": "Previous test appointment",
+    }
+)

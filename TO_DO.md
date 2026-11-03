@@ -2,6 +2,20 @@
 
 Implementation status and backlog.
 
+## Admin and continuity repairs — UI review (3 November 2026)
+
+- [x] Diagnosed the running port-8000 API as an older release lacking caregiver roles, care routes and appointment history. Replaced it after checking no analysis/chat jobs were active; retained all patients, accounts and sources.
+- [x] Added `/api/runtime`, a UI compatibility banner and `scripts/start_ui_api.ps1` for recognized-service restart/reload and a private persistent session secret.
+- [x] Centralized account creation in Accounts, including family/professional caregivers. Added searchable stable public IDs for existing/new accounts and a non-secret `staff_directory` mirror without changing original user IDs.
+- [x] Caregivers page: patient assignment left, searchable roster and free/active status right; server checks registered caregiver type.
+- [x] Restored the original appointment first row; separate matching search/history panels below; newest-first vertical history, completed-today inclusion and separate expanded workspace.
+- [x] Enhanced admin directory with editable demographics, preserved doctor assignments, all-records default, visit/date filters, metadata-only record edits, source preview, and visit-linked uploads with live refresh.
+- [x] Added doctor's Previous patients search and full historical review layout; saved snapshot vs current-reference distinction, original chat/source access, no active care editor or new-visit actions there.
+- [x] Shared handoff-card/checklist data, filtered generic preparation templates, visible first-visit editor entry and preserved signed completion. Reanalysis does not overwrite clinician drafts or regenerate signed checklists.
+- [x] Removed the inline assistant button's negative overlap margin. OCR, RAG, agent graph, chart generation and source-rendering implementations remain unchanged.
+- [x] Verification: 44 focused API/OCR/RAG regression tests, two combined Edge browser flows, production frontend build and targeted Ruff checks passed. Browser data/translations are synthetic; no live patient data was used for browser mutation tests.
+- [ ] Owner verification with the actual patient/LM Studio setup and clinical translation review. Synthetic browser translations do not establish live-model quality.
+
 ## Caregiver and continuity release — UI review (3 November 2026)
 
 - [x] Main Patients rail: chat first, Source Proof second, editable checklist third; independent and whole-rail collapses preserve dedicated workspace expansion.

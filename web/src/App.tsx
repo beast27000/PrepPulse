@@ -45,6 +45,11 @@ import RecordWorkspace from "./RecordWorkspace";
 import CareWorkspace, { CollapsePanel, flushCareDrafts } from "./CareWorkspace";
 import UnifiedIntake from "./UnifiedIntake";
 import CaregiverAdmin from "./CaregiverAdmin";
+import AccountsAdmin from "./AccountsAdmin";
+import AdminPatientDetails from "./AdminPatientDetails";
+import PreviousPatients from "./PreviousPatients";
+import CareSummary from "./CareSummary";
+import "./administration.css";
 import VisitHistory, { AppointmentHistory } from "./VisitHistory";
 import PatientConversation from "./PatientConversation";
 import ProcessBubble from "./ProcessBubble";
@@ -57,6 +62,8 @@ import {
 } from "./preferences";
 
 type Page =
+  | "Previous patients"
+  | "Appointment history"
   | "Today"
   | "Patients"
   | "Records"
@@ -74,6 +81,7 @@ const doctorPages: Page[] = [
   "Today",
   "Patients",
   "Records",
+  "Previous patients",
   "Care pathways",
   "Settings",
 ];
@@ -87,6 +95,7 @@ const adminPages: Page[] = [
 ];
 const navIcons: Record<string, typeof Activity> = {
   Today: CalendarDays,
+  "Previous patients": FolderOpen,
   Patients: HeartPulse,
   Records: FolderOpen,
   "Care pathways": ClipboardCheck,
@@ -430,12 +439,24 @@ export default function App() {
   const [requestedVisit, setRequestedVisit] = useState("");
   const [language, setLanguage] = useState("en");
   const [notice, setNotice] = useState("");
+  const [apiMismatch, setApiMismatch] = useState(false);
+  const [historical, setHistorical] = useState<{
+    patient: Patient;
+    visit: Visit | null;
+    brief: Brief | null;
+    documents: Doc[];
+    visits: Visit[];
+    snapshot_available: boolean;
+  } | null>(null);
+  const historicalRef = useRef(historical);
+  historicalRef.current = historical;
   const [uploadOpen, setUploadOpen] = useState(false);
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [recordReturnPage, setRecordReturnPage] = useState<Page>("Patients");
   const [accounts, setAccounts] = useState<User[]>([]);
   const activeVisit = visits.find(
-    (v) => v.status === "active" && v.doctor_id === user?.user_id,
+    (v) =>
+      !historical && v.status === "active" && v.doctor_id === user?.user_id,
   );
   const nav: Page[] =
     user?.role === "admin"
@@ -444,11 +465,14 @@ export default function App() {
         ? ["My care plans"]
         : doctorPages;
   async function setPage(next: Page) {
-    if (await flushCareDrafts()) commitPage(next);
-    else
-      setNotice(
-        "Complete the care draft fields and wait for saving before switching pages.",
-      );
+    if (await flushCareDrafts()) {
+      commitPage(next);
+      return true;
+    }
+    setNotice(
+      "Complete the care draft fields and wait for saving before switching pages.",
+    );
+    return false;
   }
   function acceptLogin(next: User) {
     setPreferences(readPreferences(next.user_id));
@@ -506,6 +530,14 @@ export default function App() {
   const loadSelected = useCallback(async () => {
     if (!selected || user?.role !== "doctor") return;
     const id = selected.patient_id;
+    if (historicalRef.current?.patient.patient_id === id) {
+      const old = historicalRef.current;
+      setDocuments(old.documents);
+      setBrief(old.brief);
+      setVisits(old.visits);
+      setJob(null);
+      return;
+    }
     const results = await Promise.allSettled([
       request<Doc[]>(`/patients/${id}/documents`),
       request<{ brief: Brief }>(`/patients/${id}/brief`),
@@ -537,6 +569,20 @@ export default function App() {
     }
   }, [user]);
   useEffect(() => {
+    async function checkRuntime() {
+      try {
+        const r = await fetch("/api/runtime");
+        const value = r.ok ? await r.json() : null;
+        setApiMismatch(value?.contract !== "preppulse-ui-care-2");
+      } catch {
+        setApiMismatch(true);
+      }
+    }
+    checkRuntime();
+    const timer = setInterval(checkRuntime, 30000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
     request<User>("/auth/me")
       .then((u) => {
         setCsrf(u.csrf);
@@ -565,7 +611,7 @@ export default function App() {
     setVisits([]);
     setCitation(null);
     loadSelected();
-  }, [selected?.patient_id]);
+  }, [selected?.patient_id, historical]);
   useEffect(() => {
     if (user) loadAppointments();
     const timer = setInterval(loadAppointments, 15000);
@@ -591,10 +637,14 @@ export default function App() {
     return () => clearInterval(timer);
   }, [selected, job?.status, loadSelected]);
   useEffect(() => {
-    if (user?.role === "admin")
+    if (user?.role !== "admin") return;
+    const load = () =>
       request<User[]>("/admin/accounts")
         .then(setAccounts)
         .catch(() => {});
+    load();
+    const timer = setInterval(load, 10000);
+    return () => clearInterval(timer);
   }, [user]);
   async function run<T>(
     action: () => Promise<T>,
@@ -615,6 +665,8 @@ export default function App() {
       );
       return;
     }
+    historicalRef.current = null;
+    setHistorical(null);
     setSelected(p);
     setSearch("");
     setShowSearch(false);
@@ -695,11 +747,34 @@ export default function App() {
     );
   }
   async function choosePatient(p: Patient) {
-    if (await flushCareDrafts()) setSelected(p);
-    else
+    if (await flushCareDrafts()) {
+      historicalRef.current = null;
+      setHistorical(null);
+      setSelected(p);
+    } else
       setNotice(
         "Complete and save the current care draft before changing patients.",
       );
+  }
+  async function openHistorical(p: Patient, visitId?: string) {
+    if (!(await flushCareDrafts())) return;
+    try {
+      const value = await request<NonNullable<typeof historical>>(
+        `/patients/${p.patient_id}/historical-workspace${visitId ? `?visit_id=${visitId}` : ""}`,
+      );
+      historicalRef.current = value;
+      setHistorical(value);
+      setSelected(value.patient);
+      setDocuments(value.documents);
+      setBrief(value.brief);
+      setVisits(value.visits);
+      setJob(null);
+      setCitation(null);
+      setChatFullscreen(false);
+      commitPage("Patients");
+    } catch (e) {
+      setNotice((e as Error).message);
+    }
   }
   async function expandChat() {
     if (await flushCareDrafts()) setChatFullscreen(true);
@@ -745,8 +820,12 @@ export default function App() {
                 title={item}
                 aria-label={item}
                 className={"nav-item " + (page === item ? "active" : "")}
-                onClick={() => {
-                  setPage(item);
+                onClick={async () => {
+                  if (!(await setPage(item))) return;
+                  if (item === "Patients") {
+                    historicalRef.current = null;
+                    setHistorical(null);
+                  }
                   setChatFullscreen(false);
                 }}
               >
@@ -863,6 +942,16 @@ export default function App() {
             </div>
           </div>
         </header>
+        {apiMismatch && (
+          <div className="api-version-notice" role="alert">
+            The API process is older than this UI. Run{" "}
+            <code>
+              powershell -ExecutionPolicy Bypass -File scripts/start_ui_api.ps1
+            </code>{" "}
+            from the PrepPulse folder, then refresh and sign in. New
+            caregiver/history features cannot work until the API is restarted.
+          </div>
+        )}
         {notice && (
           <div className="notice" role="status">
             <span>{notice}</span>
@@ -881,8 +970,45 @@ export default function App() {
         >
           {user.role === "doctor" ? (
             <>
+              {page === "Previous patients" && (
+                <PreviousPatients onOpen={openHistorical} />
+              )}
+              {page === "Appointment history" && (
+                <AppointmentHistory
+                  full
+                  onBack={() => setPage("Records")}
+                  onOpen={(a) => {
+                    const p = patients.find(
+                      (x) => x.patient_id === a.patient_id,
+                    );
+                    if (p) openHistorical(p, a.visit_id);
+                  }}
+                />
+              )}
               {page === "Patients" && !chatFullscreen && (
                 <>
+                  {historical && (
+                    <div className="historical-banner">
+                      <strong>
+                        Historical patient workspace
+                        {historical.visit
+                          ? ` · ${new Date(historical.visit.started_at).toLocaleString()}`
+                          : ""}
+                      </strong>
+                      <p>
+                        {historical.snapshot_available
+                          ? "Showing the brief saved at this visit. Source Proof and chat remain available."
+                          : "This older visit has no saved brief snapshot. The latest available brief is shown for reference, not as a reconstruction of that visit."}{" "}
+                        Chat searches all uploaded patient records.
+                      </p>
+                      <button
+                        className="secondary"
+                        onClick={() => setPage("Previous patients")}
+                      >
+                        Back to Previous patients
+                      </button>
+                    </div>
+                  )}
                   <div className="page-intro">
                     <div>
                       <div className="eyebrow teal">
@@ -915,26 +1041,33 @@ export default function App() {
                               ? "Show assistant / care panels"
                               : "Collapse right panels"}
                           </button>
-                          <button className="secondary" onClick={startVisit}>
-                            {activeVisit ? "Visit active" : "Start visit"}
-                          </button>
-                          <button
-                            className="secondary"
-                            onClick={generateBrief}
-                            disabled={
-                              job?.status === "queued" ||
-                              job?.status === "running" ||
-                              !documents.length
-                            }
-                          >
-                            <Activity size={17} /> Analyze records
-                          </button>
-                          <button
-                            className="primary"
-                            onClick={() => setUploadOpen(true)}
-                          >
-                            <CloudUpload size={17} /> Upload new record
-                          </button>
+                          {!historical && (
+                            <>
+                              <button
+                                className="secondary"
+                                onClick={startVisit}
+                              >
+                                {activeVisit ? "Visit active" : "Start visit"}
+                              </button>
+                              <button
+                                className="secondary"
+                                onClick={generateBrief}
+                                disabled={
+                                  job?.status === "queued" ||
+                                  job?.status === "running" ||
+                                  !documents.length
+                                }
+                              >
+                                <Activity size={17} /> Analyze records
+                              </button>
+                              <button
+                                className="primary"
+                                onClick={() => setUploadOpen(true)}
+                              >
+                                <CloudUpload size={17} /> Upload new record
+                              </button>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -1152,33 +1285,28 @@ export default function App() {
                                     </p>
                                   )}
                                 </div>
-                                <div className="brief-card blue">
-                                  <div className="card-head">
-                                    <span className="card-no">04</span>
-                                    <div>
-                                      <span className="eyebrow">
-                                        FAMILY HANDOFF
-                                      </span>
-                                      <h3>
-                                        {activeVisit?.admitted
-                                          ? "Caregiver pathway"
-                                          : "Family prep sheet"}
-                                      </h3>
-                                    </div>
-                                    <ClipboardCheck size={17} />
-                                  </div>
-                                  {brief.caregiver_prep.checklist
-                                    .slice(0, 3)
-                                    .map((item, i) => (
-                                      <div className="check-preview" key={i}>
-                                        <Check size={15} />
-                                        {String(
-                                          item[`text_${language}`] ||
-                                            item.text_en,
-                                        )}
+                                {!historical && (
+                                  <div className="brief-card blue">
+                                    <div className="card-head">
+                                      <span className="card-no">04</span>
+                                      <div>
+                                        <span className="eyebrow">
+                                          FAMILY / CAREGIVER HANDOFF
+                                        </span>
+                                        <h3>
+                                          {activeVisit?.admitted
+                                            ? "Caregiver pathway"
+                                            : "Family pathway"}
+                                        </h3>
                                       </div>
-                                    ))}
-                                </div>
+                                      <ClipboardCheck size={17} />
+                                    </div>
+                                    <CareSummary
+                                      patient={selected}
+                                      onOpen={() => setPage("Care pathways")}
+                                    />
+                                  </div>
+                                )}
                               </div>
                               <div className="visit-strip">
                                 <div>
@@ -1267,7 +1395,7 @@ export default function App() {
                                           ),
                                         )}
                                       </div>
-                                      <div className="finding-controls">
+                                      <div className="finding-controls" hidden={!!historical}>
                                         <div>
                                           <button
                                             onClick={() =>
@@ -1306,7 +1434,7 @@ export default function App() {
                             </>
                           )}
                         </section>
-                        <div className="bottom-actions">
+                        <div className="bottom-actions" hidden={!!historical}>
                           <button
                             className="secondary"
                             onClick={generateBrief}
@@ -1395,17 +1523,19 @@ export default function App() {
                             onExpand={openRecordWorkspace}
                           />
                         </CollapsePanel>
-                        <CollapsePanel title="Caregiver handoff / checklist">
-                          <section className="panel checklist-panel">
-                            <CareWorkspace
-                              key={selected.patient_id}
-                              patient={selected}
-                              role="doctor"
-                              compact
-                              onStart={startVisit}
-                            />
-                          </section>
-                        </CollapsePanel>
+                        {!historical && (
+                          <CollapsePanel title="Caregiver handoff / checklist">
+                            <section className="panel checklist-panel">
+                              <CareWorkspace
+                                key={selected.patient_id}
+                                patient={selected}
+                                role="doctor"
+                                compact
+                                onStart={startVisit}
+                              />
+                            </section>
+                          </CollapsePanel>
+                        )}
                         <div className="freshness">
                           <div>
                             <strong>Brief for clinician review</strong>
@@ -1490,6 +1620,7 @@ export default function App() {
                     }}
                   />
                   <AppointmentHistory
+                    onExpand={() => setPage("Appointment history")}
                     onOpen={(a) => {
                       const p = patients.find(
                         (x) => x.patient_id === a.patient_id,
@@ -1641,6 +1772,7 @@ export default function App() {
               run={run}
               preferences={preferences}
               setPreferences={setPreferences}
+              navigate={setPage}
             />
           )}
         </main>
@@ -1744,18 +1876,22 @@ function PatientCarousel({
 }
 
 function UploadModal({
+  visitId,
+  initialDate,
   patient,
   onClose,
   onUploaded,
 }: {
   patient: Patient;
+  visitId?: string;
+  initialDate?: string;
   onClose: () => void;
   onUploaded: () => void;
 }) {
   const [files, setFiles] = useState<File[]>([]);
   const [folder, setFolder] = useState(false);
   const [type, setType] = useState("consult");
-  const [date, setDate] = useState(today());
+  const [date, setDate] = useState(initialDate || today());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<FolderImportResult | null>(null);
@@ -1804,6 +1940,7 @@ function UploadModal({
       form.append("file", files[0]);
       form.append("document_type", type);
       form.append("visit_date", date);
+      if (visitId) form.append("visit_id", visitId);
     }
     setBusy(true);
     setError("");
@@ -1931,6 +2068,7 @@ function UploadModal({
 }
 
 function AdminPages({
+  navigate,
   page,
   user,
   patients,
@@ -1944,6 +2082,7 @@ function AdminPages({
   setPreferences,
 }: {
   page: Page;
+  navigate: (page: Page) => void;
   user: User;
   patients: Patient[];
   accounts: User[];
@@ -1969,46 +2108,20 @@ function AdminPages({
     preferences.appointmentTime,
   );
   const [reason, setReason] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [accountName, setAccountName] = useState("");
-  const [role, setRole] = useState<"doctor" | "admin" | "caregiver">("doctor");
   const [directoryPatient, setDirectoryPatient] = useState<Patient | null>(
     null,
   );
-  const [directoryOverview, setDirectoryOverview] =
-    useState<AdminPatientOverview | null>(null);
-  const [directoryLoading, setDirectoryLoading] = useState(false);
-  const [directoryError, setDirectoryError] = useState("");
   const [editAppointment, setEditAppointment] = useState<Appointment | null>(
     null,
   );
+  const [directoryUpload, setDirectoryUpload] = useState<{
+    visitId?: string;
+    day?: string;
+  } | null>(null);
   const selectedDoctor = doctor || doctors[0]?.user_id || "";
   useEffect(() => {
     if (!editAppointment) setAppointmentTime(preferences.appointmentTime);
   }, [preferences.appointmentTime]);
-  useEffect(() => {
-    if (!directoryPatient || page !== "Patient directory") return;
-    let active = true;
-    setDirectoryLoading(true);
-    setDirectoryOverview(null);
-    setDirectoryError("");
-    request<AdminPatientOverview>(
-      `/admin/patients/${directoryPatient.patient_id}/overview`,
-    )
-      .then((result) => {
-        if (active) setDirectoryOverview(result);
-      })
-      .catch((error) => {
-        if (active) setDirectoryError((error as Error).message);
-      })
-      .finally(() => {
-        if (active) setDirectoryLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [directoryPatient?.patient_id, page]);
   async function addAppointment(e: React.FormEvent) {
     e.preventDefault();
     const body = {
@@ -2036,25 +2149,6 @@ function AdminPages({
     setAppointmentDate(a.date);
     setAppointmentTime(a.time);
     setReason(a.reason);
-  }
-  async function addAccount(e: React.FormEvent) {
-    e.preventDefault();
-    const result = await run(
-      () =>
-        post<User>("/admin/accounts", {
-          name: accountName,
-          username,
-          password,
-          role,
-        }),
-      "Account created",
-    );
-    if (result) {
-      setAccounts([...accounts, result]);
-      setPassword("");
-      setUsername("");
-      setAccountName("");
-    }
   }
   return (
     <>
@@ -2170,35 +2264,6 @@ function AdminPages({
             </section>
             <section className="panel admin-form">
               <h3>Today’s appointments</h3>
-              <AppointmentHistory
-                onOpen={(a) => {
-                  const p = patients.find((p) => p.patient_id === a.patient_id);
-                  if (p) {
-                    setDirectoryPatient(p);
-                    request<AdminPatientOverview>(
-                      `/admin/patients/${p.patient_id}/overview`,
-                    ).then(setDirectoryOverview);
-                  }
-                }}
-              />
-              {directoryPatient && directoryOverview && (
-                <details open>
-                  <summary>
-                    {directoryPatient.name} · appointment history
-                  </summary>
-                  {directoryOverview.appointments.map((a) => (
-                    <p key={a.appointment_id}>
-                      {a.date} · {a.time} · {a.status} · {a.reason}
-                    </p>
-                  ))}
-                  <button
-                    className="text-button"
-                    onClick={() => setDirectoryPatient(null)}
-                  >
-                    Close patient overview
-                  </button>
-                </details>
-              )}
               {appointments.length ? (
                 appointments.map((a) => (
                   <div className="appointment-row" key={a.appointment_id}>
@@ -2240,7 +2305,30 @@ function AdminPages({
               )}
             </section>
           </div>
+          <AppointmentHistory
+            onExpand={() => navigate("Appointment history")}
+            onOpen={(a) => {
+              const p = patients.find((x) => x.patient_id === a.patient_id);
+              if (p) {
+                setDirectoryPatient(p);
+                navigate("Patient directory");
+              }
+            }}
+          />
         </>
+      )}
+      {page === "Appointment history" && (
+        <AppointmentHistory
+          full
+          onBack={() => navigate("Patient appointments")}
+          onOpen={(a) => {
+            const p = patients.find((x) => x.patient_id === a.patient_id);
+            if (p) {
+              setDirectoryPatient(p);
+              navigate("Patient directory");
+            }
+          }}
+        />
       )}
       {page === "Patient directory" && (
         <>
@@ -2281,7 +2369,7 @@ function AdminPages({
                   aria-label={`Assign doctor to ${p.name}`}
                   defaultValue=""
                   onChange={async (e) => {
-                    const assigned = await run(
+                    await run(
                       () =>
                         post(
                           `/patients/${p.patient_id}/assign/${e.target.value}`,
@@ -2289,20 +2377,7 @@ function AdminPages({
                         ),
                       "Doctor assigned",
                     );
-                    if (
-                      assigned &&
-                      directoryPatient?.patient_id === p.patient_id
-                    ) {
-                      try {
-                        setDirectoryOverview(
-                          await request<AdminPatientOverview>(
-                            `/admin/patients/${p.patient_id}/overview`,
-                          ),
-                        );
-                      } catch (error) {
-                        setDirectoryError((error as Error).message);
-                      }
-                    }
+
                   }}
                 >
                   <option value="">Assign another doctor</option>
@@ -2316,205 +2391,32 @@ function AdminPages({
             ))}
           </div>
           {directoryPatient && (
-            <section className="panel directory-overview">
-              <div className="panel-heading">
-                <div>
-                  <div className="eyebrow teal">ADMIN PATIENT RECORD</div>
-                  <h3>{directoryPatient.name}</h3>
-                  <p>
-                    {directoryPatient.patient_id} ·{" "}
-                    {directoryPatient.external_aliases?.join(" · ") ||
-                      "No external ID"}
-                  </p>
-                </div>
-                <button
-                  className="icon-button"
-                  title="Close patient details"
-                  onClick={() => setDirectoryPatient(null)}
-                >
-                  <X size={17} />
-                </button>
-              </div>
-              {directoryLoading && <p>Loading patient details…</p>}
-              {directoryError && (
-                <p className="small-error" role="alert">
-                  {directoryError}
-                </p>
-              )}
-              {directoryOverview && (
-                <div className="overview-grid">
-                  <div>
-                    <span className="overview-label">Assigned doctors</span>
-                    <strong>
-                      {directoryOverview.doctors
-                        .map((d) => d.name)
-                        .join(", ") || "None"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="overview-label">Date of birth / sex</span>
-                    <strong>
-                      {directoryOverview.patient.dob || "Not recorded"} ·{" "}
-                      {directoryOverview.patient.sex || "Not recorded"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="overview-label">Stored files</span>
-                    <strong>
-                      {directoryOverview.stored_files ||
-                        directoryOverview.documents.length}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="overview-label">Processing</span>
-                    <strong>
-                      {directoryOverview.latest_job
-                        ? `${directoryOverview.latest_job.status} · ${directoryOverview.latest_job.documents_ready || 0}/${directoryOverview.latest_job.documents_total || directoryOverview.documents.length} ready`
-                        : "No analysis job"}
-                    </strong>
-                  </div>
-                  <div className="overview-section">
-                    <h4>Appointments</h4>
-                    {directoryOverview.appointments.length ? (
-                      directoryOverview.appointments.map((a) => (
-                        <p key={a.appointment_id}>
-                          {shortDate(a.date)} · {a.time} · {a.status} ·{" "}
-                          {directoryOverview.doctors.find(
-                            (d) => d.user_id === a.doctor_id,
-                          )?.name || "Doctor"}
-                        </p>
-                      ))
-                    ) : (
-                      <p>No appointments recorded.</p>
-                    )}
-                  </div>
-                  <div className="overview-section">
-                    <h4>Visit log</h4>
-                    {directoryOverview.visits.length ? (
-                      directoryOverview.visits.map((v) => (
-                        <p key={v.visit_id}>
-                          {shortDate(v.started_at.slice(0, 10))} · {v.status} ·{" "}
-                          {v.admitted ? "Caregiver pathway" : "Family pathway"}
-                        </p>
-                      ))
-                    ) : (
-                      <p>No visits recorded.</p>
-                    )}
-                  </div>
-                  <div className="overview-section wide">
-                    <h4>Documents</h4>
-                    {directoryOverview.documents.length ? (
-                      directoryOverview.documents.map((d) => (
-                        <p key={d.record_id}>
-                          {shortDate(d.visit_date)} · {d.filename} · {d.status}
-                          {d.error ? ` · ${d.error}` : ""}
-                        </p>
-                      ))
-                    ) : (
-                      <p>No clinical documents recorded.</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </section>
+            <AdminPatientDetails
+              key={directoryPatient.patient_id}
+              patient={directoryPatient}
+              doctors={doctors}
+              onClose={() => setDirectoryPatient(null)}
+              onUpdated={reloadPatients}
+              onUpload={(visitId, day) => setDirectoryUpload({ visitId, day })}
+            />
+          )}
+          {directoryPatient && directoryUpload && (
+            <UploadModal
+              patient={directoryPatient}
+              onClose={() => setDirectoryUpload(null)}
+              onUploaded={reloadPatients}
+              visitId={directoryUpload.visitId}
+              initialDate={directoryUpload.day}
+            />
           )}
         </>
       )}
       {page === "Accounts" && (
-        <>
-          <PageHeading
-            eyebrow="ACCESS CONTROL"
-            title="Accounts"
-            text="Administrators create and disable doctor accounts. No public registration is available."
-          />
-          <div className="admin-grid">
-            <section className="panel admin-form">
-              <h3>Create account</h3>
-              <form onSubmit={addAccount}>
-                <label>
-                  Full name
-                  <input
-                    value={accountName}
-                    onChange={(e) => setAccountName(e.target.value)}
-                    required
-                  />
-                </label>
-                <label>
-                  Username
-                  <input
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                  />
-                </label>
-                <label>
-                  Temporary password, minimum 12 characters
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    minLength={12}
-                    required
-                  />
-                </label>
-                <label>
-                  Role
-                  <select
-                    value={role}
-                    onChange={(e) =>
-                      setRole(
-                        e.target.value as "doctor" | "admin" | "caregiver",
-                      )
-                    }
-                  >
-                    <option value="doctor">Doctor</option>
-                    <option value="admin">Admin</option>
-                    <option value="caregiver">Caregiver</option>
-                  </select>
-                </label>
-                <button className="primary">Create account</button>
-              </form>
-            </section>
-            <section className="panel admin-form">
-              <h3>Current accounts</h3>
-              {accounts.map((a) => (
-                <div className="appointment-row" key={a.user_id}>
-                  <div className="patient-avatar tiny">
-                    {a.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <strong>{a.name}</strong>
-                    <small>
-                      {a.username} · {a.role}
-                    </small>
-                  </div>
-                  <button
-                    className="text-button"
-                    disabled={
-                      a.user_id === user.user_id ||
-                      !!(a as User & { disabled?: boolean }).disabled
-                    }
-                    onClick={async () => {
-                      await run(
-                        () => patch(`/admin/accounts/${a.user_id}/disable`, {}),
-                        "Account disabled",
-                      );
-                      setAccounts(
-                        accounts.map((x) =>
-                          x.user_id === a.user_id
-                            ? ({ ...x, disabled: true } as User)
-                            : x,
-                        ),
-                      );
-                    }}
-                  >
-                    Disable
-                  </button>
-                </div>
-              ))}
-            </section>
-          </div>
-        </>
+        <AccountsAdmin
+          user={user}
+          accounts={accounts}
+          setAccounts={setAccounts}
+        />
       )}
       {page === "Settings" && (
         <>

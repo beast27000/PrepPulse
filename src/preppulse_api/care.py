@@ -62,18 +62,70 @@ class DraftIn(BaseModel):
     notes_language: Literal["en", "hi", "ta", "bn", "or", "te"] = "en"
 
 
+GENERAL_PREPARATION = {
+    "Bring all current medication strips or packaging to the visit.",
+    "Keep a record of any new symptoms noticed since the last visit.",
+    "Confirm all upcoming follow-up appointments and lab tests are scheduled.",
+}
+
+
+def care_suggestions(store, patient_id: str) -> list[dict]:
+    brief = (store.db.briefs.find_one({"patient_id": patient_id}) or {}).get("brief") or {}
+    suggestions = [
+        x
+        for x in brief.get("caregiver_prep", {}).get("checklist", [])
+        if x.get("text_en", "").strip() not in GENERAL_PREPARATION
+    ]
+    if suggestions:
+        return suggestions
+    # When synthesis falls back to generic text, surface actual documented items for review.
+    # These are visit preparation questions, never new prescriptions or treatment advice.
+    for finding in brief.get("priority_findings", []):
+        if (finding.get("citation") or {}).get("source_verified"):
+            suggestions.append(
+                {
+                    "text_en": "Review the documented finding with the clinician: "
+                    + finding["title"],
+                    "citation": finding["citation"],
+                }
+            )
+    return suggestions[:8]
+
+
 def ensure_draft(store, visit: dict) -> dict:
     existing = store.db.care_drafts.find_one({"visit_id": visit["visit_id"]}, {"_id": 0})
-    if existing and (existing.get("items") or existing.get("revision", 0) > 0):
+    if (
+        existing
+        and existing.get("revision", 0) == 0
+        and existing.get("items")
+        and all(x.get("text") in GENERAL_PREPARATION for x in existing["items"])
+    ):
+        store.db.care_drafts.update_one(
+            {"visit_id": visit["visit_id"], "revision": 0}, {"$set": {"items": []}}
+        )
+        existing["items"] = []
+    if existing and (
+        existing.get("items")
+        or existing.get("revision", 0) > 0
+        or existing.get("previous_pathway_id")
+    ):
         return existing
-    brief = store.db.briefs.find_one({"patient_id": visit["patient_id"]}) or {}
-    suggestions = brief.get("brief", {}).get("caregiver_prep", {}).get("checklist", [])
+    previous = store.db.pathways.find_one(
+        {"patient_id": visit["patient_id"]}, {"pathway_id": 1}, sort=[("approved_at", -1)]
+    )
+    suggestions = [] if previous else care_suggestions(store, visit["patient_id"])
     items = []
     for entry in suggestions:
         text = entry.get("text_en", "").strip()
         if text:
             texts = {lang: entry[f"text_{lang}"] for lang in LANGUAGES if entry.get(f"text_{lang}")}
-            items.append({**CareItem(text=text, source="agent").model_dump(), "texts": texts})
+            items.append(
+                {
+                    **CareItem(text=text, source="agent").model_dump(),
+                    "texts": texts,
+                    "suggestion_citation": entry.get("citation"),
+                }
+            )
     for entry in store.db.pathway_items.find({"visit_id": visit["visit_id"]}):
         items.append(
             {
@@ -99,6 +151,7 @@ def ensure_draft(store, visit: dict) -> dict:
         "notes_language": "en",
         "notes_texts": {"en": visit.get("doctor_notes", "")},
         "revision": 0,
+        "previous_pathway_id": previous["pathway_id"] if previous else None,
         "translation_status": "pending",
         "updated_at": now(),
     }
@@ -492,12 +545,13 @@ def register_care_routes(app, db, user, admin, clinician, patient_access, own_vi
         if on:
             criteria["date"] = on.isoformat()
         elif scope == "past":
-            criteria["date"] = {"$lt": local_day().isoformat()}
+            today = local_day().isoformat()
+            criteria["$or"] = [{"date": {"$lt": today}}, {"date": today, "status": "completed"}]
         elif scope == "today":
             criteria["date"] = local_day().isoformat()
         rows = list(
             store.db.appointments.find(criteria, {"_id": 0})
-            .sort([("date", -1), ("time", 1)])
+            .sort([("date", -1), ("time", -1)])
             .skip(max(0, offset))
             .limit(max(1, min(limit, 100)))
         )
@@ -559,6 +613,9 @@ def register_care_routes(app, db, user, admin, clinician, patient_access, own_vi
             "plans": [public_plan(p, current) for p in plans],
             "followup": followup(store, latest, day or local_day()) if latest else None,
             "day": (day or local_day()).isoformat(),
+            "suggestions": care_suggestions(store, patient_id)
+            if current["role"] == "doctor" and not plans
+            else [],
         }
 
     @app.put("/api/care/visits/{visit_id}/draft")
@@ -639,10 +696,16 @@ def register_care_routes(app, db, user, admin, clinician, patient_access, own_vi
     @app.post("/api/admin/caregiver-assignments")
     def assign(body: Assignment, current: dict = Depends(admin), store=Depends(db)):
         patient_access(body.patient_id, current, store)
-        if not store.db.users.find_one(
+        account = store.db.users.find_one(
             {"user_id": body.caregiver_id, "role": "caregiver", "disabled": False}
-        ):
+        )
+        if not account:
             raise HTTPException(400, "Active caregiver account required")
+        account = store.account_identity(account)
+        if account.get("caregiver_type") != body.kind:
+            raise HTTPException(
+                400, "Select a registered caregiver of the chosen family/professional type"
+            )
         key = {"patient_id": body.patient_id, "caregiver_id": body.caregiver_id}
         store.db.caregiver_access.update_one(
             key, {"$set": {**key, "kind": body.kind, "assigned_at": now()}}, upsert=True

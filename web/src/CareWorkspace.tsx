@@ -75,6 +75,7 @@ type Followup = {
   past_due_unreported: number;
 };
 type Bundle = {
+  suggestions?: { text_en: string }[];
   draft: Draft | null;
   visit: { visit_id: string; admitted: boolean } | null;
   plans: Plan[];
@@ -175,6 +176,7 @@ export default function CareWorkspace({
       );
       if (activePatient.current !== patient.patient_id) return;
       setBundle(data);
+      setError("");
       if (!dirtyRef.current && !saving.current)
         setDraft(historyOnly ? null : data.draft);
       setPlanId((current) =>
@@ -393,6 +395,15 @@ export default function CareWorkspace({
   const translated = (item: Item) =>
     item.texts?.[language] ||
     (item.source_language === language ? item.text : "");
+  async function beginVisit() {
+    setBusy(true);
+    try {
+      await onStart?.();
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <div className={"care-workspace " + (compact ? "care-compact" : "")}>
       <div className="panel-heading">
@@ -764,14 +775,28 @@ export default function CareWorkspace({
       )}
       {!draft && role === "doctor" && !historyOnly && (
         <p>
-          No active care draft.{" "}
+          {bundle?.plans.length
+            ? "Previous signed checklist and completion are preserved below."
+            : "Start the first visit to edit and approve this patient's checklist."}{" "}
           {onStart && (
-            <button className="text-button" onClick={onStart}>
-              Start visit
+            <button className="secondary" disabled={busy} onClick={beginVisit}>
+              Start visit and edit checklist
             </button>
           )}
         </p>
       )}
+      {!draft &&
+        role === "doctor" &&
+        !historyOnly &&
+        !bundle?.plans.length &&
+        !!bundle?.suggestions?.length && (
+          <div className="care-suggestion-preview">
+            <h4>Patient-specific suggestions · awaiting clinician review</h4>
+            {bundle.suggestions.map((x, i) => (
+              <p key={i}>{x.text_en}</p>
+            ))}
+          </div>
+        )}
       {!!bundle?.plans.length && (
         <div className="signed-plan">
           <h3>

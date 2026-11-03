@@ -148,52 +148,182 @@ test("doctor checklist, signed plan, caregiver ticks, records and charts", async
     .getByRole("button", { name: "Browse patient records", exact: true })
     .click();
   await expect(page.locator(".record-file-list button")).toHaveCount(2);
+  await page
+    .getByRole("button", { name: "Previous patients", exact: true })
+    .click();
+  await expect(page.getByLabel("Previous patient name or ID")).toBeVisible();
+  await expect(page.locator(".previous-patient-card")).toHaveCount(0);
+  await page.getByLabel("Previous patient name or ID").fill("Review Patient");
+  await page
+    .getByRole("button", { name: "Find previous patients", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Open patient history", exact: true })
+    .click();
+  await expect(page.locator(".historical-banner")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Start visit", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: "− Caregiver handoff / checklist",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Open full chat workspace", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("previous-patient-workspace.png"),
+    fullPage: false,
+  });
   await context.close();
 });
 
-test("admin unified intake, demographics, caregiver registration and history filters", async ({
+test("admin accounts, caregiver assignment, two-row appointments and editable directory", async ({
   page,
 }, info) => {
   await login(page, "admin");
-  await expect(
-    page.getByRole("heading", {
-      name: "Patient details and records",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Upload patient folder", exact: true }),
-  ).toBeVisible();
-  await page.getByLabel("Patient full name").fill("Browser Registered Patient");
-  await page.getByLabel("Patient age", { exact: true }).fill("47");
+  await page.getByRole("button", { name: "Accounts", exact: true }).click();
+  await page.getByLabel("Full name", { exact: true }).fill("Review Nurse");
+  await page.getByLabel("Username", { exact: true }).fill("nurse");
   await page
-    .getByRole("button", { name: "Register patient", exact: true })
+    .getByLabel("Temporary password, minimum 12 characters", { exact: true })
+    .fill("review-test-password");
+  await page
+    .getByRole("combobox", { name: "Role", exact: true })
+    .selectOption("caregiver");
+  await page
+    .getByRole("combobox", { name: "Caregiver type", exact: true })
+    .selectOption("professional");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
     .click();
-  await expect(
-    page.getByText("Saved patient: Browser Registered Patient", {
-      exact: false,
-    }),
-  ).toBeVisible();
-  await page.screenshot({
-    path: info.outputPath("unified-intake.png"),
-    fullPage: false,
-  });
+  await expect(page.getByRole("status")).toContainText("Created Review Nurse");
+  await page.getByLabel("Search accounts", { exact: true }).fill("nurse");
+  await expect(page.locator(".admin-scroll-list code")).toContainText("CGV-");
   await page.getByRole("button", { name: "Caregivers", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Register caregiver", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("combobox", { name: "Caregiver type", exact: true })
+    .selectOption("professional");
+  const nurseOption = page
+    .getByRole("combobox", {
+      name: "Registered professional caregiver",
+      exact: true,
+    })
+    .locator("option")
+    .filter({ hasText: "Review Nurse" });
+  await page
+    .getByRole("combobox", {
+      name: "Registered professional caregiver",
+      exact: true,
+    })
+    .selectOption((await nurseOption.getAttribute("value"))!);
+  await page
+    .getByRole("combobox", { name: "Patient", exact: true })
+    .selectOption("PRP-REVIEW");
+  await page
+    .getByRole("button", { name: "Assign patient", exact: true })
+    .click();
+  await expect(
+    page.getByText("Patient assignment saved", { exact: true }),
   ).toBeVisible();
+  await page
+    .getByLabel("Availability for nurse", { exact: true })
+    .selectOption("active");
+  await expect(
+    page.getByLabel("Availability for nurse", { exact: true }),
+  ).toHaveValue("active");
+  await page.screenshot({
+    path: info.outputPath("caregiver-administration.png"),
+    fullPage: false,
+  });
+
   await page
     .getByRole("button", { name: "Patient appointments", exact: true })
     .click();
+  const todayPanel = page
+    .getByRole("heading", { name: "Today’s appointments", exact: true })
+    .locator("..");
+  await expect(todayPanel.locator(".appointment-history")).toHaveCount(0);
   await page.getByLabel("Search appointment history").fill("Review Patient");
   await expect(page.locator(".appointment-history")).toContainText(
     "Review Patient",
   );
+  await page.screenshot({
+    path: info.outputPath("appointment-grid.png"),
+    fullPage: true,
+  });
   await page
     .getByRole("button", { name: "Expand appointments", exact: true })
     .click();
-  await expect(page.locator(".history-expanded")).toBeVisible();
+  await expect(page.locator(".history-full-page")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "New appointment", exact: true }),
+  ).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Close expanded view", exact: true })
+    .getByRole("button", { name: "Back to workspace", exact: true })
     .click();
+
+  await page
+    .getByRole("button", { name: "Patient directory", exact: true })
+    .click();
+  await page
+    .getByRole("button", {
+      name: "View admin details for Review Patient",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByRole("button", { name: "Edit patient details", exact: true })
+    .click();
+  await page.getByLabel("Recorded age", { exact: true }).fill("46");
+  await page
+    .getByRole("button", { name: "Save patient details", exact: true })
+    .click();
+  await expect(
+    page.getByText("Patient details saved", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Directory records by visit")).toHaveValue(
+    "all",
+  );
+  const editorButton = page
+    .locator(".directory-overview .record-row")
+    .filter({ hasText: "review_lab.pdf" })
+    .getByRole("button", { name: "Edit record", exact: true });
+  await editorButton.click();
+  await page
+    .getByLabel("Display title", { exact: true })
+    .fill("Reviewed laboratory record");
+  await page
+    .getByRole("button", { name: "Save record metadata", exact: true })
+    .click();
+  await expect(
+    page.getByText("Reviewed laboratory record", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Add record", exact: true }).click();
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles({
+      name: "admin-follow-up.pdf",
+      mimeType: "application/pdf",
+      buffer: (await import("node:fs")).readFileSync(
+        "../.tmp/care-browser/review_lab.pdf",
+      ),
+    });
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Upload record", exact: true })
+    .last()
+    .click();
+  await expect(
+    page.getByText("admin-follow-up.pdf", { exact: true }),
+  ).toBeVisible({ timeout: 15000 });
+  await page.screenshot({
+    path: info.outputPath("editable-patient-directory.png"),
+    fullPage: false,
+  });
 });

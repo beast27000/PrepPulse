@@ -1,5 +1,8 @@
 export type User = {
   user_id: string;
+  account_id?: string;
+  caregiver_type?: "family" | "professional";
+  availability?: "free" | "active";
   name: string;
   role: "doctor" | "admin" | "caregiver";
   disabled?: boolean;
@@ -29,6 +32,9 @@ export type Appointment = {
   reason: string;
 };
 export type Doc = {
+  display_name?: string;
+  visit_id?: string;
+  created_at?: string;
   record_id: string;
   filename: string;
   document_type: string;
@@ -253,6 +259,9 @@ export async function request<T>(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
+    if (res.status === 404 && data?.detail === "Not Found" && /^(\/care\/|\/appointment-history|\/previous-patients|\/admin\/caregiver)/.test(path)) {
+      throw new Error("This API process does not contain the current UI routes. Restart it with scripts/start_ui_api.ps1, refresh, and sign in again.");
+    }
     const detail = Array.isArray(data?.detail)
       ? data.detail
           .map(

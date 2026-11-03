@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Patient, User, post, request } from "./api";
+import { Patient, User, patch, post, request } from "./api";
 
 export default function CaregiverAdmin({
   patients,
@@ -8,95 +8,66 @@ export default function CaregiverAdmin({
 }: {
   patients: Patient[];
   accounts: User[];
-  setAccounts: (users: User[]) => void;
+  setAccounts: (rows: User[]) => void;
 }) {
-  const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [caregiver, setCaregiver] = useState("");
   const [patient, setPatient] = useState("");
   const [kind, setKind] = useState("family");
+  const [query, setQuery] = useState("");
+  const [patientQuery, setPatientQuery] = useState("");
+  const [rows, setRows] = useState(patients);
   const [links, setLinks] = useState<
     { patient_id: string; caregiver_id: string; kind: string }[]
   >([]);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
+  const caregivers = accounts.filter((x) => x.role === "caregiver");
+  const matches = (x: User) =>
+    [x.name, x.username, x.account_id, x.user_id].some((v) =>
+      v?.toLowerCase().includes(query.toLowerCase()),
+    );
   async function load() {
     try {
       setLinks(await request<typeof links>("/admin/caregiver-assignments"));
+      setError("");
     } catch (e) {
       setError((e as Error).message);
     }
   }
   useEffect(() => {
     load();
+    const timer = setInterval(load, 10000);
+    return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(() => {
+      request<Patient[]>(`/patients?q=${encodeURIComponent(patientQuery)}`)
+        .then((x) => {
+          if (active) setRows(x);
+        })
+        .catch((e) => {
+          if (active) setError(e.message);
+        });
+    }, 200);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [patientQuery]);
   return (
     <>
-      <div className="page-heading">
-        <div className="eyebrow teal">CAREGIVER ACCESS</div>
-        <h1>Caregivers</h1>
-        <p>
-          Create a family or professional caregiver account and assign access to
-          signed patient pathways.
-        </p>
+      <div className="intro">
+        <div>
+          <div className="eyebrow teal">CAREGIVER ACCESS</div>
+          <h1>Caregivers</h1>
+          <p>
+            Assign registered caregivers. Create family and professional
+            caregiver accounts in Accounts.
+          </p>
+        </div>
       </div>
       <div className="admin-grid">
-        <section className="panel admin-form">
-          <h3>Register caregiver</h3>
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                const account = await post<User>("/admin/accounts", {
-                  name,
-                  username,
-                  password,
-                  role: "caregiver",
-                });
-                setAccounts([...accounts, account]);
-                setCaregiver(account.user_id);
-                setName("");
-                setUsername("");
-                setPassword("");
-                setStatus("Caregiver registered. Assign a patient next.");
-                setError("");
-              } catch (e) {
-                setError((e as Error).message);
-              }
-            }}
-          >
-            <label>
-              Name
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                minLength={2}
-              />
-            </label>
-            <label>
-              Username
-              <input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                minLength={3}
-              />
-            </label>
-            <label>
-              Password
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={12}
-              />
-            </label>
-            <button className="primary">Register caregiver</button>
-          </form>
-        </section>
         <section className="panel admin-form">
           <h3>Patient access</h3>
           <form
@@ -108,8 +79,7 @@ export default function CaregiverAdmin({
                   caregiver_id: caregiver,
                   kind,
                 });
-                setStatus("Caregiver access saved");
-                setError("");
+                setStatus("Patient assignment saved");
                 await load();
               } catch (e) {
                 setError((e as Error).message);
@@ -117,21 +87,58 @@ export default function CaregiverAdmin({
             }}
           >
             <label>
-              Caregiver
+              Caregiver type
+              <select
+                value={kind}
+                onChange={(e) => {
+                  setKind(e.target.value);
+                  setCaregiver("");
+                }}
+              >
+                <option value="family">Family caregiver</option>
+                <option value="professional">Professional caregiver</option>
+              </select>
+            </label>
+            <label>
+              Find caregiver
+              <input
+                aria-label="Find caregiver"
+                placeholder="Name, username or caregiver ID"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </label>
+            <label>
+              {kind === "family"
+                ? "Registered family member"
+                : "Registered professional caregiver"}
               <select
                 value={caregiver}
                 onChange={(e) => setCaregiver(e.target.value)}
                 required
               >
                 <option value="">Select caregiver</option>
-                {accounts
-                  .filter((x) => x.role === "caregiver" && !x.disabled)
+                {caregivers
+                  .filter(
+                    (x) =>
+                      !x.disabled &&
+                      (x.caregiver_type || "family") === kind &&
+                      matches(x),
+                  )
                   .map((x) => (
                     <option key={x.user_id} value={x.user_id}>
-                      {x.name}
+                      {x.name} · {x.username} · {x.account_id || x.user_id}
                     </option>
                   ))}
               </select>
+            </label>
+            <label>
+              Find patient
+              <input
+                placeholder="Patient name or ID"
+                value={patientQuery}
+                onChange={(e) => setPatientQuery(e.target.value)}
+              />
             </label>
             <label>
               Patient
@@ -141,18 +148,11 @@ export default function CaregiverAdmin({
                 required
               >
                 <option value="">Select patient</option>
-                {patients.map((x) => (
+                {rows.map((x) => (
                   <option key={x.patient_id} value={x.patient_id}>
                     {x.name} · {x.patient_id}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label>
-              Caregiver type
-              <select value={kind} onChange={(e) => setKind(e.target.value)}>
-                <option value="family">Family caregiver</option>
-                <option value="professional">Professional caregiver</option>
               </select>
             </label>
             <button className="primary">Assign patient</button>
@@ -163,12 +163,17 @@ export default function CaregiverAdmin({
               className="record-row"
               key={`${x.patient_id}-${x.caregiver_id}`}
             >
-              <span>
-                {accounts.find((a) => a.user_id === x.caregiver_id)?.name} ·{" "}
-                {patients.find((p) => p.patient_id === x.patient_id)?.name ||
-                  x.patient_id}{" "}
-                · {x.kind}
-              </span>
+              <div>
+                <strong>
+                  {accounts.find((a) => a.user_id === x.caregiver_id)?.name ||
+                    x.caregiver_id}
+                </strong>
+                <small>
+                  {patients.find((p) => p.patient_id === x.patient_id)?.name ||
+                    x.patient_id}{" "}
+                  · {x.kind}
+                </small>
+              </div>
               <button
                 className="text-button"
                 onClick={async () => {
@@ -188,13 +193,68 @@ export default function CaregiverAdmin({
             </div>
           ))}
         </section>
+        <section className="panel admin-form">
+          <h3>Caregiver directory</h3>
+          <p>
+            Availability is an administrator-maintained work status, separate
+            from account access and patient assignment.
+          </p>
+          <label>
+            Search caregivers
+            <input
+              aria-label="Search caregivers"
+              placeholder="Name, username or ID"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </label>
+          <div className="admin-scroll-list caregiver-roster">
+            {caregivers.filter(matches).map((x) => (
+              <div className="appointment-row" key={x.user_id}>
+                <div>
+                  <strong>{x.name}</strong>
+                  <small>
+                    {x.username} · {x.caregiver_type || "family"}
+                  </small>
+                  <code>{x.account_id || x.user_id}</code>
+                </div>
+                <select
+                  aria-label={`Availability for ${x.username}`}
+                  disabled={x.disabled}
+                  value={x.availability || "free"}
+                  onChange={async (e) => {
+                    try {
+                      const updated = await patch<User>(
+                        `/admin/caregivers/${x.user_id}/availability`,
+                        { availability: e.target.value },
+                      );
+                      setAccounts(
+                        accounts.map((a) =>
+                          a.user_id === x.user_id ? updated : a,
+                        ),
+                      );
+                    } catch (e) {
+                      setError((e as Error).message);
+                    }
+                  }}
+                >
+                  <option value="free">Free</option>
+                  <option value="active">Active</option>
+                </select>
+              </div>
+            ))}
+            {!caregivers.length && (
+              <p>No caregivers yet. Create an account in Accounts first.</p>
+            )}
+          </div>
+        </section>
       </div>
+      {status && <p role="status">{status}</p>}
       {error && (
-        <p className="care-error" role="alert">
+        <p role="alert" className="care-error">
           {error}
         </p>
       )}
-      {status && <p role="status">{status}</p>}
     </>
   );
 }

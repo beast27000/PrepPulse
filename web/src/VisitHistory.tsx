@@ -5,10 +5,15 @@ import BriefHistory from "./BriefHistory";
 
 export function AppointmentHistory({
   onOpen,
+  onExpand,
+  onBack,
+  full = false,
 }: {
   onOpen?: (a: Appointment) => void;
+  onExpand?: () => void;
+  onBack?: () => void;
+  full?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [scope, setScope] = useState("past");
   const [q, setQ] = useState("");
   const [on, setOn] = useState("");
@@ -18,128 +23,157 @@ export function AppointmentHistory({
     total: number;
   }>({ appointments: [], total: 0 });
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   useEffect(() => {
     let active = true;
+    setLoading(true);
     const timer = setTimeout(() => {
       request<typeof data>(
         `/appointment-history?scope=${scope}&q=${encodeURIComponent(q)}${on ? `&on=${on}` : ""}&offset=${offset}`,
       )
         .then((x) => {
           if (active) {
-            setData(x);
+            setData((current) => ({
+              appointments: offset
+                ? [...current.appointments, ...x.appointments]
+                : x.appointments,
+              total: x.total,
+            }));
             setError("");
           }
         })
         .catch((e) => {
           if (active) setError(e.message);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
         });
-    }, 180);
+    }, 200);
     return () => {
       active = false;
       clearTimeout(timer);
     };
   }, [scope, q, on, offset]);
   return (
-    <section
-      className={
-        "panel admin-form appointment-history " +
-        (expanded ? "history-expanded" : "")
-      }
+    <div
+      className={"history-pair admin-grid " + (full ? "history-full-page" : "")}
     >
-      <div className="panel-heading">
-        <h3>Previous appointments</h3>
-        <button className="secondary" onClick={() => setExpanded(!expanded)}>
-          {expanded ? "Close expanded view" : "Expand appointments"}
-        </button>
-      </div>
-      <div className="history-tools">
-        <input
-          aria-label="Search appointment history"
-          placeholder="Patient name or either ID"
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setScope(e.target.value ? "all" : "past");
-            setOffset(0);
-          }}
-        />
-        <input
-          aria-label="Appointment history date"
-          type="date"
-          value={on}
-          onChange={(e) => {
-            setOn(e.target.value);
-            setOffset(0);
-          }}
-        />
-        <select
-          aria-label="Appointment period"
-          value={scope}
-          onChange={(e) => {
-            setScope(e.target.value);
-            setOffset(0);
-          }}
-        >
-          <option value="past">Previous appointments</option>
-          <option value="today">Today's appointments</option>
-          <option value="all">All dates</option>
-        </select>
-        <button
-          className="text-button"
-          onClick={() => {
-            setQ("");
-            setOn("");
-            setScope("past");
-            setOffset(0);
-          }}
-        >
-          Clear filters
-        </button>
-      </div>
-      {error && <p role="alert">{error}</p>}
-      {data.appointments.map((a) => (
-        <div className="appointment-row" key={a.appointment_id}>
-          <time>
-            {a.date}
-            <br />
-            {a.time}
-          </time>
-          <div>
-            <strong>{a.patient_name}</strong>
-            <small>
-              {a.patient_id} · {a.status}
-            </small>
-            <small>{a.reason}</small>
-          </div>
-          {onOpen && (
-            <button className="text-button" onClick={() => onOpen(a)}>
-              Open visit / patient
+      <section className="panel admin-form history-search">
+        <div className="panel-heading">
+          <h3>Find previous appointments</h3>
+          {full && (
+            <button className="secondary" onClick={onBack}>
+              Back to workspace
             </button>
           )}
         </div>
-      ))}
-      {!data.appointments.length && <p>No appointments match these filters.</p>}
-      <div className="form-actions">
-        <button
-          className="secondary"
-          disabled={!offset}
-          onClick={() => setOffset(Math.max(0, offset - 50))}
-        >
-          Previous
-        </button>
-        <span>
-          {Math.min(offset + 1, data.total)}–{Math.min(offset + 50, data.total)}{" "}
-          of {data.total}
-        </span>
-        <button
-          className="secondary"
-          disabled={offset + 50 >= data.total}
-          onClick={() => setOffset(offset + 50)}
-        >
-          Next
-        </button>
-      </div>
-    </section>
+        <p>
+          Search by patient name or either ID, by date alone, or combine both.
+        </p>
+        <label>
+          Patient name or ID
+          <input
+            aria-label="Search appointment history"
+            value={q}
+            placeholder="Name, PrepPulse ID or folder ID"
+            onChange={(e) => {
+              setQ(e.target.value);
+              setOffset(0);
+            }}
+          />
+        </label>
+        <label>
+          Appointment date
+          <input
+            aria-label="Appointment history date"
+            type="date"
+            value={on}
+            onChange={(e) => {
+              setOn(e.target.value);
+              setOffset(0);
+            }}
+          />
+        </label>
+        <label>
+          Date range
+          <select
+            aria-label="Appointment period"
+            value={scope}
+            onChange={(e) => {
+              setScope(e.target.value);
+              setOffset(0);
+            }}
+          >
+            <option value="past">Previous appointments</option>
+            <option value="today">Today's appointments</option>
+            <option value="all">All dates</option>
+          </select>
+        </label>
+        <div className="form-actions">
+          <button
+            className="secondary"
+            onClick={() => {
+              setQ("");
+              setOn("");
+              setScope("past");
+              setOffset(0);
+            }}
+          >
+            Clear filters
+          </button>
+          {!full && onExpand && (
+            <button className="secondary" onClick={onExpand}>
+              Expand appointments
+            </button>
+          )}
+        </div>
+      </section>
+      <section className="panel admin-form appointment-history">
+        <h3>Previous appointments</h3>
+        <p>Newest first · {data.total} appointments</p>
+        {error && (
+          <p role="alert" className="care-error">
+            {error}
+          </p>
+        )}
+        <div className="admin-scroll-list appointment-history-results">
+          {data.appointments.map((a) => (
+            <div className="appointment-row" key={a.appointment_id}>
+              <time>
+                {a.date}
+                <br />
+                {a.time}
+              </time>
+              <div>
+                <strong>{a.patient_name}</strong>
+                <small>
+                  {a.patient_id} · {a.status}
+                </small>
+                <small>{a.reason}</small>
+              </div>
+              {onOpen && (
+                <button className="text-button" onClick={() => onOpen(a)}>
+                  Open patient / visit
+                </button>
+              )}
+            </div>
+          ))}
+          {!loading && !error && !data.appointments.length && (
+            <p>No appointments match these filters.</p>
+          )}
+          {loading && <p role="status">Loading appointments…</p>}
+        </div>
+        {data.appointments.length < data.total && (
+          <button
+            className="secondary"
+            disabled={loading}
+            onClick={() => setOffset(offset + 50)}
+          >
+            Load older appointments
+          </button>
+        )}
+      </section>
+    </div>
   );
 }
 

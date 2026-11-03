@@ -29,6 +29,9 @@ class WorkspaceStore:
     def indexes(self) -> None:
         db = self.db
         db.users.create_index("username", unique=True)
+        db.users.create_index("account_id", unique=True, sparse=True)
+        db.staff_directory.create_index("user_id", unique=True)
+        db.staff_directory.create_index("account_id", unique=True)
         db.patients.create_index("patient_id", unique=True)
         db.patient_aliases.create_index("alias", unique=True)
         db.patients.create_index("name_search")
@@ -67,6 +70,55 @@ class WorkspaceStore:
         db.chat_messages.create_index([("session_id", ASCENDING), ("created_at", ASCENDING)])
         db.chat_artifacts.create_index("artifact_id", unique=True)
         db.chat_turns.create_index("turn_id", unique=True)
+        for account in db.users.find({}, {"_id": 0, "password_hash": 0}):
+            self.account_identity(account)
+
+    def account_identity(self, account: dict) -> dict:
+        """Backfill public staff IDs without changing existing assignment/login keys."""
+        kind = account.get("caregiver_type")
+        if account["role"] == "caregiver" and not kind:
+            professional = self.db.caregiver_access.find_one(
+                {"caregiver_id": account["user_id"], "kind": "professional"}
+            )
+            kind = "professional" if professional else "family"
+        prefix = {
+            "doctor": "DOC",
+            "admin": "ADM",
+            "caregiver": "CGV" if kind == "professional" else "FAM",
+        }[account["role"]]
+        if not account.get("account_id"):
+            self.db.users.update_one(
+                {"user_id": account["user_id"], "account_id": {"$exists": False}},
+                {"$set": {"account_id": new_id(prefix)}},
+            )
+        actual = (
+            self.db.users.find_one({"user_id": account["user_id"]}, {"_id": 0, "password_hash": 0})
+            or account
+        )
+        if actual["role"] == "caregiver":
+            defaults = {
+                "caregiver_type": kind or "family",
+                "availability": actual.get("availability", "free"),
+            }
+            self.db.users.update_one({"user_id": actual["user_id"]}, {"$set": defaults})
+            actual.update(defaults)
+        fields = {
+            k: actual.get(k)
+            for k in (
+                "user_id",
+                "account_id",
+                "name",
+                "username",
+                "role",
+                "caregiver_type",
+                "availability",
+                "disabled",
+            )
+        }
+        self.db.staff_directory.update_one(
+            {"user_id": actual["user_id"]}, {"$set": fields}, upsert=True
+        )
+        return actual
 
     def patient(self, patient_id: str) -> dict | None:
         return self.db.patients.find_one({"patient_id": patient_id}, {"_id": 0})
@@ -94,6 +146,7 @@ class WorkspaceStore:
         if q:
             safe = re.escape(q)
             criteria["$or"] = [
+                {"name": {"$regex": safe, "$options": "i"}},
                 {"name_search": {"$regex": safe, "$options": "i"}},
                 {"patient_id": {"$regex": safe, "$options": "i"}},
                 {"external_aliases": {"$regex": safe, "$options": "i"}},

@@ -94,9 +94,13 @@ Folder selection accepts one folder such as `PP001_Ananya_Baruah`. Its `PP001` I
 
 ### Caregiver portal and signed care plans
 
-Admins use **Caregivers** to create an account, select **Family caregiver** or **Professional caregiver**, and assign patient access. Caregivers sign into the same PrepPulse browser address and receive a dedicated **My care plans** workspace with one menu item. They see assigned patients and signed instructions, not clinician briefs, original source files, chat sessions, or unsaved drafts. Admins can revoke assignments and disable accounts.
+Admins create every account in **Accounts**. Choose the caregiver role and **Family caregiver** or **Professional caregiver** there. **Caregivers** contains patient assignment on the left and the searchable caregiver roster on the right; it does not duplicate account creation. Filter registered caregivers by type, name, username or ID, assign/revoke patient access, and mark availability **Free** or **Active**. Availability is an administrator-maintained status, separate from patient access. Caregivers sign into the same PrepPulse browser address and receive a dedicated **My care plans** workspace with one menu item. They see assigned patients and signed instructions, not clinician briefs, original source files, chat sessions, or unsaved drafts. Admins can revoke assignments and disable accounts.
+
+All existing and new accounts receive a stable searchable public ID: `ADM-` for admins, `DOC-` for doctors, `FAM-` for family caregivers, and `CGV-` for professional caregivers. The original internal `user_id` remains unchanged so existing assignments and visit links remain intact. A separate `staff_directory` collection mirrors non-secret account identity and status fields. Accounts can be searched by name, username, public ID or internal ID.
 
 Doctors edit checklist text directly in Patients or Care pathways, append/remove items, and choose once/daily frequency. Both screens use the same saved visit draft. The pathway editor adds doctor notes and medicine/injection/treatment entries: free-text name and dose/application, start date, duration in days/months, morning/afternoon/evening/bedtime buttons, and food timing. `+ Add medication / treatment` adds another entry. PrepPulse never chooses a prescription or dose automatically. Admission selects caregiver mode; otherwise the plan is a family pathway.
+
+The consultation handoff card reads the same care state as the editable checklist. Before the first visit, patient-specific agent suggestions are shown when available; if absent, verified findings can supply clearly labeled review prompts. Generic preparation templates are not shown as patient-specific instructions. **Start visit and edit checklist** creates the first draft. A later visit preserves previous signed instructions and completion reports, while its new draft starts empty for the clinician; rerunning analysis does not overwrite it or regenerate an already signed checklist. An absent source-backed care gap stays a gap rather than becoming an invented instruction.
 
 Edits autosave after a short pause. Conflicting revisions are rejected instead of overwriting another window's changes. English, Hindi, Tamil, Bengali, Odia, and Telugu toggles are available. Checklist and doctor-note translations run in the background through the configured LLM; edited text invalidates old translations. Source text stays visible with a pending/unavailable label while translation is unavailable. **Refresh translations** retries it. Medication names/doses remain exactly as entered; schedule labels have fixed translations. Check translated wording before clinical use.
 
@@ -106,11 +110,29 @@ Caregivers tick dated tasks and add timestamped notes. Daily medication tasks ru
 
 ### Appointment and visit history
 
-Admin appointments retain today's schedule and add an expandable **Previous appointments** panel. Search by name, PrepPulse ID, or folder alias across dates; filter by a specific date, Today, Previous, or All dates. Doctors use the same history filters in **Records**. Starting a visit links the next scheduled appointment for that patient/doctor on the current date; sign-off marks that linked appointment completed. Unscheduled visits still retain their own visit ID.
+Admin appointments use two rows: **New appointment** and **Today's appointments** above, then **Find previous appointments** and a vertically scrollable **Previous appointments** list below. Search by name, PrepPulse ID, or folder alias across dates; filter by a specific date, Today, Previous, or All dates. The history list is newest first and has no edit/delete controls. Completed appointments from today also appear in previous history. **Expand appointments** opens a separate full workspace with a Back button. Doctors use the same history filters in **Records**. Starting a visit links the next scheduled appointment for that patient/doctor on the current date; sign-off marks that linked appointment completed. Unscheduled visits still retain their own visit ID.
 
 Patient cards in Records open dated visit links, signed pathways and caregiver follow-up. **Browse patient records** opens the full Source Proof-style record workspace with searchable text and selectable files. New visits preserve sign-off snapshots; older visits without a captured snapshot are explicitly identified rather than reconstructed from today's brief. Guidance library has been removed from the navigation and page implementation.
 
+The doctor's **Previous patients** page starts with no patient selected. Search by name, either patient ID, or visit/appointment date and open a patient or dated visit. It opens the complete consultation review layout with source evidence and chat, while hiding active-visit actions and the care editor. A banner distinguishes a saved sign-off snapshot from the latest brief used only as a reference when no snapshot exists. Chat continues to search the patient's uploaded record set and is explicitly labeled as such; it is not a reconstruction of historical conversation or model state.
+
+In the admin **Patient directory**, select a card to edit demographics, retain/add doctor assignments, inspect appointment/visit dates, and browse all records by default. A dropdown filters records to a visit or appointment date. Uploads can be attached to the selected visit; older documents without a visit link are matched by date and labeled accordingly. Administrators may edit a document's display title/type/date, never its original filename or source bytes. Signed pathway dates and types remain immutable. Records and processing counts refresh every five seconds, including newly signed pathway PDFs.
+
 After updating, restart the Python API. MongoDB collections/indexes are added automatically on the API's first connection; existing patients and accounts are retained. No database reset or re-registration is required.
+
+### Avoiding an outdated API on port 8000
+
+An older Python process can keep serving the previous release even after Vite shows updated pages. Symptoms include `role: Input should be 'doctor' or 'admin'`, or **Not Found** for care plans and appointment history. The UI checks `/api/runtime` for contract `preppulse-ui-care-2` and shows a compatibility banner when these routes are unavailable.
+
+From the repository root, use the Windows launcher:
+
+```powershell
+.\scripts\start_ui_api.ps1
+# After another backend update, when analysis/chat jobs have finished:
+.\scripts\start_ui_api.ps1 -Restart
+```
+
+It refuses to stop an unrelated service, checks analysis/chat work before replacing an older PrepPulse API, and uses development reload by default. `-Restart` explicitly permits interruption of active work, so let jobs finish first. Use `-NoReload` if reload is unwanted. If `PREPPULSE_SESSION_SECRET` is unset, the launcher generates or reuses `private_data/.session-secret`, which is ignored by Git; keep it private. An existing API using another secret will require a fresh browser sign-in after replacement. Patients, accounts, uploaded sources and existing joins are not reset. Environment variables for LM Studio still need to be available in the launcher terminal, as shown above.
 
 To clear patient records from the local `preppulse` database while retaining admin and doctor accounts, first stop the API. Preview the counts, then run the guarded reset:
 
@@ -164,6 +186,6 @@ npm audit
 
 The focused local suite is `pytest tests/test_ui_api.py tests/test_hybrid_rag.py tests/test_pipeline.py tests/test_manifest_and_storage.py -q`. Browser regression tests use Playwright and installed Microsoft Edge: `cd web; npm run test:e2e`. Set `PREPPULSE_E2E_URL`, `PREPPULSE_E2E_USER`, and `PREPPULSE_E2E_PASSWORD` to an isolated test workspace with an assigned doctor and a processed patient. They create conversations in that account. `PREPPULSE_API_TARGET` can point a separate Vite instance to a validation API, leaving the main workspace untouched. The browser suite checks actual chart requests, rendered tables, point/citation source links, panel expansion/collapse, persisted session reloads, navigation collapse, and responsive width.
 
-Caregiver API regressions: `pytest tests/test_caregiver_workflow.py tests/test_ui_api.py -q`. The isolated browser fixture uses an in-memory MongoDB substitute and synthetic patient data; it never opens your MongoDB. Start it with `python -m uvicorn care_browser_app:app --app-dir tests --port 8001`, point a separate Vite process to `PREPPULSE_API_TARGET=http://127.0.0.1:8001` on port 5174, then set `PREPPULSE_CARE_FIXTURE=1` and run `node node_modules/@playwright/test/cli.js test e2e/caregiver.spec.ts` from `web`. Its translation service is a deterministic test substitute; live LLM translation quality must be reviewed separately.
+Caregiver/admin API regressions: `pytest tests/test_admin_repairs.py tests/test_caregiver_workflow.py tests/test_ui_api.py -q`. The isolated browser fixture uses an in-memory MongoDB substitute and synthetic patient data; it never opens your MongoDB. Start it with `python -m uvicorn care_browser_app:app --app-dir tests --port 8001`, point a separate Vite process to `PREPPULSE_API_TARGET=http://127.0.0.1:8001` on port 5174, then set `PREPPULSE_CARE_FIXTURE=1` and run `node node_modules/@playwright/test/cli.js test e2e/caregiver.spec.ts` from `web`. Its translation service is a deterministic test substitute; live LLM translation quality must be reviewed separately.
 
 The first release targets a local browser and local MongoDB. Before any shared deployment, review authentication, TLS, file encryption, backups, and clinical data handling for that environment.

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, ValidationError
 from pymongo.errors import DuplicateKeyError
 from starlette.middleware.sessions import SessionMiddleware
 
+from preppulse_api.administration import register_administration_routes
 from preppulse_api.care import (
     archive_pdf,
     ensure_draft,
@@ -73,6 +74,8 @@ def user(request: Request, store: WorkspaceStore = Depends(db)) -> dict:
     )
     if not found:
         raise HTTPException(401, "Sign in required")
+    if not found.get("account_id"):
+        found = store.account_identity(found)
     return found
 
 
@@ -163,11 +166,24 @@ class AccountIn(BaseModel):
     username: str = Field(min_length=3)
     password: str = Field(min_length=12)
     role: Literal["doctor", "admin", "caregiver"] = "doctor"
+    caregiver_type: Literal["family", "professional"] = "family"
 
 
 @app.get("/api/admin/accounts")
-def accounts(_: dict = Depends(admin), store: WorkspaceStore = Depends(db)):
-    return list(store.db.users.find({}, {"_id": 0, "password_hash": 0}))
+def accounts(q: str = "", _: dict = Depends(admin), store: WorkspaceStore = Depends(db)):
+    rows = [
+        store.account_identity(a) for a in store.db.users.find({}, {"_id": 0, "password_hash": 0})
+    ]
+    query = q.strip().casefold()
+    return [
+        a
+        for a in rows
+        if not query
+        or any(
+            query in str(a.get(k, "")).casefold()
+            for k in ("name", "username", "user_id", "account_id")
+        )
+    ]
 
 
 @app.post("/api/admin/accounts")
@@ -179,6 +195,11 @@ def add_account(
         "name": body.name.strip(),
         "username": body.username.lower().strip(),
         "role": body.role,
+        **(
+            {"caregiver_type": body.caregiver_type, "availability": "free"}
+            if body.role == "caregiver"
+            else {}
+        ),
         "password_hash": password_hash.hash(body.password),
         "disabled": False,
         "created_at": now(),
@@ -188,7 +209,7 @@ def add_account(
     except DuplicateKeyError:
         raise HTTPException(409, "Username already exists") from None
     store.audit(current, "account_created", extra={"user_id": account["user_id"]})
-    return {k: v for k, v in account.items() if k not in {"_id", "password_hash"}}
+    return store.account_identity(account)
 
 
 @app.patch("/api/admin/accounts/{user_id}/disable")
@@ -202,6 +223,9 @@ def disable_account(
     ).matched_count:
         raise HTTPException(404, "Account not found")
     store.audit(current, "account_disabled", extra={"user_id": user_id})
+    store.account_identity(
+        store.db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    )
     return {"ok": True}
 
 
@@ -448,10 +472,21 @@ async def upload_document(
     file: UploadFile = File(...),
     document_type: str = Form("consult"),
     visit_date: str = Form(""),
+    visit_id: str | None = Form(None),
     current: dict = Depends(user),
     store: WorkspaceStore = Depends(db),
 ):
     patient_access(patient_id, current, store)
+    linked_visit = None
+    if visit_id:
+        linked_visit = store.db.visits.find_one({"patient_id": patient_id, "visit_id": visit_id})
+        if not linked_visit:
+            raise HTTPException(400, "Visit does not belong to this patient")
+    else:
+        criteria = {"patient_id": patient_id, "status": "active"}
+        if current["role"] == "doctor":
+            criteria["doctor_id"] = current["user_id"]
+        linked_visit = store.db.visits.find_one(criteria)
     if file.filename is None or Path(file.filename).suffix.lower() not in {
         ".pdf",
         ".png",
@@ -482,6 +517,7 @@ async def upload_document(
         raise
     record = {
         "record_id": record_id,
+        "visit_id": linked_visit["visit_id"] if linked_visit else None,
         "patient_id": patient_id,
         "filename": Path(file.filename).name,
         "source_path": str(target),
@@ -1138,6 +1174,7 @@ def end_visit(
 
 
 register_care_routes(app, db, user, admin, clinician, patient_access, own_visit, workers)
+register_administration_routes(app, db, user, admin, clinician, patient_access)
 
 
 class QueryIn(BaseModel):
