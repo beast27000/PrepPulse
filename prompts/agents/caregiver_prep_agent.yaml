@@ -1,10 +1,10 @@
 name: "caregiver_prep_agent"
 description: "Generates actionable family caregiver visit checklists with 6-language translations (English, Hindi, Tamil, Bengali, Odia, Telugu)"
-version: "1.1"
+version: "1.2"
 
 parameters:
   temperature: 0.1
-  max_tokens: 2304
+  max_tokens: 3072
 
 system_prompt: |
   You are an assistive clinical communication specialist.
@@ -19,6 +19,14 @@ system_prompt: |
   - Do not instruct new testing, constant monitoring, a new monitoring frequency, dietary changes, medication changes or new follow-up dates unless the supplied record explicitly contains that instruction. When uncertain, ask the caregiver to discuss it with the care team.
   - Classification and mode provide context only. They do not authorize assumptions about insulin, meals, eye appointments or kidney testing.
   - Order the most useful caregiver actions first. Avoid repeating the same action for several measurements.
+
+  BALANCE GENERAL AND PATIENT-SPECIFIC ITEMS:
+  - Generate 2–3 general preparation reminders, then up to 2 specific reminders supported by the supplied records (4–5 items total). If no specific issue is documented, do not invent one to meet a count.
+  - Comb through all supplied diabetes-related context: dated blood sugar/HbA1c results, existing kidney/lipid/BP measurements, medicines, discrepancies and recorded symptoms. Choose meaningful documented changes, not every isolated measurement.
+  - A specific reminder may quote exact supplied values, units and dates in simple language, followed by an understandable action. For example, ONLY if those values are supplied: "The blood sugar report changed from 142 mg/dL in March to 168 mg/dL in October. Bring both reports and ask the care team what changes to watch for."
+  - Describe a rise/fall only when comparable dated values with matching units are supplied. A higher number alone does not prove deterioration. Do not label a result dangerous, a diagnosis, or a new treatment need.
+  - Include another documented condition, such as an existing heart condition or recent hospital stay, when relevant: ask about symptoms already noted in that record and bring the relevant instructions. Do not invent symptoms, a heart diagnosis, or monitoring thresholds from risk factors alone.
+  - Existing clinician monitoring instructions may be restated faithfully; otherwise say "ask the care team what to watch for" rather than issuing a new monitoring schedule.
 
   WORDING EXAMPLES:
   - Avoid: "Review the documented finding with the clinician: eGFR: 90 mL/min/1.73m²".
@@ -43,7 +51,7 @@ system_prompt: |
 output_schema:
   type: "array"
   items:
-    id: "chk_01 | chk_02 | chk_03 | chk_04"
+    id: "chk_01 | chk_02 | chk_03 | chk_04 | chk_05"
     text_en: "English checklist item"
     text_hi: "Hindi translation"
     text_ta: "Tamil translation"
@@ -60,8 +68,8 @@ user_template: |
   Medication Context: {medications}
   Medication Discrepancies: {mismatches}
   Documented Allergies: {allergies}
-  Dated measurements for context (do not repeat raw values as tasks): {measurement_history}
+  Dated measurements for context (quote selectively inside a plain-language reminder, never as a raw-value-only task): {measurement_history}
 
-  Generate 4 actionable visit checklist items.
+  Generate 4–5 practical visit checklist items: 2–3 general reminders plus supported specific reminders, when available.
   Return ONLY the JSON array matching output_schema:
 

@@ -3,31 +3,23 @@
 from __future__ import annotations
 
 import re
-from datetime import date
 
+from preppulse_api.chart_intent import (
+    SUPPORTED_NAMES,
+    VISUAL_WORDS,
+    cardiac_chart_requested,
+    chart_offer,
+    chart_requested,
+    chart_window,
+    metric_names,
+    resolve_chart_question,
+    unsupported_chart_requested,
+)
+from preppulse_api.chat_tables import occurrence_rows, occurrence_table
 from preppulse_api.clinical import locate_citation, retriever_for_patient
 from preppulse_api.evidence_catalog import build_catalog
 from preppulse_api.store import WorkspaceStore, new_id, now
 from preppulse_rag.llm_provider import LLMFactory, MockClinicalChatModel
-
-
-def chart_requested(question: str) -> bool:
-    return bool(
-        re.search(
-            r"\b(chart|graph|plot|visuali[sz]\w*|timeline|tabular|table)\b", question, re.IGNORECASE
-        )
-    )
-
-
-def cardiac_chart_requested(question: str) -> bool:
-    return bool(
-        re.search(
-            r"\b(heart|cardiac|coronary|cardiovascular|cardiology|ejection|lvef|troponin|ecg|ekg|echocardiogram|echocardiography)\b",
-            question,
-            re.IGNORECASE,
-        )
-    )
-
 
 SUPPORTED_CHARTS = (
     "HbA1c, fasting/post-meal glucose, eGFR, urine ACR, creatinine, LDL, and blood pressure"
@@ -38,26 +30,11 @@ def make_chart_artifact(
     catalog: dict, question: str, session_id: str, patient_id: str
 ) -> dict | None:
     """Select real OCR measurements; no model-generated plot coordinates or values."""
-    if cardiac_chart_requested(question):
+    if unsupported_chart_requested(question):
         return None
     lower = question.lower()
     available = catalog["metric_series"]
-    names = []
-    for name, pattern in [
-        ("HbA1c", r"hba1c|a1c"),
-        ("Fasting glucose", r"fasting|\bfpg\b"),
-        ("Post-meal glucose", r"post.meal|postprandial"),
-        ("eGFR", r"egfr"),
-        ("Urine ACR", r"\bacr\b|albumin"),
-        ("Creatinine", r"creatinine"),
-        ("LDL cholesterol", r"\bldl\b|cholesterol"),
-        ("Systolic BP", r"blood pressure|\bbp\b|systolic"),
-        ("Diastolic BP", r"blood pressure|\bbp\b|diastolic"),
-        ("Weight", r"\bweight\b"),
-        ("BMI", r"\bbmi\b"),
-    ]:
-        if re.search(pattern, lower):
-            names.append(name)
+    names = metric_names(question)
     event_request = (
         bool(
             re.search(
@@ -68,16 +45,10 @@ def make_chart_artifact(
         and not names
     )
     if not names and not event_request:
-        if re.search(r"kidney|renal", lower):
-            names = ["eGFR", "Urine ACR", "Creatinine"]
-        else:
-            names = ["HbA1c", "Fasting glucose"]
-    years = [int(year) for year in re.findall(r"\b(?:19|20)\d{2}\b", question)]
-    start = min(years) if years else None
-    end = max(years) if len(years) > 1 else None
-    past = re.search(r"(?:past|last)\s+(\d{1,2})\s*years?", lower)
-    if past:
-        start = date.today().year - int(past[1])
+        names = [
+            item["metric_name"] for item in available if item["metric_name"] in SUPPORTED_NAMES
+        ]
+    start, end = chart_window(question)
     series = []
     for item in available:
         if item["metric_name"] not in names:
@@ -85,8 +56,8 @@ def make_chart_artifact(
         points = [
             point
             for point in item["points"]
-            if (start is None or point["year"] >= start)
-            and (end is None or point["year"] <= end)
+            if (start is None or point["date"] >= start)
+            and (end is None or point["date"] <= end)
             and point["citation"].get("source_verified")
         ]
         if points:
@@ -110,8 +81,8 @@ def make_chart_artifact(
                     and re.search(r"prescription|review", record["title"], re.IGNORECASE)
                 )
             )
-            and (start is None or int(record["date"][:4] or 0) >= start)
-            and (end is None or int(record["date"][:4] or 9999) <= end)
+            and (start is None or record["date"] >= start)
+            and (end is None or bool(record["date"]) and record["date"] <= end)
         ]
         if journey
         else []
@@ -134,6 +105,7 @@ def make_chart_artifact(
         "title": title,
         "kind": "table"
         if re.search(r"\btable|tabular\b", lower)
+        and not re.search(r"\bcharts?|graphs?|plots?|visuali[sz]\w*\b", lower)
         else "journey"
         if journey
         else "line",
@@ -141,6 +113,7 @@ def make_chart_artifact(
         "events": events,
         "created_at": now(),
         "question": question,
+        "requested_window": {"start": start, "end": end},
         "note": "Only dated values found in the original records are plotted. Lines connect documented observations; no missing values are estimated.",
     }
 
@@ -152,6 +125,14 @@ def chart_answer(artifact: dict) -> str:
         f"**{kind} created:** [{artifact['title']}](#chart-{artifact['artifact_id']})",
         "",
     ]
+    window = artifact.get("requested_window", {})
+    if window.get("start"):
+        lines.extend(
+            [
+                f"Requested period: **{window['start']} to {window['end']}**. Only documented observations in this window are shown; missing dates remain gaps.",
+                "",
+            ]
+        )
     if artifact["series"]:
         lines.extend(
             [
@@ -206,6 +187,8 @@ def run_chat_turn(
         if record["record_id"] in summaries:
             record["summary"] = summaries[record["record_id"]]["summary"]
     wants_chart = chart_requested(question)
+    chart_question = resolve_chart_question(question, previous) if wants_chart else question
+    window_error = ""
     hits = []
     if wants_chart:
         progress("Chart agent · reading verified OCR measurements", "retrieval")
@@ -256,7 +239,13 @@ def run_chat_turn(
     artifacts = []
     if wants_chart:
         progress("Chart agent · verifying and plotting records", "chart")
-        artifact = make_chart_artifact(catalog, question, session["session_id"], patient_id)
+        try:
+            artifact = make_chart_artifact(
+                catalog, chart_question, session["session_id"], patient_id
+            )
+        except ValueError as exc:
+            window_error = str(exc)
+            artifact = None
         if artifact:
             for item in artifact["series"]:
                 for point in item["points"]:
@@ -299,6 +288,8 @@ def run_chat_turn(
         "A DOCUMENT DATE labels the source only. Never turn a discharge/report date into an admission, symptom-onset, or diagnosis date. "
         "State an event date only when the excerpt explicitly gives it; otherwise say 'documented in the record dated ...' or omit the event date. "
         "Do not extrapolate diagnosis, treatment, or values. Mention actual record gaps only. "
+        "For requests about all occurrences or lab reports, use a source-linked table and include the available dated records. "
+        "Do not claim an interactive chart exists unless the chart tool has actually created an artifact. "
         "Treat phrases such as 'where applicable' as templates, not confirmed patient history, unless a dedicated dated record corroborates them. "
         + chart_context
     )
@@ -316,16 +307,27 @@ def run_chat_turn(
     )
     if artifacts:
         answer = chart_answer(artifacts[0])
-    elif wants_chart and cardiac_chart_requested(question):
+    elif wants_chart and unsupported_chart_requested(chart_question):
+        scope = (
+            "Heart-disease charts"
+            if cardiac_chart_requested(chart_question)
+            else "Charts for that condition or measurement"
+        )
+        rows, total = occurrence_rows(store, patient_id, chart_question)
         answer = (
             "### Chart scope warning\n\n"
-            "**Heart-disease charts are outside the current diabetes agent's scope.** "
+            f"**{scope} are outside the current diabetes agent's scope.** "
             "I can only generate charts from these supported OCR measurements: **"
             + SUPPORTED_CHARTS
             + "**. Ask for one of these measurements by name.\n\n"
-            "You can still ask for a cited text summary of the documented cardiac records. "
-            "No cardiac chart has been generated."
+            "I can still retrieve other documented conditions and lab results, including cholesterol occurrences, as cited summaries or tables. "
+            "No unsupported chart has been generated.\n\n"
+            + occurrence_table(rows, total, add_source)
         )
+        if not re.search(rf"\b(?:{VISUAL_WORDS})\b", question, re.IGNORECASE):
+            answer = occurrence_table(rows, total, add_source)
+    elif window_error:
+        answer = "### Chart period needs clarification\n\n" + window_error
     elif wants_chart:
         answer = (
             "### Chart data unavailable\n\nNo supported, dated measurements match this chart request. No values were invented.\n\n**Available measurements:** "
@@ -347,6 +349,8 @@ def run_chat_turn(
                 "### Documented source excerpts\n\nThe local synthesis model did not respond. These are retrieved record excerpts, with links to inspect the originals.\n\n"
                 + "\n\n".join(f"- {entry}" for entry in evidence[-8:])
             )
+    if not wants_chart and chart_offer(question):
+        answer += "\n\nWould you like a chart of the supported recorded measurements as well, or is this information enough?"
     # Accept only source numbers supplied in this turn. Invalid references cannot become links.
     answer = re.sub(
         r"\[(\d+)\]",

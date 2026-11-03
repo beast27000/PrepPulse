@@ -391,7 +391,7 @@ export default function PatientConversation({
   async function send(event?: React.FormEvent) {
     event?.preventDefault();
     const question = input.trim();
-    if (!patient || !question || busy || voiceBusy) return;
+    if (!patient || !question || busy || voiceBusy || recording) return;
     setError("");
     setInput("");
     try {
@@ -754,11 +754,27 @@ export default function PatientConversation({
               )}
             </div>
           )}
+          {(recording || voiceBusy) && (
+            <div className="dictation-status" role="status" aria-live="polite">
+              <Mic size={14} />
+              <span>
+                {recording
+                  ? "Listening · click the microphone to stop"
+                  : "Transcribing · your text will appear for review"}
+              </span>
+              <span className="process-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            </div>
+          )}
           <form className="conversation-composer" onSubmit={send}>
             <button
               type="button"
               className={`icon-button ${recording ? "recording" : ""}`}
               aria-label={recording ? "Stop dictation" : "Dictate request"}
+              aria-pressed={recording}
               disabled={!patient || busy || voiceBusy}
               onClick={dictate}
             >
@@ -787,7 +803,9 @@ export default function PatientConversation({
             <button
               className="send-button"
               aria-label="Send message"
-              disabled={!input.trim() || !patient || busy || voiceBusy}
+              disabled={
+                !input.trim() || !patient || busy || voiceBusy || recording
+              }
             >
               <Send size={19} />
             </button>

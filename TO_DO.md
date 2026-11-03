@@ -2,6 +2,17 @@
 
 Implementation status and backlog.
 
+## Final chart routing, voice feedback and documentation — UI review (3 November 2026)
+
+- [x] Fixed the plural `charts` request falling into text-only synthesis. Added deterministic chart/graph/plot/visualization routing, generic patient-chart selection, topic inheritance for follow-ups and explicit date-window filtering for 1–10 years, including number words.
+- [x] Preserved per-request artifacts, original OCR values and source-linked chart interaction. Unsupported targets do not silently plot glucose; supported targets with no data report a gap.
+- [x] Added cited patient-owned OCR occurrence tables for unsupported chart topics; a 200-row display cap is disclosed. Non-chart diabetes/measurement answers offer a chart; explicit no-chart requests remain text-only.
+- [x] Caregiver prompt balances 2–3 generic reminders with supported specific values/dates/other-condition context; no invented diagnoses, thresholds or new monitoring schedules.
+- [x] Added listening/transcribing animated status to dictation, with transcript correction still required before sending; enlarged only the previous-visit link text.
+- [x] Rewrote README as comprehensive theory, clinical boundaries, individual agents, page-by-page workflows, architecture, persistence, models, setup, verification and troubleshooting documentation.
+- [x] Verification: 69 focused tests, three Edge browser flows, frontend build and targeted lint passed. Browser voice uses synthetic audio; actual microphone/transcription and live multilingual quality still require owner review.
+- [ ] Existing live-model foot-exam assertion remains a known limitation from the previous release; unrelated care-gap/classification behavior was not changed.
+
 ## Care checklist simplification — UI review (3 November 2026)
 
 - [x] Patients: checkbox-only care panel with small Edit pathway link and signed-plan download; all text/add/delete/frequency/prescription editing stays on Care pathways.

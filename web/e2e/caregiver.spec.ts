@@ -59,9 +59,18 @@ test("doctor checklist, signed plan, caregiver ticks, records and charts", async
   await page
     .getByRole("button", { name: "Open full chat workspace", exact: true })
     .click();
-  await page.getByLabel("Message PrepPulse").fill("Chart HbA1c");
+  await page
+    .getByLabel("Message PrepPulse")
+    .fill("Can you generate me the charts for this patient?");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.locator(".conversation-chart")).toBeVisible();
+  await page
+    .getByLabel("Message PrepPulse")
+    .fill("Plot it for the last two years");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Session charts · 2", exact: true }),
+  ).toBeVisible();
   await page.locator(".inline-citation").first().click();
   await expect(
     page.locator(".conversation-source .proof-highlight"),
@@ -374,4 +383,65 @@ test("admin accounts, caregiver assignment, two-row appointments and editable di
     path: info.outputPath("editable-patient-directory.png"),
     fullPage: false,
   });
+});
+
+test("dictation shows listening and transcribing before reviewed text is submitted", async ({
+  page,
+}, info) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: {
+        getUserMedia: async () => ({ getTracks: () => [{ stop() {} }] }),
+      },
+      configurable: true,
+    });
+    Object.defineProperty(window, "MediaRecorder", {
+      value: class {
+        mimeType = "audio/webm";
+        ondataavailable?: (event: { data: Blob }) => void;
+        onstop?: () => void;
+        start() {}
+        stop() {
+          this.ondataavailable?.({ data: new Blob(["synthetic audio"]) });
+          this.onstop?.();
+        }
+      },
+      configurable: true,
+    });
+  });
+  let transcription: import("@playwright/test").Route | undefined;
+  await page.route("**/api/voice/transcribe", (route) => {
+    transcription = route;
+  });
+  await login(page, "doctor");
+  await page
+    .getByRole("button", { name: "Open full chat workspace", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "New chat session", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Dictate request", exact: true })
+    .click();
+  await expect(page.locator(".dictation-status")).toContainText("Listening");
+  await expect(page.locator(".dictation-status .process-dots i")).toHaveCount(
+    3,
+  );
+  await page.screenshot({
+    path: info.outputPath("dictation-listening.png"),
+    fullPage: false,
+  });
+  await page
+    .getByRole("button", { name: "Stop dictation", exact: true })
+    .click();
+  await expect(page.locator(".dictation-status")).toContainText("Transcribing");
+  await expect.poll(() => !!transcription).toBe(true);
+  await transcription!.fulfill({
+    json: { transcript: "Plot HbA1c for two years" },
+  });
+  await expect(page.getByLabel("Message PrepPulse")).toHaveValue(
+    "Plot HbA1c for two years",
+  );
+  await expect(page.locator(".dictation-status")).toHaveCount(0);
+  await expect(page.locator(".conversation-message.user")).toHaveCount(0);
 });
