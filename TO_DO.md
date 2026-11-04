@@ -2,6 +2,16 @@
 
 Implementation status and backlog.
 
+## Deployment proposal - deployment branch (4 November 2026)
+
+- [x] Created `deployment` from tested `ui_testing` commit `4f280f2`; no changes to `UI`, `ui_testing` or `main`.
+- [x] Added `deployment/DEPLOYMENT_PLAN.md`: current official hosting/database limits, stack alternatives, single-origin architecture, model/credit policy, durable jobs, patient/FHIR/file migration, security, backup/restore, capacity and five-day pilot gates.
+- [x] Updated README with the proposed deployment stack at the top, explicitly distinguished from implemented local behavior. This delivery changes documentation only; no provider calls, cloud resources or deployments.
+- [ ] Owner review of architecture, synthetic-data boundary, authoritative migration source, storage approach, hostname strategy and funded AI limits.
+- [ ] Separately approved deployment implementation: production configuration, secure sessions, leased worker, migration/storage tools, admission/polling controls and release packaging.
+- [ ] Confirm actual free-service eligibility, Arm dependencies, quotas and billing before approving resource creation; do not assume older Oracle allowances or free compute-backed Hugging Face Spaces.
+- [ ] Private staging, capped funded AI smoke tests, full restore, manual review and monitored five-day pilot remain unperformed. Public launch and branch merges remain separate decisions.
+
 ## Local API deployment rehearsal - ui_testing (4 November 2026)
 
 - [x] Owner approved isolated local tests and subsequently authorised additional API testing as needed, with usage/limits reported at completion. `UI` and `main` remain unchanged; no cloud deployment is authorised yet.

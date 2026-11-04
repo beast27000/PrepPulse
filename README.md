@@ -1,5 +1,28 @@
 # PrepPulse
 
+## deployment branch - planning only
+
+This branch starts from tested `ui_testing` commit `4f280f2`. **No deployment implementation or cloud release has been performed.** The owner requested a documentation-only phase with no paid model calls or provisioning.
+
+### Proposed deployment stack
+
+| Layer | Proposed choice, subject to approval |
+| --- | --- |
+| Public website | Existing React/Vite UI and `/api` under one HTTPS origin, served by Caddy |
+| Application host | Eligible Oracle A1 VM; actual account/region capacity and Linux Arm compatibility must be checked |
+| API and jobs | FastAPI plus a separate Mongo-backed leased-job worker; worker changes are not implemented yet |
+| Database | MongoDB Atlas Free, within measured storage, connection and operation limits |
+| Private files | Persistent private VM volume, with encrypted independent backups; object-primary storage remains an optional implementation decision |
+| AI services | Sarvam primary; explicitly enabled synthetic-only Gemini fallback; no dependency on the developer PC |
+| CPU processing | Pinned Python embeddings, OCR, source rendering, charts and FHIR on the hosted server |
+| Credit exhaustion | Proposed AI-disabled/cached-output mode; no claim that unfunded inference remains available |
+
+Read [the detailed deployment plan](deployment/DEPLOYMENT_PLAN.md) for current hosting limits, alternatives including Vercel/GitHub/Cloudflare, migration of all patient/visit/caregiver/FHIR data, security, backups, model routing, capacity, verification, rollout and rollback. Implementation, account provisioning, live API testing and public launch each have explicit approval gates. `UI`, `ui_testing` and `main` remain unchanged.
+
+The following section documents the inherited local rehearsal; its ports, database clones and PowerShell launcher are **not** instructions for an already deployed website.
+
+---
+
 ## ui_testing - local rehearsal for API deployment
 
 ### Technology stack
