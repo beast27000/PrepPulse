@@ -271,7 +271,7 @@ The agent receives supplied measurement history, recorded conditions, medicine c
 
 A higher recorded number alone is not automatically worsening. Comparisons require compatible dated values and units. When evidence is insufficient, the reminder should ask the care team what to watch for.
 
-The prompt requests English, Hindi, Tamil, Bengali, Odia, and Telugu. Translated clinical meaning still requires review. Revised prompting affects new suggestions; signed instructions are not retroactively rewritten.
+The suggestion agent requests English source instructions only. Care views derive English, Hindi, Tamil, Bengali, Odia, and Telugu text through the dedicated local IndicTrans2 worker; earlier chat-model translations are excluded from the current translation cache, and absent language fields are never filled with copied English. Translated clinical meaning still requires review. Revised prompting affects new suggestions; signed instructions are not retroactively rewritten.
 
 ### 6.7 Assistive bubbles agent
 
@@ -521,7 +521,7 @@ These checks do not change translation revisions or create caregiver administrat
 
 ### Signed instructions and caregiver-reported completion
 
-Sign-off saves a pathway version, approving clinician/time, patient snapshot, available brief snapshot, and source-document membership. It ends the active draft/visit and appends a signed source PDF to patient Records.
+Sign-off saves a pathway version, approving clinician/time, patient snapshot, available brief snapshot, and source-document membership. It ends the active draft/visit and appends an English PDF to patient Records. For instructions entered in another supported language, the immutable original remains stored in the signed pathway; the English derivative is archived after its translation completes.
 
 Caregiver completion reports are attributed and timestamped. A daily task has its own date/slot identity. Future completion is rejected. Past calendar-day tasks without a completion report can be flagged; this does not prove a dose was missed or that a completed checkbox proves administration.
 
@@ -531,15 +531,15 @@ A later signed plan supersedes the old schedule going forward. Earlier reports a
 
 Supported care languages are English, Hindi, Tamil, Bengali, Odia, and Telugu. The selected language is shared across the current patient's checklist/card/editor views.
 
-Text edits invalidate stale translations. While translation is pending or unavailable, the source text remains labeled; the application must not pretend that untranslated source text is a verified translation.
+Text edits invalidate stale translations. The selected-language checklist/notes/prescription view becomes available only when all required text has been translated and validated. Pending or failed work shows a translated status and retry controls; it does not mix translated rows with English fallback rows. The clinician can switch to the source language to inspect or edit the original.
 
-Switching language requests only that language automatically. Fixed care controls/headings switch immediately; missing checklist items, doctor notes and dose/application display text are translated in small batches by the configured local text model. The first uncached request takes model processing time; the views poll for incremental results and show progress plus retry controls. Returning to a cached language avoids another generation. Card and lower checklist share the same patient language and saved preparation/completion state.
+Switching language requests only that language automatically. Fixed care controls/headings switch immediately; checklist instructions, doctor notes and dose/application text use **AI4Bharat IndicTrans2**, running entirely on the same PC in an isolated Ubuntu WSL2 environment. The Windows API starts a persistent worker over local stdin/stdout pipes on first use. It has no network listener, hosted inference provider, translation API key, or connection to the LM Studio chat model. English→Indic and Indic→English use separate pinned official models; Indian-language→another Indian-language edits pass through English. CPU inference is the default installation; CUDA is an optional setup choice. The first uncached request takes model processing time. The worker stays loaded for later requests, and the views poll progress until the complete version is available. Card and lower checklist share the same patient language and saved preparation/completion state.
 
-Medicine names and the signed source dose remain exactly as entered. Dose/application instructions can have a separate translated display copy, with the source available in the prescription table tooltip. Numeric values and recognized units must survive translation; an English copy in a non-English slot is rejected. Each language is cached independently by draft/signed identity, text revision and source hash in `care_language_cache`. One failed segment does not discard successful segments. Edits invalidate the derived translations; signed text and caregiver reports are never rewritten by translation.
+Medicine names and the signed source dose remain exactly as entered. Dose/application instructions have a separate translated display copy, with the source available in the prescription table tooltip. The worker protects numbers, recognized units and biomarker abbreviations through IndicProcessor entity handling, then restores and checks them. Long text is split to fit the model, never silently truncated. An English copy in a non-English slot is rejected. Each language is cached by model version, draft/signed identity, text revision and source hash in `care_language_cache`. Validated segments are also cached per patient in `care_segment_cache`, so editing one instruction can reuse translations of unchanged instructions. Successful segments survive a failed batch internally but remain hidden until the complete snapshot is ready. Signed text, checklist IDs, medication schedules and completion reports are never rewritten by translation.
 
-Care interface labels, buttons, schedule labels and completion captions have fixed translations for all six supported languages. Names, medicine names, user-written caregiver notes and identifiers are not silently rewritten. Clinical free-text translation still requires review with the actual model and target language: script/number checks do not prove semantic accuracy. A local synthetic Tamil check confirmed that the provider returns translated text, but also showed wording that needs review. Do not use that check as clinical translation validation.
+Care interface labels, buttons, schedule labels and completion captions have fixed translations for all six supported languages. The caregiver portal heading/navigation and patient action labels follow the selected patient's language too. Names, medicine names, user-written caregiver notes and identifiers remain source text. Clinical translation requires fluent review: script/number checks and a successful model run do not establish correct clinical meaning.
 
-Signed-plan PDFs paginate and remain downloadable in the selected language when a complete translation is available. An incomplete translation returns an explicit unavailable response. The active draft's current contents are not silently substituted into a previously signed download.
+Signed-plan PDFs paginate and remain downloadable in the selected language when a complete translation is available, including localized headings and schedule labels. An incomplete translation returns an explicit unavailable response. Downloads do not replace the English patient-record archive or substitute the current draft into a previously signed plan.
 
 ## 11. Identity, persistence, and access control
 
@@ -563,8 +563,9 @@ Names are not unique identifiers. Alias collisions with another patient are reje
 | Draft/signed care instructions | `care_drafts`, `pathways`, legacy `pathway_items` |
 | Clinician preparation checks | `care_visit_checks` |
 | Caregiver access and follow-up | `caregiver_access`, `care_reports`, `care_notes` |
-| Derived signed translations | `care_translations` |
+| Legacy signed translations (not used for current display) | `care_translations` |
 | Per-language derived text and progress | `care_language_cache` |
+| Validated, reusable text translations, scoped to a patient and model version | `care_segment_cache` |
 | Conversation persistence | `chat_sessions`, `chat_messages`, `chat_turns`, `chat_artifacts` |
 | Access/change events | `audit_events` |
 | Original private files/PDFs | Ignored private storage on disk |
@@ -761,6 +762,50 @@ The chat and embedding models serve different purposes. A text-to-speech model i
 
 The optional standalone preprocessing provider reads `LLM_BASE_URL` / other preprocessing settings as well. See `src/preppulse_preprocessing/config.py` and its provider factory if running that pipeline independently.
 
+### 15.6a Install the local IndicTrans2 translator
+
+Chat and embeddings continue to run in LM Studio. The official IndicTrans2 checkpoints use a PyTorch encoder/decoder model with IndicTransToolkit; this integration runs them in a separate local WSL2 worker. It does not attempt to import these weights into LM Studio. [IndicTransToolkit](https://github.com/VarunGumma/IndicTransToolkit) documents Linux/macOS support and does not claim Windows support, so its dependencies are isolated from PrepPulse's Windows `.venv`.
+
+One-time requirements:
+
+1. Install Ubuntu WSL2 if needed: `wsl --install -d Ubuntu`, then complete Ubuntu's first-run account setup. Check `wsl --status`.
+2. In Ubuntu, install the environment prerequisites: `sudo apt-get update` followed by `sudo apt-get install -y python3-venv build-essential`.
+3. Sign into Hugging Face and accept the model access conditions for both [English→Indic 1B](https://huggingface.co/ai4bharat/indictrans2-en-indic-1B) and [Indic→English 1B](https://huggingface.co/ai4bharat/indictrans2-indic-en-1B).
+4. Authenticate the Windows download utility once if necessary: `.\.venv\Scripts\hf.exe auth login`. Do not commit a token or paste one into application source.
+5. Run the setup from the PrepPulse repository root:
+
+```powershell
+.\scripts\setup_translation.ps1
+```
+
+This downloads approximately 8.6 GB of official model weights into ignored `.local_models/indictrans2/`, verifies each weight file against its published SHA-256 digest, installs the isolated environment under the Ubuntu user's `~/.local/share/preppulse/translation/venv`, and writes ignored `private_data/translation.json`. Interrupted large downloads can resume from their `.part` files. The model revisions are pinned in `scripts/download_translation_models.py`; changing model revisions also requires updating `MODEL_VERSION` in `src/preppulse_api/local_translation.py` so old derived text is not reused.
+
+The default PyTorch installation uses the CPU and avoids taking GPU memory from LM Studio. To opt into a CUDA runtime on a machine with sufficient free GPU memory:
+
+```powershell
+.\scripts\setup_translation.ps1 -WithCuda -Device auto -SkipDownload
+```
+
+`auto` selects CUDA only when at least 3.5 GB of GPU memory is free at model-load time; otherwise it uses the CPU. `-Device cpu` forces CPU use, and `-Device cuda` requires a functioning CUDA runtime and adequate memory. Only one model direction is held by the translation worker at a time. CPU translation is slower; cached language switches avoid new inference, while the first uncached translation shows progress. This is asynchronous processing, not a promise of instantaneous translation.
+
+For a different installed WSL distribution, use `-Distro <name>`. If the weights are already downloaded, `-SkipDownload` only configures/updates the environment. To download weights separately:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/download_translation_models.py
+```
+
+Restart the PrepPulse API after setup. There is no translation service to start manually: the API launches the worker on the first language request. Inference loads only local files with Hugging Face offline mode enabled. Download authentication is not an inference API key. The optional `PREPPULSE_TRANSLATION_CONFIG` selects a different private configuration file, and `PREPPULSE_TRANSLATION_TIMEOUT` controls the worker response timeout in seconds (default 600).
+
+To run an opt-in live check without opening MongoDB or using patient records:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/check_local_translation.py --reverse
+```
+
+This translates synthetic checklists, multiline notes and dose text in all five Indic languages, checks preserved values/units, renders PDFs, and tests Tamil→English. Review artifacts under ignored `.tmp/translation-smoke/`. The local implementation was checked with 76 focused automated tests, three Edge browser flows and this live model check. The pre-existing foot-exam assertion in `tests/test_clinical_agents.py` remains a documented failure and also fails on the prior committed baseline.
+
+Select a care language in Patients, Care pathways, or My care plans. Verify that checklist instructions, doctor notes and dose text finish translating, then download a signed plan in that language. Review the wording before relying on it; the original signed text is preserved. If the translation fails, retry from the pathway page after checking setup. Keep `.local_models/`, the WSL environment and `private_data/translation.json` on your machine; only code and documentation belong in Git.
+
 ### 15.7 Create the first administrator
 
 Choose a unique password of at least 12 characters. The following avoids putting a literal password into a copied command:
@@ -936,7 +981,7 @@ Other browser tests can target an isolated configured workspace using the docume
 | Missing older records | Check patient ID/aliases, upload counts, processing status, and Records before assuming retrieval is at fault. |
 | Embedding service fails | Confirm exact embedding model ID; lexical fallback may still work. |
 | Analysis is slow | Inspect the active processing stage, local model server, model loading, and failed files. Polling logs alone do not prove an agent is progressing. |
-| Translation stays pending/unavailable | Confirm a functioning text model, use Refresh translations in the pathway editor, and review returned meaning. |
+| Translation stays pending/unavailable | Run `scripts/setup_translation.ps1`, confirm access to both model downloads and the WSL environment, restart the API, and use Refresh translations. CPU work can take time; LM Studio's chat model is not the translation worker. |
 | Dictation is static or empty | Check microphone permission, listening/transcribing state, selected language, model availability, and API errors. |
 | Read aloud is disabled | The configured endpoint has not returned valid WAV audio; a model listing alone is insufficient. |
 | Login stopped working after restart | Confirm the intended database and session secret; refresh/sign in rather than recreating patients. |

@@ -103,6 +103,8 @@ def test_caregiver_prompt_receives_dated_context_without_ordering_new_monitoring
     assert "2024-01-01: 7.2" in messages[1]["content"]
     assert "2025-01-01: 7.9" in messages[1]["content"]
     assert "Do not instruct new testing, constant monitoring" in messages[0]["content"]
+    assert "Generate English source text only" in messages[0]["content"]
+    assert result["caregiver_prep"].checklist[0].text_ta == ""
     assert (
         result["caregiver_prep"].checklist[0].text_en == "Bring earlier test reports to the visit."
     )

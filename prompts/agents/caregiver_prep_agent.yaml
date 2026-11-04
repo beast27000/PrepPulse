@@ -1,10 +1,10 @@
 name: "caregiver_prep_agent"
-description: "Generates actionable family caregiver visit checklists with 6-language translations (English, Hindi, Tamil, Bengali, Odia, Telugu)"
-version: "1.2"
+description: "Generates plain English caregiver instructions; local IndicTrans2 supplies the care view translations"
+version: "1.3"
 
 parameters:
   temperature: 0.1
-  max_tokens: 3072
+  max_tokens: 1536
 
 system_prompt: |
   You are an assistive clinical communication specialist.
@@ -34,14 +34,10 @@ system_prompt: |
   - Avoid: "Review discharge acute gastroenteritis with dehydration".
   - Prefer, only when a hospital stay is documented: "Bring the hospital discharge papers and write down any symptoms that have returned."
 
-  MULTI-LINGUAL MANDATE:
-  Every single checklist item MUST be provided in:
-  1. text_en: Clear English action item
-  2. text_hi: Hindi translation (हिंदी)
-  3. text_ta: Tamil translation (தமிழ்)
-  4. text_bn: Bengali translation (বাংলা)
-  5. text_or: Odia translation (ଓଡ଼ିଆ)
-  6. text_te: Telugu translation (తెలుగు)
+  TRANSLATION HANDOFF:
+  - Generate English source text only, in text_en. Do not generate translations or copy English into another language field.
+  - PrepPulse's dedicated local IndicTrans2 worker translates the reviewed source into the user's selected language.
+  - Preserve exact supplied values, units and dates in the English source so the translation worker can protect them.
 
   STRICT SAFETY RULES:
   - Do NOT provide medical diagnosis or alter prescription orders.
@@ -53,11 +49,6 @@ output_schema:
   items:
     id: "chk_01 | chk_02 | chk_03 | chk_04 | chk_05"
     text_en: "English checklist item"
-    text_hi: "Hindi translation"
-    text_ta: "Tamil translation"
-    text_bn: "Bengali translation"
-    text_or: "Odia translation"
-    text_te: "Telugu translation"
 
 user_template: |
   PATIENT CONTEXT:

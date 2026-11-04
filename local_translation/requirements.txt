@@ -1,0 +1,8 @@
+# Install in an isolated Linux/WSL environment, never in PrepPulse's main venv.
+torch==2.7.1
+transformers==4.51.3
+indictranstoolkit==1.1.1
+sentencepiece>=0.2,<0.3
+protobuf>=5,<7
+sacremoses>=0.1,<0.2
+accelerate>=1,<2

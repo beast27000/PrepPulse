@@ -233,6 +233,41 @@ test("doctor checklist, signed plan, caregiver ticks, records and charts", async
     path: info.outputPath("translated-caregiver.png"),
     fullPage: true,
   });
+  for (const [language, text] of [
+    ["bn", "বাড়ির রেকর্ড আনুন"],
+    ["or", "ଘରର ରେକର୍ଡ ଆଣନ୍ତୁ"],
+    ["te", "ఇంటి రికార్డు తీసుకురండి"],
+  ]) {
+    await carePage.getByLabel("Care pathway language").selectOption(language);
+    await expect(carePage.locator(".signed-plan")).toContainText(text);
+    await expect(carePage.locator(".care-table")).not.toContainText(
+      "One tablet",
+    );
+    await expect(carePage.getByRole("checkbox").first()).toBeChecked();
+  }
+  // A partially finished snapshot must not expose a mixture of languages.
+  await carePage.route("**/api/care/patients/PRP-REVIEW*", async (route) => {
+    const response = await route.fetch();
+    const bundle = await response.json();
+    for (const plan of bundle.plans) {
+      plan.items.forEach(
+        (item: { texts: Record<string, string> }, index: number) => {
+          item.texts = index ? {} : { ta: "வீட்டுப் பதிவைக் கொண்டு வாருங்கள்" };
+        },
+      );
+      plan.language_status.ta = { status: "partial", completed: 1, total: 3 };
+    }
+    await route.fulfill({ response, json: bundle });
+  });
+  await carePage.getByLabel("Care pathway language").selectOption("ta");
+  await expect(carePage.locator(".signed-plan .check-row")).toHaveCount(0);
+  await expect(carePage.locator(".signed-plan")).not.toContainText(
+    "Bring the current prescription",
+  );
+  await carePage.unroute("**/api/care/patients/PRP-REVIEW*");
+  await expect(
+    carePage.locator(".signed-plan .check-row").first(),
+  ).toBeVisible();
   await page
     .getByText("Previous caregiver pathways and follow-up", { exact: true })
     .click();

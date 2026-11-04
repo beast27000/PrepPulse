@@ -17,6 +17,7 @@ def workspace(workspace_fixture):  # noqa: F811
 
 def sample_plan():
     return {
+        "patient_id": "PATIENT-LANGUAGE",
         "pathway_id": "P-LANGUAGE",
         "visit_id": "V-LANGUAGE",
         "revision": 2,
@@ -193,8 +194,9 @@ def test_per_language_cache_deduplicates_and_preserves_partial_results(workspace
     derived = overlay(workspace, plan, "signed", plan["pathway_id"], 2)
     assert derived["language_status"]["ta"]["status"] == "partial"
     assert derived["language_status"]["ta"]["completed"] == 3
-    assert derived["items"][0]["texts"]["ta"].startswith("முந்தைய")
-    assert derived["notes_texts"]["ta"].startswith("7")
+    # A partial cache may resume, but its rows never reach the browser.
+    assert "ta" not in derived["items"][0]["texts"]
+    assert "ta" not in derived["notes_texts"]
     assert plan == original
     assert (
         workspace.db.pathways.find_one({"pathway_id": plan["pathway_id"]})["doctor_notes"]
@@ -210,6 +212,8 @@ def test_per_language_cache_deduplicates_and_preserves_partial_results(workspace
     run_language_job("signed", plan["pathway_id"], 2, "ta")
     result = overlay(workspace, plan, "signed", plan["pathway_id"], 2)
     assert result["language_status"]["ta"]["status"] == "complete"
+    assert result["items"][0]["texts"]["ta"].startswith("முந்தைய")
+    assert result["notes_texts"]["ta"].startswith("7")
     assert result["medications"][0]["dose_texts"]["ta"].endswith("மாத்திரை.")
 
 
@@ -232,4 +236,103 @@ def test_stale_draft_translation_does_not_appear_in_new_revision(workspace, monk
     current = workspace.db.care_drafts.find_one({"visit_id": plan["visit_id"]})
     assert (
         "ta" not in overlay(workspace, current, "draft", plan["visit_id"], 3)["items"][0]["texts"]
+    )
+
+
+def test_legacy_translations_cannot_be_reused_as_indictrans_output(workspace):
+    plan = sample_plan()
+    plan["items"][0]["texts"]["ta"] = "முந்தைய அறிக்கைகளைக் கொண்டு வரவும்."
+    derived = overlay(workspace, plan, "signed", plan["pathway_id"], 2)
+    assert "ta" not in derived["items"][0]["texts"]
+
+
+def test_edits_reuse_only_unchanged_segments_within_the_same_patient(workspace, monkeypatch):
+    translation = importlib.import_module("preppulse_api.care_translation")
+    plan = sample_plan()
+    workspace.db.care_drafts.insert_one(copy.deepcopy(plan))
+    monkeypatch.setattr(
+        importlib.import_module("preppulse_api.store"), "WorkspaceStore", lambda: workspace
+    )
+    values = {
+        "item:one": "முந்தைய அறிக்கைகளைக் கொண்டு வரவும்.",
+        "item:two": "3 நாட்களுக்கு அளவுகளைப் பதிவு செய்யவும்.",
+        "notes": "7 நாட்களுக்குப் பிறகு மதிப்பாய்வு செய்யவும்.",
+        "dose:m": "உணவுக்குப் பிறகு 1 மாத்திரை.",
+    }
+    monkeypatch.setattr(translation, "translate_batch", lambda *args: values)
+    request_language(workspace, plan, "draft", plan["visit_id"], 2, "ta")
+    run_language_job("draft", plan["visit_id"], 2, "ta")
+    plan["items"][0]["text"] = "Bring the updated reports."
+    plan["revision"] = 3
+    workspace.db.care_drafts.update_one({"visit_id": plan["visit_id"]}, {"$set": plan})
+    requested = []
+
+    def translated(batch, language):
+        requested.extend(key for key, _, _ in batch)
+        return values
+
+    monkeypatch.setattr(translation, "translate_batch", translated)
+    request_language(workspace, plan, "draft", plan["visit_id"], 3, "ta")
+    run_language_job("draft", plan["visit_id"], 3, "ta")
+    assert requested == ["item:one"]
+    assert (
+        overlay(workspace, plan, "draft", plan["visit_id"], 3)["language_status"]["ta"]["status"]
+        == "complete"
+    )
+    other = {**plan, "patient_id": "OTHER-PATIENT"}
+    assert translation.translated_segments(other, "ta", workspace) == {}
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_signed_english_translation_creates_english_archive(workspace, monkeypatch, cached):
+    import fitz
+
+    from preppulse_api.care import archive_pdf, local_day
+
+    _, _, _, _, _, _, patient, _ = setup_people(workspace)
+    plan = {
+        **sample_plan(),
+        "patient_id": patient["patient_id"],
+        "mode": "family",
+        "approved_at": local_day().isoformat() + "T10:00:00+00:00",
+        "approved_by": "doctor",
+        "doctor_notes": "",
+        "items": [
+            {
+                "item_id": "ta-item",
+                "text": "பதிவைக் கொண்டு வாருங்கள்",
+                "source_language": "ta",
+                "frequency": "once",
+            }
+        ],
+        "medications": [],
+    }
+    workspace.db.pathways.insert_one(copy.deepcopy(plan))
+    translation = importlib.import_module("preppulse_api.care_translation")
+    if cached:
+        workspace.db.care_segment_cache.insert_one(
+            {
+                "patient_id": plan["patient_id"],
+                "key": translation.segment_key(plan["items"][0]["text"], "ta", "en"),
+                "text": "Bring the record",
+            }
+        )
+    archive_pdf(workspace, plan)
+    assert workspace.db.workspace_documents.count_documents(
+        {"record_id": plan["pathway_id"]}
+    ) == int(cached)
+    monkeypatch.setattr(
+        importlib.import_module("preppulse_api.store"), "WorkspaceStore", lambda: workspace
+    )
+    monkeypatch.setattr(
+        translation, "translate_batch", lambda *args: {"item:ta-item": "Bring the record"}
+    )
+    run_language_job("signed", plan["pathway_id"], 2, "en")
+    record = workspace.db.workspace_documents.find_one({"record_id": plan["pathway_id"]})
+    assert record["language"] == "en"
+    with fitz.open(record["source_path"]) as document:
+        assert "Bring the record" in "".join(page.get_text() for page in document)
+    assert (
+        workspace.db.pathways.find_one({"pathway_id": plan["pathway_id"]})["items"][0]["text"]
+        == "பதிவைக் கொண்டு வாருங்கள்"
     )

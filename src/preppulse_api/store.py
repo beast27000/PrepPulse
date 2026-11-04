@@ -57,6 +57,7 @@ class WorkspaceStore:
             [("visit_id", ASCENDING), ("item_id", ASCENDING)], unique=True
         )
         db.care_translations.create_index("pathway_id", unique=True)
+        db.care_segment_cache.create_index([("patient_id", 1), ("key", 1)], unique=True)
         db.care_language_cache.create_index(
             [("kind", 1), ("identity", 1), ("revision", 1), ("language", 1), ("source_hash", 1)],
             unique=True,

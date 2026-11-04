@@ -8,6 +8,8 @@ import {
   useCareLabels,
   useCareTranslation,
   requestCareLanguage,
+  careSnapshotReady,
+  careText,
 } from "./careView";
 import "./care.css";
 
@@ -138,6 +140,10 @@ export default function CareChecklist({
         a.index - b.index,
     )
     .map(({ row }) => row);
+  const ready = careSnapshotReady(
+    draft ? data?.draft : signed ? data?.plans[0] : { items: rows },
+    language,
+  );
   async function check(item: Item, completed: boolean) {
     if (!data?.visit || !item.item_id || !draft) return;
     const before = data;
@@ -190,6 +196,7 @@ export default function CareChecklist({
   }
   return (
     <div
+      lang={language}
       className={
         "care-workspace care-checklist " +
         (summary ? "care-card-preview" : "care-compact")
@@ -218,36 +225,36 @@ export default function CareChecklist({
             ? label("Visit preparation · checked by the clinician")
             : label("Suggested preparation · review with the clinician")}
       </p>
-      {rows.slice(0, summary ? 3 : rows.length).map((item, index) => {
-        const translated =
-          item.texts?.[language] ||
-          (item.source_language === language ? item.text : undefined) ||
-          (language === "en"
-            ? item.text_en || item.text
-            : ((item as Record<string, unknown>)[`text_${language}`] as
-                string | undefined));
-        const checked = signed
-          ? data?.followup?.tasks.find((task) => task.item_id === item.item_id)
-              ?.report?.completed
-          : !!(item.item_id && data?.draft?.checks?.[item.item_id]);
-        return (
-          <label className="check-row" key={item.item_id || index}>
-            <input
-              type="checkbox"
-              aria-label={`${summary ? "Card" : "Visit"} checklist ${index + 1}`}
-              checked={!!checked}
-              disabled={!draft || busy}
-              onChange={(e) => check(item, e.target.checked)}
-            />
-            <span>
-              {translated || item.text || item.text_en}
-              {!translated && (
-                <small>{label("Source text · translation pending")}</small>
-              )}
-            </span>
-          </label>
-        );
-      })}
+      {!!rows.length && !ready && (
+        <p role="status">
+          {label(
+            translation && !["queued", "running"].includes(translation.status)
+              ? "Translation incomplete"
+              : "Translating…",
+          )}
+        </p>
+      )}
+      {ready &&
+        rows.slice(0, summary ? 3 : rows.length).map((item, index) => {
+          const translated = careText(item, language);
+          const checked = signed
+            ? data?.followup?.tasks.find(
+                (task) => task.item_id === item.item_id,
+              )?.report?.completed
+            : !!(item.item_id && data?.draft?.checks?.[item.item_id]);
+          return (
+            <label className="check-row" key={item.item_id || index}>
+              <input
+                type="checkbox"
+                aria-label={`${summary ? "Card" : "Visit"} checklist ${index + 1}`}
+                checked={!!checked}
+                disabled={!draft || busy}
+                onChange={(e) => check(item, e.target.checked)}
+              />
+              <span>{translated}</span>
+            </label>
+          );
+        })}
       {!rows.length && (
         <p className="small-muted">
           {label("No checklist instructions yet. Add them in Care pathways.")}
@@ -263,7 +270,7 @@ export default function CareChecklist({
           {label("Edit pathway")}
         </button>
         {!summary && !!data?.plans.length && (
-          <button className="secondary" onClick={download}>
+          <button className="secondary" disabled={!ready} onClick={download}>
             {label("Download pathway")} · {languages[language]}
           </button>
         )}

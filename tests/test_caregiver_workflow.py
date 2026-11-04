@@ -395,18 +395,22 @@ def test_folder_upload_attaches_to_registered_patient_and_updates_demographics(w
 
 
 def test_translation_preserves_source_numbers_and_refreshes_other_languages(monkeypatch):
-    from langchain_core.messages import AIMessage
+    from preppulse_api.care import translate_plan
 
-    from preppulse_api.care import LANGUAGES, translate_plan
-    from preppulse_rag.llm_provider import LLMFactory
-
-    class Translator:
-        def invoke(self, messages):
-            import json
-
-            return AIMessage(content=json.dumps({lang: "Review in 7 days" for lang in LANGUAGES}))
-
-    monkeypatch.setattr(LLMFactory, "get_chat_model", lambda **kwargs: Translator())
+    translation = importlib.import_module("preppulse_api.care_translation")
+    messages = {
+        "en": "Review in 7 days",
+        "hi": "7 दिनों में समीक्षा करें",
+        "ta": "7 நாட்களில் மதிப்பாய்வு",
+        "bn": "7 দিনের মধ্যে পর্যালোচনা",
+        "or": "7 ଦିନରେ ସମୀକ୍ଷା କରନ୍ତୁ",
+        "te": "7 రోజులలో సమీక్షించండి",
+    }
+    monkeypatch.setattr(
+        translation,
+        "translate_batch",
+        lambda batch, lang: {key: messages[lang] for key, _, _ in batch},
+    )
     original = {
         "items": [
             {
@@ -420,17 +424,15 @@ def test_translation_preserves_source_numbers_and_refreshes_other_languages(monk
         "medications": [],
     }
     translated = translate_plan(original)
-    assert translated["items"][0]["texts"]["hi"] == "Review in 7 days"
+    assert translated["items"][0]["texts"]["hi"] == messages["hi"]
     assert translated["translation_status"] == "complete"
     assert "hi" not in original["items"][0]["texts"]
 
-    class WrongNumbers:
-        def invoke(self, messages):
-            import json
-
-            return AIMessage(content=json.dumps({lang: "Review in 9 days" for lang in LANGUAGES}))
-
-    monkeypatch.setattr(LLMFactory, "get_chat_model", lambda **kwargs: WrongNumbers())
+    monkeypatch.setattr(
+        translation,
+        "translate_batch",
+        lambda batch, lang: {key: messages[lang].replace("7", "9") for key, _, _ in batch},
+    )
     with pytest.raises(ValueError, match="number"):
         translate_plan(original)
 

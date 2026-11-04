@@ -2,6 +2,19 @@
 
 Implementation status and backlog.
 
+## Local IndicTrans2 integration — UI (4 November 2026)
+
+- [x] Owner approved the scoped implementation and a local WSL2 worker alongside LM Studio. The UI branch remains the local implementation; hosted translation is deferred.
+- [x] Dedicated offline IndicTrans2 worker with pinned official English→Indic / Indic→English model revisions, local process pipes, isolated dependencies, CPU default and optional CUDA setup. Downloaded weights/configuration stay ignored by Git.
+- [x] Downloaded and SHA-256 verified both official 1B checkpoints on the owner's machine; configured the isolated Ubuntu WSL2 environment. The caregiver agent now requests English source instructions only instead of spending chat-model generation on display translations.
+- [x] Replaced care translation chat-model calls; complete model-versioned snapshots prevent partial English/target-language rendering and stale revision reuse. Per-patient segment caching reuses unchanged translations after edits.
+- [x] Shared care-card/checklist/editor language selection, localized caregiver portal controls, protected numbers/units, input splitting without silent truncation, pending/failure/retry states and selected-language downloads.
+- [x] English patient-record PDF archive waits for a complete English derivative for non-English sources; immutable signed source text, source citations, schedules and completion reports stay stored independently.
+- [x] Verification: 76 focused care/API/cache/OCR/RAG/chart/geometry/presentation tests, three Edge browser workflows (all five target languages plus partial-state suppression), frontend production build and targeted lint passed. English archiving covers both cold and prewarmed translation caches.
+- [x] Live synthetic IndicTrans2 checks passed for Hindi, Tamil, Bengali, Odia and Telugu, including multiline notes, compact `10U`/`8mg` values, glucose/BP units, rendered PDFs and Tamil→English. Outputs are in ignored `.tmp/translation-smoke/`; these checks verify mechanics and protected values, not fluent clinical meaning.
+- [x] The existing `test_clinical_agents.py` foot-exam assertion still fails; reproduced the same failure on unmodified commit `0a784d4` in a detached worktree and removed that temporary worktree. It is outside this translation change.
+- [ ] Fluent clinical review remains required before relying on translated instructions. Automated number/script checks cannot establish semantic accuracy.
+
 ## Caregiver types, assignment search and language switching — UI review (3 November 2026)
 
 - [x] Accounts requires an explicit family/in-hospital choice when creating a caregiver. New hospital IDs use `HCW-`; families use `FAM-`; existing identities remain valid.

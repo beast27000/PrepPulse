@@ -48,6 +48,7 @@ import CaregiverAdmin from "./CaregiverAdmin";
 import AccountsAdmin from "./AccountsAdmin";
 import AdminPatientDetails from "./AdminPatientDetails";
 import CareChecklist, { CareCardHeading } from "./CareChecklist";
+import { useCareLanguage, useCareLabels } from "./careView";
 import "./administration.css";
 import VisitHistory, { AppointmentHistory } from "./VisitHistory";
 import PatientConversation from "./PatientConversation";
@@ -420,6 +421,13 @@ export default function App() {
   const [page, commitPage] = useState<Page>("Patients");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selected, setSelected] = useState<Patient | null>(null);
+  const [careLanguage] = useCareLanguage(selected?.patient_id || "");
+  const careLabel = useCareLabels(
+    careLanguage,
+    !!user && user.role !== "admin",
+  );
+  const portalLabel = (text: string) =>
+    user?.role === "caregiver" ? careLabel(text) : text;
   const selectedPatientRef = useRef<string | null>(null);
   selectedPatientRef.current = selected?.patient_id || null;
   const [search, setSearch] = useState("");
@@ -795,6 +803,7 @@ export default function App() {
   return (
     <div
       className={"app-shell " + (sidebarCollapsed ? "sidebar-collapsed" : "")}
+      lang={user.role === "caregiver" ? careLanguage : undefined}
     >
       <aside className="sidebar">
         <div className="brand">
@@ -807,14 +816,14 @@ export default function App() {
           </span>
         </div>
         <nav aria-label="Main navigation">
-          <span className="nav-caption">WORKSPACE</span>
+          <span className="nav-caption">{portalLabel("WORKSPACE")}</span>
           {nav.map((item) => {
             const Icon = navIcons[item];
             return (
               <button
                 key={item}
-                title={item}
-                aria-label={item}
+                title={portalLabel(item)}
+                aria-label={portalLabel(item)}
                 className={"nav-item " + (page === item ? "active" : "")}
                 onClick={async () => {
                   if (!(await setPage(item))) return;
@@ -826,7 +835,7 @@ export default function App() {
                 }}
               >
                 <Icon size={17} />
-                <span className="nav-label">{item}</span>
+                <span className="nav-label">{portalLabel(item)}</span>
                 {item === "Today" &&
                   appointments.some((a) => a.status === "scheduled") && (
                     <i className="nav-dot" />
@@ -850,11 +859,15 @@ export default function App() {
               {user.role === "admin"
                 ? "Administrator"
                 : user.role === "caregiver"
-                  ? "Caregiver"
+                  ? careLabel("Caregiver")
                   : "Doctor"}
             </small>
           </div>
-          <button className="icon-button" onClick={logout} title="Sign out">
+          <button
+            className="icon-button"
+            onClick={logout}
+            title={portalLabel("Sign out")}
+          >
             <LogOut size={17} />
           </button>
         </div>
@@ -884,8 +897,10 @@ export default function App() {
                 <PanelLeftClose size={18} />
               )}
             </button>
-            Workspace <ChevronRight size={14} />{" "}
-            <strong>{chatFullscreen ? "Chat workspace" : page}</strong>
+            {portalLabel("Workspace")} <ChevronRight size={14} />{" "}
+            <strong>
+              {chatFullscreen ? "Chat workspace" : portalLabel(page)}
+            </strong>
           </div>
           <div className="topbar-right">
             {user.role === "doctor" && (
@@ -1515,7 +1530,9 @@ export default function App() {
                           />
                         </CollapsePanel>
                         {!historical && (
-                          <CollapsePanel title="Caregiver handoff / checklist">
+                          <CollapsePanel
+                            title={careLabel("Caregiver handoff / checklist")}
+                          >
                             <section className="panel checklist-panel">
                               <CareChecklist
                                 key={selected.patient_id}
@@ -1724,14 +1741,17 @@ export default function App() {
           ) : user.role === "caregiver" ? (
             <>
               <PageHeading
-                eyebrow="PREPPULSE CARE"
-                title="My care plans"
-                text="Your assigned patients, signed instructions, daily tasks and notes for the doctor."
+                eyebrow={careLabel("PREPPULSE CARE")}
+                title={careLabel("My care plans")}
+                text={careLabel(
+                  "Your assigned patients, signed instructions, daily tasks and notes for the doctor.",
+                )}
               />
               <PatientCarousel
                 patients={patients}
                 selected={selected}
                 onPick={choosePatient}
+                label={careLabel}
               />
               {selected ? (
                 <section className="panel pathway-panel">
@@ -1743,8 +1763,9 @@ export default function App() {
                 </section>
               ) : (
                 <section className="panel empty-page">
-                  No patient has been assigned. Ask your administrator to assign
-                  caregiver access.
+                  {careLabel(
+                    "No patient has been assigned. Ask your administrator to assign caregiver access.",
+                  )}
                 </section>
               )}
             </>
@@ -1830,10 +1851,12 @@ function PatientCarousel({
   patients,
   selected,
   onPick,
+  label = (text) => text,
 }: {
   patients: Patient[];
   selected: Patient | null;
   onPick: (p: Patient) => void;
+  label?: (text: string) => string;
 }) {
   return (
     <div className="card-carousel compact">
@@ -1852,11 +1875,11 @@ function PatientCarousel({
           <strong>{p.name}</strong>
           <small>{p.patient_id}</small>
           <div className="card-meta">
-            {alias(p) || "PrepPulse intake"} · {ageOf(p.dob) ?? p.age ?? "—"}{" "}
-            years
+            {alias(p) || label("PrepPulse intake")} ·{" "}
+            {ageOf(p.dob) ?? p.age ?? "—"} {label("years")}
           </div>
           <span className="card-open">
-            View patient <ChevronRight size={15} />
+            {label("View patient")} <ChevronRight size={15} />
           </span>
         </button>
       ))}

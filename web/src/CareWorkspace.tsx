@@ -8,6 +8,8 @@ import {
   useCareLabels,
   useCareTranslation,
   requestCareLanguage,
+  careText,
+  careSnapshotReady,
 } from "./careView";
 
 export const languages: Record<string, string> = {
@@ -368,7 +370,9 @@ export default function CareWorkspace({
     if (!bundle?.visit || !(await save())) return;
     if (
       !confirm(
-        "Sign off these instructions and end the visit? This preserves a permanent record.",
+        label(
+          "Sign off these instructions and end the visit? This preserves a permanent record.",
+        ),
       )
     )
       return;
@@ -446,6 +450,8 @@ export default function CareWorkspace({
     }
   }
   const plan = bundle?.plans.find((x) => x.pathway_id === planId);
+  const draftReady = careSnapshotReady(draft, language);
+  const planReady = careSnapshotReady(plan, language);
   useCareTranslation(
     patient.patient_id,
     "draft",
@@ -470,10 +476,14 @@ export default function CareWorkspace({
     bundle?.suggestion_revision || 0,
     language,
   );
-  const doseText = (med: Medication) => med.dose_texts?.[language] || med.dose;
-  const translated = (item: Item) =>
-    item.texts?.[language] ||
-    (item.source_language === language ? item.text : "");
+  const doseText = (med: Medication) =>
+    !med.dose
+      ? ""
+      : med.dose_texts?.[language] ||
+        (language === "en" && !/[\u0900-\u0C7F]/u.test(med.dose)
+          ? med.dose
+          : label("Translating…"));
+  const translated = (item: Item) => careText(item, language);
   async function beginVisit() {
     setBusy(true);
     try {
@@ -484,7 +494,10 @@ export default function CareWorkspace({
     }
   }
   return (
-    <div className={"care-workspace " + (compact ? "care-compact" : "")}>
+    <div
+      lang={language}
+      className={"care-workspace " + (compact ? "care-compact" : "")}
+    >
       <div className="panel-heading">
         <div>
           <div className="eyebrow teal">
@@ -497,7 +510,10 @@ export default function CareWorkspace({
         <select
           aria-label="Care pathway language"
           value={language}
-          onChange={(e) => setLanguage(e.target.value)}
+          onChange={(e) => {
+            setEditingItems(new Set());
+            setLanguage(e.target.value);
+          }}
         >
           {Object.entries(languages).map(([k, v]) => (
             <option key={k} value={k}>
@@ -552,16 +568,12 @@ export default function CareWorkspace({
                       }
                     />
                     <span>
-                      {translated(item) || item.text}
-                      {!translated(item) && (
-                        <small>
-                          {label("Source text · translation pending")}
-                        </small>
-                      )}
+                      {draftReady ? translated(item) : label("Translating…")}
                     </span>
                   </label>
                   <button
                     className="text-button"
+                    disabled={!draftReady}
                     aria-label={`Edit checklist item ${i + 1}`}
                     onClick={() =>
                       setEditingItems(new Set([...editingItems, item.item_id]))
@@ -575,8 +587,7 @@ export default function CareWorkspace({
                 <>
                   <input
                     aria-label={`Checklist item ${i + 1}`}
-                    placeholder={item.text}
-                    value={translated(item) || item.text}
+                    value={translated(item) || ""}
                     onChange={(e) =>
                       changeItem(i, {
                         text: e.target.value,
@@ -716,13 +727,19 @@ export default function CareWorkspace({
               >
                 {bundle?.visit?.admitted
                   ? label("Switch to family pathway")
-                  : "Admit · caregiver pathway"}
+                  : label("Admit · caregiver pathway")}
               </button>
               <label>
                 {label("notes")} ({languages[language]})
                 <textarea
                   rows={5}
-                  value={draft.notes_texts?.[language] || draft.doctor_notes}
+                  disabled={!draftReady}
+                  placeholder={!draftReady ? label("Translating…") : ""}
+                  value={
+                    draftReady
+                      ? draft.notes_texts?.[language] || draft.doctor_notes
+                      : ""
+                  }
                   onChange={(e) =>
                     edit({
                       ...draft,
@@ -771,6 +788,7 @@ export default function CareWorkspace({
                         <input
                           aria-label={`Medication dose ${i + 1}`}
                           title={med.dose}
+                          disabled={!draftReady}
                           value={doseText(med)}
                           onChange={(e) =>
                             change({
@@ -966,14 +984,13 @@ export default function CareWorkspace({
                 "Patient-specific suggestions · awaiting clinician review",
               )}
             </h4>
-            {bundle.suggestions.map((x, i) => (
-              <p key={i}>
-                {x.texts?.[language] || x.text_en}
-                {!x.texts?.[language] && language !== "en" && (
-                  <small>{label("Source text · translation pending")}</small>
-                )}
-              </p>
-            ))}
+            {careSnapshotReady({ items: bundle.suggestions }, language) ? (
+              bundle.suggestions.map((x, i) => (
+                <p key={i}>{careText(x, language)}</p>
+              ))
+            ) : (
+              <p role="status">{label("Translating…")}</p>
+            )}
           </div>
         )}
       {!!bundle?.plans.length && (
@@ -1002,7 +1019,19 @@ export default function CareWorkspace({
                 · {plan.approved_name}.{" "}
                 {label("Completion below is caregiver-reported.")}
               </p>
-              {!compact && (
+              {!planReady && (
+                <p role="status">
+                  {label(
+                    plan.language_status?.[language] &&
+                      !["queued", "running"].includes(
+                        plan.language_status[language].status,
+                      )
+                      ? "Translation incomplete"
+                      : "Translating…",
+                  )}
+                </p>
+              )}
+              {!compact && planReady && (
                 <>
                   <h4>{label("notes")}</h4>
                   <p className="care-notes">
@@ -1060,7 +1089,7 @@ export default function CareWorkspace({
                   onChange={(e) => setDay(e.target.value)}
                 />
               </label>
-              {follow && (
+              {follow && planReady && (
                 <>
                   <p className="care-due">
                     {follow.past_due_unreported}{" "}
@@ -1075,23 +1104,31 @@ export default function CareWorkspace({
                         onChange={(e) => tick(task, e.target.checked)}
                       />
                       <span>
-                        {task.texts?.[language] || task.text}
+                        {task.kind === "checklist"
+                          ? careText(
+                              plan.items.find((item) =>
+                                task.task_id.startsWith(`${item.item_id}:`),
+                              ) || { text: "" },
+                              language,
+                            )
+                          : task.text}
                         {task.kind === "medication" && (
                           <strong>
                             {" "}
-                            · {task.medication
-                              ? doseText(task.medication)
+                            ·{" "}
+                            {task.medication
+                              ? doseText(
+                                  plan.medications.find(
+                                    (med) =>
+                                      med.medication_id ===
+                                      task.medication?.medication_id,
+                                  ) || task.medication,
+                                )
                               : ""}{" "}
                             · {label(task.slot || "")} ·{" "}
                             {label(task.medication?.food || "")}
                           </strong>
                         )}
-                        {task.kind === "checklist" &&
-                          !task.texts?.[language] && (
-                            <small>
-                              {label("Source text · translation pending")}
-                            </small>
-                          )}
                         {task.report && (
                           <small>
                             {task.report.completed
@@ -1136,7 +1173,7 @@ export default function CareWorkspace({
                               />
                               <span>
                                 {item
-                                  ? item.texts?.[language] || item.text
+                                  ? careText(item, language)
                                   : med
                                     ? `${med.name} · ${doseText(med)} · ${label(row.task_id.split(":").at(-1) || "")}`
                                     : row.task_id}
@@ -1227,6 +1264,7 @@ export default function CareWorkspace({
               </span>
               <button
                 className="secondary"
+                disabled={!planReady}
                 onClick={() =>
                   downloadPdf(planId).catch((e) => setError(e.message))
                 }

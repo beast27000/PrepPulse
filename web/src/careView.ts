@@ -4,19 +4,61 @@ import { post, request } from "./api";
 const events = new EventTarget();
 const languages = new Map<string, string>();
 let labelRequest: Promise<Record<string, Record<string, string>>> | undefined;
-export function useCareLabels(language: string) {
+export function useCareLabels(language: string, enabled = true) {
   const [labels, setLabels] = useState<Record<string, Record<string, string>>>(
     {},
   );
   useEffect(() => {
+    if (!enabled) return;
     labelRequest ||= request("/care/labels");
     labelRequest.then(setLabels).catch(() => {
       labelRequest = undefined;
     });
-  }, []);
+  }, [enabled]);
   return (key: string) => labels[language]?.[key] || key;
 }
 const requested = new Map<string, Promise<unknown>>();
+type CareSnapshot = {
+  items: {
+    text?: string;
+    text_en?: string;
+    texts?: Record<string, string>;
+    source_language?: string;
+  }[];
+  doctor_notes?: string;
+  notes_language?: string;
+  notes_texts?: Record<string, string>;
+  medications?: { dose: string; dose_texts?: Record<string, string> }[];
+};
+export function careText(
+  item: CareSnapshot["items"][number],
+  language: string,
+) {
+  return (
+    item.texts?.[language] ||
+    ((item.source_language || "en") === language
+      ? item.text || item.text_en
+      : undefined)
+  );
+}
+export function careSnapshotReady(
+  snapshot: CareSnapshot | null | undefined,
+  language: string,
+): boolean {
+  if (!snapshot) return false;
+  return (
+    snapshot.items.every((item) => !!careText(item, language)) &&
+    (!snapshot.doctor_notes ||
+      !!snapshot.notes_texts?.[language] ||
+      (snapshot.notes_language || "en") === language) &&
+    (snapshot.medications || []).every(
+      (med) =>
+        !med.dose ||
+        !!med.dose_texts?.[language] ||
+        (language === "en" && !/[\u0900-\u0C7F]/u.test(med.dose)),
+    )
+  );
+}
 export function requestCareLanguage(
   patientId: string,
   kind: "draft" | "signed" | "preview",
