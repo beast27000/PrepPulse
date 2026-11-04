@@ -7,6 +7,8 @@ from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 
+from preppulse_rag import runtime as _runtime  # noqa: F401 - load .env before resolving providers
+
 # ---------- deterministic mock fallback ----------
 
 
@@ -96,7 +98,7 @@ class LLMFactory:
         max_tokens: int = 1024,
     ) -> BaseChatModel:
         # Returns chat model instance based on provider string or env vars
-        env_provider = os.getenv("LLM_PROVIDER")
+        env_provider = os.getenv("PREPPULSE_AI_PROVIDER") or os.getenv("LLM_PROVIDER")
         if provider:
             resolved_provider = provider.lower()
         elif env_provider:
@@ -105,6 +107,11 @@ class LLMFactory:
             resolved_provider = "local"
         else:
             resolved_provider = "mock"
+
+        if resolved_provider in {"sarvam", "gemini", "auto"}:
+            from preppulse_rag.cloud_provider import RoutedChatModel
+            return RoutedChatModel(provider=resolved_provider, model_name=model_name,
+                                   temperature=temperature, max_tokens=max_tokens)
 
         if resolved_provider in ("local", "lmstudio"):
             try:
@@ -125,30 +132,6 @@ class LLMFactory:
                 )
             except Exception:  # noqa: BLE001
                 return MockClinicalChatModel(model_name="qwen/qwen3-4b-2507")
-
-        elif resolved_provider == "sarvam":
-            try:
-                from langchain_openai import ChatOpenAI
-
-                resolved_key = (
-                    api_key
-                    or os.getenv("SARVAM_AI_CREDITS")
-                    or os.getenv("SARVAM_API_KEY")
-                    or "dummy-key"
-                )
-                resolved_base_url = base_url or os.getenv(
-                    "SARVAM_BASE_URL", "https://api.sarvam.ai/v1"
-                )
-                resolved_model = model_name or os.getenv("SARVAM_MODEL", "sarvam-2b")
-                return ChatOpenAI(
-                    model=resolved_model,
-                    base_url=resolved_base_url,
-                    api_key=resolved_key,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            except Exception:  # noqa: BLE001
-                return MockClinicalChatModel(model_name="sarvam-fallback")
 
         elif resolved_provider == "ollama":
             try:
@@ -174,6 +157,9 @@ class LLMFactory:
         base_url: str | None = None,
     ) -> Embeddings:
         # Returns embeddings generator based on provider configuration
+        if provider == "python" or (provider is None and os.getenv("PREPPULSE_EMBED_PROVIDER") == "python"):
+            from preppulse_rag.python_embeddings import PythonEmbeddings
+            return PythonEmbeddings()
         env_provider = os.getenv("LLM_PROVIDER")
         if provider:
             resolved_provider = provider.lower()

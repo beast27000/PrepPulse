@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from ipaddress import ip_address
 from urllib.parse import urlparse
@@ -32,6 +33,13 @@ def _wav(data: bytes) -> bool:
 
 
 def synthesize(text: str) -> bytes:
+    if os.getenv("PREPPULSE_VOICE_PROVIDER") == "sarvam":
+        from preppulse_api.cloud_services import speak_sarvam
+        try:
+            return speak_sarvam(text)
+        except (RuntimeError, ValueError):
+            if not _local_endpoint() or os.getenv("PREPPULSE_VOICE_FALLBACK", "local") != "local":
+                raise
     if not _local_endpoint():
         raise ValueError("Configure a local or private-network TTS audio endpoint")
     with httpx.Client(timeout=60, trust_env=False) as client:
@@ -53,6 +61,9 @@ def synthesize(text: str) -> bytes:
 
 def ready() -> bool:
     global _last_probe, _probe_ok
+    if os.getenv("PREPPULSE_VOICE_PROVIDER") == "sarvam":
+        from preppulse_rag.runtime import sarvam_accounts
+        return bool(sarvam_accounts())  # Credential configured; actual synthesis validates audio.
     if not _local_endpoint():
         return False
     if time.monotonic() - _last_probe > 60:

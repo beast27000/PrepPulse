@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable
 from datetime import date
@@ -109,6 +110,10 @@ def process_patient(
                 )
             if progress:
                 progress("ocr")
+        structured_status = None
+        if os.getenv("PREPPULSE_FHIR_ENABLED", "0") == "1":
+            from preppulse_api.preprocessing import process_structured
+            structured_status = process_structured(store, mongo, patient_id, progress)
         docs = mongo.get_patient_documents(patient_id)
         if not docs:
             raise ValueError("No processed patient documents")
@@ -139,7 +144,6 @@ def process_patient(
             "final_brief": None,
         }
         state = dict(initial)
-        workflow = create_clinical_review_workflow()
         agent_names = [
             "classification_agent",
             "trajectory_agent",
@@ -150,12 +154,28 @@ def process_patient(
             "assistive_bubbles_agent",
             "brief_compiler",
         ]
+        checkpoint_key = None
+        start_node = agent_names[0]
+        skip_graph = False
+        if os.getenv("PREPPULSE_RESUME_ANALYSIS") == "1":
+            from preppulse_api.analysis_checkpoint import identity, restore
+            checkpoint_key = identity(patient, docs)
+            checkpoint = store.db.analysis_checkpoints.find_one({"identity": checkpoint_key, "complete": False})
+            if checkpoint:
+                state.update(restore(checkpoint["values"]))
+                start_node = checkpoint.get("next_node") or agent_names[-1]
+                skip_graph = checkpoint.get("next_node") is None
+        workflow = create_clinical_review_workflow(start_node)
         if progress:
-            progress(agent_names[0])
-        for update in workflow.stream(initial, stream_mode="updates"):
+            progress(start_node)
+        for update in ([] if skip_graph else workflow.stream(state, stream_mode="updates")):
             for node, values in update.items():
                 if values:
                     state.update(values)
+                if checkpoint_key and node in agent_names:
+                    from preppulse_api.analysis_checkpoint import save
+                    index = agent_names.index(node) + 1
+                    save(store, checkpoint_key, state, agent_names[index] if index < len(agent_names) else None)
                 if (
                     progress
                     and node in agent_names
@@ -165,6 +185,8 @@ def process_patient(
         brief: ConsultationBrief = state["final_brief"]
         raw = brief.model_dump(mode="json")
         checked = annotate_citations(store, patient_id, raw)
+        if structured_status is not None:
+            checked["structured_processing"] = structured_status
         if progress:
             progress("history_synthesis_agent")
         catalog = build_catalog(store, patient_id)
@@ -274,6 +296,9 @@ def process_patient(
             {"$set": {"patient_id": patient_id, "brief": checked, "generated_at": now()}},
             upsert=True,
         )
+        if checkpoint_key:
+            store.db.analysis_checkpoints.update_one({"identity": checkpoint_key},
+                                                    {"$set": {"complete": True}})
         return checked
     finally:
         mongo.close()

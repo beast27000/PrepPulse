@@ -41,7 +41,7 @@ class MedicationEntity(BaseModel):
     rxnorm_code: str | None = None
     dosage: str | None = None
     frequency: str | None = None
-    route: str | None = "oral"
+    route: str | None = None
     prescribed_date: str | None = None
     source_page: int = 1
     source_bbox: list[int] | None = None

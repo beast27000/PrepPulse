@@ -1,4 +1,133 @@
 # PrepPulse
+
+## ui_testing - local rehearsal for API deployment
+
+### Technology stack
+
+| Layer | This branch |
+| --- | --- |
+| Browser | React 18, TypeScript, Vite, Recharts, Markdown/GFM; existing doctor/admin/caregiver interfaces |
+| API | Python 3.11+, FastAPI/Uvicorn, authenticated sessions and patient assignment checks |
+| Persistence | MongoDB; separate `preppulse_ui_testing*` databases, isolated source-file copies, private SQLite API-budget and embedding caches |
+| Primary generation | Sarvam `sarvam-105b`, OpenAI-compatible HTTP interface; reasoning disabled for complete structured replies |
+| Google comparison | `gemini-3.5-flash-lite`; the supplied project's actual generation requests reject Gemini 2.5 Flash as unavailable to new users |
+| Optional local generation | Existing LM Studio connection; usable only while reachable |
+| Retrieval | BM25 plus Python CPU `intfloat/multilingual-e5-small`, pinned revision `614241f622f53c4eeff9890bdc4f31cfecc418b3`, 384 dimensions |
+| Clinical workflow | Eight-node LangGraph review, declared prompt output contracts, source-linked evidence catalogue, resumable failed-node checkpoints |
+| OCR | Existing native PDF extraction / PyMuPDF, Tesseract and normalized source geometry |
+| Structured records | Grounded Stage 2 entities and FHIR R4 transaction bundles validated against the vendored official 4.0.1 base JSON schema |
+| Translation | Sarvam Translate, protected clinical values, a validated Sarvam translation-repair attempt, then optional local IndicTrans2 |
+| Voice | Sarvam Bulbul v3 read-aloud and Saaras v3 transcription; compatible local fallbacks remain configurable |
+| Hosting | **Not deployed.** Oracle/Atlas/private object storage remain a subsequent, separately approved deployment phase |
+
+This branch is an isolated synthetic-data deployment rehearsal. `UI` remains the local-model implementation; `main` is unchanged. Nothing here automatically migrates either the original database or original uploaded files. The detailed project/page guide below describes the inherited application; use this section for the API rehearsal's changed setup and model behaviour.
+
+### Start the isolated demonstration
+
+Existing installation, from the repository root in PowerShell:
+
+```powershell
+git switch ui_testing
+.\.venv\Scripts\python.exe -m pip install -e ".[dev,deployment-test]" --extra-index-url https://download.pytorch.org/whl/cpu
+.\.venv\Scripts\python.exe scripts/download_embeddings.py
+# Once only; refuses to overwrite an existing test database:
+.\.venv\Scripts\python.exe scripts/prepare_ui_testing.py
+.\.venv\Scripts\python.exe scripts/prepare_ui_testing.py --database preppulse_ui_testing_gemini
+# Start API in this terminal:
+.\scripts\run_ui_testing.ps1 -Provider sarvam
+```
+
+In a second terminal:
+
+```powershell
+cd web
+npm ci
+$env:PREPPULSE_API_TARGET = "http://127.0.0.1:8001"
+node .\node_modules\vite\bin\vite.js --host 127.0.0.1 --port 5174 --strictPort
+```
+
+Open `http://127.0.0.1:5174`. The API runs at `http://127.0.0.1:8001`, with API documentation at `/docs`; patient routes require authentication. Copied accounts retain their existing passwords. The rehearsal uses a separate session cookie, database and file root, so signing in need not replace the original workspace session.
+
+For a fresh clone, first create a Python 3.11+ virtual environment and install the dependencies above. MongoDB must be running. Source datasets, downloaded model weights, secrets and private patient records are deliberately absent from Git. If the original database is empty, preparation creates the isolated profile without accounts: bootstrap an administrator with `PREPPULSE_MONGO_DB=preppulse_ui_testing`, then create doctor/caregiver accounts and import a synthetic patient through intake. See the original bootstrap instructions later in this README; run them against the isolated database, never an unintended database. Prepare a matching Google comparison database after synthetic data is available.
+
+The server reads the repository's private `.env`; environment variables explicitly set by the launch script take precedence. Required key names are:
+
+```dotenv
+SARVAM_AI_CREDITS_ACC_1=
+SARVAM_AI_CREDITS_ACC_2=
+SARVAM_AI_CREDITS_ACC_3=
+Gemini_free_api_keys=
+```
+
+Use [.env.ui_testing.example](.env.ui_testing.example) for non-secret configuration examples. Never put these keys in `VITE_*` variables or frontend code. No keys or clinical test outputs are committed.
+
+### Compare providers under controlled conditions
+
+```powershell
+.\.venv\Scripts\python.exe -u scripts/rehearse_providers.py --provider sarvam --stage analyze --fresh-ocr
+.\.venv\Scripts\python.exe -u scripts/rehearse_providers.py --provider gemini --stage analyze --fresh-ocr
+.\.venv\Scripts\python.exe -u scripts/rehearse_providers.py --provider sarvam --stage chat
+.\.venv\Scripts\python.exe -u scripts/rehearse_providers.py --provider gemini --stage chat
+.\.venv\Scripts\python.exe -u scripts/rehearse_providers.py --provider sarvam --stage translation
+.\.venv\Scripts\python.exe -u scripts/rehearse_providers.py --provider sarvam --stage speech
+```
+
+`--fresh-ocr` removes only the chosen synthetic patient's processed OCR and current brief in the isolated provider database, then reprocesses its copied originals. It does not remove original files, signed pathways, original-workspace records or FHIR version archives. Omit it for resumable retries. The default comparison alias is `PP001`. Both providers use matching file hashes and the same pinned Python embedding model. Forced `sarvam` and `gemini` comparisons cannot silently fall back to each other.
+
+Reports and synthetic responses are stored in ignored `.tmp/ui_testing/results/`; generated PDFs are in `.tmp/ui_testing/translation-smoke/`. Provider comparison is an engineering check, not a clinical evaluation or certification. Numeric chart construction still uses verified OCR measurements, not model-invented coordinates or numbers. Broad history answers now receive every verified point for requested metrics so older laboratory values are not displaced by boilerplate retrieval hits.
+
+### Routing, credit pools and limits
+
+- `PREPPULSE_AI_PROVIDER=sarvam|gemini|auto|local|mock` selects generation. `mock` is for explicit offline tests only.
+- `auto` tries eligible Sarvam accounts, optionally Gemini when `PREPPULSE_GEMINI_ENABLED=1`, then a reachable local model. Default rehearsal launch explicitly selects Sarvam. Google remains opt-in; independent comparisons are forced-provider runs.
+- To demonstrate the approved three-provider order with synthetic data, run `.\scripts\run_ui_testing.ps1 -Provider auto -EnableGemini`. To inspect Google's independently generated records, use `.\scripts\run_ui_testing.ps1 -Provider gemini -Database preppulse_ui_testing_gemini`. Stop the test API before changing its provider/database; the same browser URL can then be reused.
+- `PREPPULSE_SYNTHETIC_ONLY=1` is required for this branch's Gemini adapter. This is an operator declaration, not automated de-identification. Do not upload real patient data to a synthetic rehearsal. Google's current API terms restrict sensitive information on unpaid services and prohibit clinical-practice use: [official terms](https://ai.google.dev/gemini-api/terms).
+- A model being listed by Google's model API does not establish eligibility. Actual Gemini 2.5 Flash generation returned HTTP 404 for the supplied project; the documented replacement was tested instead. Daily/minute/token limits must be read from the actual project dashboard.
+- Sarvam balances belong to **organisations**, not keys. Keys in one organisation share a wallet. Map their `SARVAM_ACC_n_POOL` values accordingly. Identical keys are deduplicated.
+- No documented programmatic credit-balance endpoint was confirmed. Optional `SARVAM_ACC_n_STARTING_CREDITS` values therefore seed an **estimate**, not a live dashboard balance. Spending outside this application makes the estimate stale. With a known starting balance the router reserves the estimated request cost and skips a pool before it would fall below 10. Unknown balances remain unknown; explicit insufficient-credit responses trigger account cooldown/rotation.
+- Rate-limit responses do not trigger Sarvam key rotation to evade the limit. Authentication/availability failures, empty replies and truncated structured responses are visible errors, with bounded eligible-provider fallback.
+- API calls reserve estimated spending in private `api_usage.sqlite3` before dispatch, across processes. This survives restarts and protects concurrent requests. Configured estimates are not a provider invoice; server-reported token usage refines chat estimates, while translation/audio retain conservative reservations.
+- The initial Sarvam test ceiling is INR 50. The owner subsequently authorised additional testing as needed; the rehearsal launcher uses a bounded 200-attempt Google counter. The ledger retains all attempts, including failures. A filled ledger stops further calls; do not delete it to hide usage. Estimates and Google token counts do not establish the dashboard's actual billed amount or remaining credit balance.
+- Local fallback cannot work when the PC/model server is off or unreachable from a future hosted backend.
+
+### FHIR, provenance and resumability
+
+`PREPPULSE_FHIR_ENABLED=1` connects browser analysis to Stage 2 extraction and Stage 3 rendering. Cloud extraction groups one document's sections into a page-labelled request, then source grounding verifies anchors and numbers against OCR. Unverifiable facts remain in a review queue. An absent route no longer becomes an invented oral route.
+
+FHIR bundles contain stable resource identities, `fullUrl`, valid transaction `request` entries, resolvable patient references and standard extension containers for source document/page/box/anchor evidence. Verified laboratory results and grounded vitals become Observations; documented conditions and reported medication information remain distinguishable from newly issued clinical instructions. Reported medications are not exported as active, newly authorised orders. Terminology is mapped only where supported; arbitrary unit text is not falsely labelled as a validated UCUM code.
+
+The vendored schema is the official HL7 FHIR R4 4.0.1 base JSON schema, SHA-256 `2230406893b4cf002a4ee1e5e2bbeca22ac5d2d4931b3e9ef7b9594bbc376a01`. Base-schema validation is not terminology-service validation, an implementation-guide conformance certificate or a working EHR/FHIR server. Unverified advice/vitals are not silently promoted into clinical orders. Original OCR/source records remain canonical and separately preserved.
+
+Extraction fingerprints avoid paying again for unchanged complete documents. Cached facts can be re-grounded/re-rendered after a renderer or registry-demographic change without another model call. Immutable `fhir_versions` retain prior output. Doctor-assigned access applies to:
+
+```text
+GET /api/patients/{patient_id}/documents/{record_id}/fhir
+```
+
+An incomplete document returns an explicit conflict state rather than a fabricated bundle. Clinical access is not granted to an administrator or caregiver by default. Failed analysis checkpoints save completed node outputs only inside the patient-scoped database; matching source/model/prompt/code identities are required before resuming. This does not implement a distributed cloud queue or make in-memory worker scheduling durable across multiple hosts.
+
+### Translation and downloadable records
+
+The existing language toggles, shared checklist identity/completion, caregiver portal and English-record/selected-language-download distinction are retained. All dynamic text must pass script and protected-number/unit checks before a full language snapshot is published. A source-only Sarvam repair attempt handles translation-service marker failures; local IndicTrans2 remains the optional final fallback. Fluent clinical review is still necessary: matching numerals and scripts cannot verify meaning, negation or clinical suitability.
+
+Use `PREPPULSE_TRANSLATION_PROVIDER=sarvam`, `PREPPULSE_TRANSLATION_FALLBACK=local|none`, and `PREPPULSE_VOICE_PROVIDER=sarvam` for explicit configuration. The rehearsal launch script selects these. A strict API-only translation test can disable local fallback; the end-user profile retains it. Microphone audio is processed transiently and reviewed transcripts remain editable before submission. Read-aloud is opt-in; readiness indicates configured credentials until actual playback verifies WAV audio.
+
+### Capacity and deployment boundary
+
+The local HTTP rehearsal created 100 distinct users and 100 synthetic patients with 1,500 replicated processed documents. Ten active user flows served all 100 users; each checked login, assigned-patient visibility and a forbidden cross-patient request. The final recorded run passed 100/100 flows, took 8.59 seconds, and had a 0.906-second p95 for the combined flow. Its database used approximately 56.70 MiB of data plus 0.64 MiB of indexes. Database restore hashes matched. Request handlers share MongoDB's thread-safe connection pool instead of creating a client for each browser poll.
+
+### Verified results and open limits
+
+See [UI_TESTING_REPORT.md](UI_TESTING_REPORT.md) for the provider comparison, request usage, defects found, capacity limits and manual demonstration steps. The final selected Python regression contains **107 passing tests**, alongside three existing Edge fixture workflows and a successful frontend production build. Four known legacy cases are excluded explicitly in the report; the complete legacy suite is not represented as passing.
+
+Both providers completed the same 15-source synthetic patient through structured processing and all eight workflow nodes. Every supported verified OCR measurement is retained in each provider's FHIR export, including all six dated HbA1c and six fasting-glucose values. FHIR schema conformance does not establish complete extraction of all other diagnoses/medications: provider outputs differ, and quarantined facts remain available for review. All copied source files were hash-verified and the regenerated OCR matched the original apart from processing timestamps.
+
+This is a short local test, not 100 concurrent AI generations, an internet/Oracle latency promise, clinical generalisation to 100 unique charts, or a five-day soak. Existing synthetic source files average about 0.27 MiB per folder; 100 more comparable folders would be roughly 27.5 MiB of originals. Scanned clinical PDFs can be much larger. Translation caches, future visits, chat history, backups and embedding growth require separate storage headroom.
+
+A future hosted release still requires private object-storage integration, actual-host CPU/RAM benchmarking, durable job scheduling/recovery decisions, secure public-session configuration, budget/traffic limits, backup and source-file restore exercises, provider-policy review, and a monitored five-day usage test. Hosting work and merges into `UI`/`main` are outside this branch's authorization.
+
+---
+
 ## Diabetes Clinical Intelligence
 
 PrepPulse is a patient-centered, evidence-linked workspace for clinical chart review. It brings uploaded medical records, OCR text, longitudinal measurements, retrieval, clinical review agents, and clinician-approved care instructions into one local browser application.
@@ -181,7 +310,7 @@ The repository also contains a Stage 2/3 preprocessing pipeline. It performs sec
 
 **Clinical review use.** Structured facts can support searches, comparisons, and interoperability experiments while preserving the clinician's ability to inspect the original wording.
 
-The browser's current analysis path directly connects Stage 1 source documents, provenance chunking, retrieval, the review graph, and the OCR evidence catalog. The presence of the preprocessing/FHIR package does not mean every browser upload automatically executes or validates every Stage 2/3 operation.
+The inherited `UI` profile connects Stage 1 documents directly to chunking/retrieval/review. In `ui_testing`, `PREPPULSE_FHIR_ENABLED=1` additionally runs grounded Stage 2/3 processing before the review graph; the rehearsal launcher enables it. Other profiles do not implicitly run this paid extraction step.
 
 ### 4.5 FHIR-oriented output
 
@@ -533,7 +662,7 @@ Supported care languages are English, Hindi, Tamil, Bengali, Odia, and Telugu. T
 
 Text edits invalidate stale translations. The selected-language checklist/notes/prescription view becomes available only when all required text has been translated and validated. Pending or failed work shows a translated status and retry controls; it does not mix translated rows with English fallback rows. The clinician can switch to the source language to inspect or edit the original.
 
-Switching language requests only that language automatically. Fixed care controls/headings switch immediately; checklist instructions, doctor notes and dose/application text use **AI4Bharat IndicTrans2**, running entirely on the same PC in an isolated Ubuntu WSL2 environment. The Windows API starts a persistent worker over local stdin/stdout pipes on first use. It has no network listener, hosted inference provider, translation API key, or connection to the LM Studio chat model. English→Indic and Indic→English use separate pinned official models; Indian-language→another Indian-language edits pass through English. CPU inference is the default installation; CUDA is an optional setup choice. The first uncached request takes model processing time. The worker stays loaded for later requests, and the views poll progress until the complete version is available. Card and lower checklist share the same patient language and saved preparation/completion state.
+The inherited local profile uses the following translation worker; the `ui_testing` Sarvam policy is described above. Switching language requests only that language automatically. Fixed care controls/headings switch immediately; checklist instructions, doctor notes and dose/application text use **AI4Bharat IndicTrans2**, running entirely on the same PC in an isolated Ubuntu WSL2 environment. The Windows API starts a persistent worker over local stdin/stdout pipes on first use. It has no network listener, hosted inference provider, translation API key, or connection to the LM Studio chat model. English→Indic and Indic→English use separate pinned official models; Indian-language→another Indian-language edits pass through English. CPU inference is the default installation; CUDA is an optional setup choice. The first uncached request takes model processing time. The worker stays loaded for later requests, and the views poll progress until the complete version is available. Card and lower checklist share the same patient language and saved preparation/completion state.
 
 Medicine names and the signed source dose remain exactly as entered. Dose/application instructions have a separate translated display copy, with the source available in the prescription table tooltip. The worker protects numbers, recognized units and biomarker abbreviations through IndicProcessor entity handling, then restores and checks them. Long text is split to fit the model, never silently truncated. An English copy in a non-English slot is rejected. Each language is cached by model version, draft/signed identity, text revision and source hash in `care_language_cache`. Validated segments are also cached per patient in `care_segment_cache`, so editing one instruction can reuse translations of unchanged instructions. Successful segments survive a failed batch internally but remain hidden until the complete snapshot is ready. Signed text, checklist IDs, medication schedules and completion reports are never rewritten by translation.
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
@@ -47,20 +48,29 @@ password_hash = PasswordHash.recommended()
 _stt_model = None
 _schema_ready = False
 _schema_lock = Lock()
+_request_store = None
 
 
 def db() -> WorkspaceStore:
-    global _schema_ready
-    store = WorkspaceStore()
-    try:
+    global _schema_ready, _request_store
+    # MongoClient is thread-safe. Share its pool instead of creating monitoring
+    # sockets for every poll/login request (important for Atlas free limits).
+    with _schema_lock:
+        if _request_store is None:
+            _request_store = WorkspaceStore()
         if not _schema_ready:
-            with _schema_lock:
-                if not _schema_ready:
-                    store.indexes()
-                    _schema_ready = True
-        yield store
-    finally:
-        store.client.close()
+            _request_store.indexes()
+            _schema_ready = True
+    yield _request_store
+
+
+@app.on_event("shutdown")
+def close_request_store():
+    global _request_store, _schema_ready
+    if _request_store is not None:
+        _request_store.client.close()
+        _request_store = None
+    _schema_ready = False
 
 
 def user(request: Request, store: WorkspaceStore = Depends(db)) -> dict:
@@ -118,7 +128,7 @@ async def csrf(request: Request, call_next):
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
-    session_cookie="preppulse_session",
+    session_cookie=os.getenv("PREPPULSE_SESSION_COOKIE", "preppulse_session"),
     same_site="strict",
     https_only=False,
     max_age=60 * 60 * 8,
@@ -1434,13 +1444,14 @@ def chat(body: QueryIn, current: dict = Depends(clinician), store: WorkspaceStor
 @app.get("/api/voice/capabilities")
 def voice_capabilities(_: dict = Depends(clinician)):
     available = tts_ready()
+    cloud = os.getenv("PREPPULSE_VOICE_PROVIDER") == "sarvam"
     return {
         "dictation": True,
         "tts_ready": available,
-        "tts_status": "Local audio endpoint verified"
+        "tts_status": "Sarvam configured; audio verified on playback" if cloud and available else "Local audio endpoint verified"
         if available
         else "No compatible audio endpoint verified",
-        "tts_model": "mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF",
+        "tts_model": "bulbul:v3" if cloud else "mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF",
         "tts_path_configured": bool(TTS_MODEL_PATH and Path(TTS_MODEL_PATH).is_file()),
     }
 
@@ -1454,11 +1465,11 @@ class SpeakIn(BaseModel):
 def speak(body: SpeakIn, current: dict = Depends(clinician), store: WorkspaceStore = Depends(db)):
     patient_access(body.patient_id, current, store)
     if not tts_ready():
-        raise HTTPException(503, "Local speech audio is unavailable")
+        raise HTTPException(503, "Speech audio is unavailable")
     try:
         data = synthesize(body.text)
     except Exception:
-        raise HTTPException(503, "Local speech audio failed") from None
+        raise HTTPException(503, "Speech audio failed") from None
     store.audit(current, "voice_playback", body.patient_id)
     return Response(data, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
@@ -1470,11 +1481,20 @@ async def transcribe(
     current: dict = Depends(clinician),
 ):
     global _stt_model
-    if language not in {"", "en", "hi", "ta", "bn", "te"}:
+    if language not in {"", "en", "hi", "ta", "bn", "te", "or"}:
         raise HTTPException(400, "Unsupported dictation language")
     data = await file.read(10 * 1024 * 1024 + 1)
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(413, "Audio exceeds 10 MB")
+    if os.getenv("PREPPULSE_VOICE_PROVIDER") == "sarvam":
+        from preppulse_api.cloud_services import transcribe_sarvam
+        try:
+            from starlette.concurrency import run_in_threadpool
+            text = await run_in_threadpool(transcribe_sarvam, data, language)
+            return {"transcript": text, "review_required": True}
+        except Exception:
+            if os.getenv("PREPPULSE_VOICE_FALLBACK", "local") != "local":
+                raise HTTPException(503, "Speech service unavailable; please retry or type") from None
     try:
         import tempfile
 
@@ -1490,8 +1510,8 @@ async def transcribe(
             text = " ".join(s.text.strip() for s in segments).strip()
         finally:
             tmp_path.unlink(missing_ok=True)
-    except Exception as exc:
-        raise HTTPException(503, f"Local transcription unavailable: {str(exc)[:100]}") from None
+    except Exception:
+        raise HTTPException(503, "Transcription unavailable; please retry or type") from None
     return {"transcript": text, "review_required": True}
 
 
@@ -1502,3 +1522,17 @@ def health(store: WorkspaceStore = Depends(db)):
         return {"status": "ready"}
     except Exception:
         raise HTTPException(503, "MongoDB unavailable") from None
+
+
+@app.get("/api/patients/{patient_id}/documents/{record_id}/fhir")
+def document_fhir(patient_id: str, record_id: str, current: dict = Depends(clinician),
+                  store: WorkspaceStore = Depends(db)):
+    patient_access(patient_id, current, store)
+    doc = store.db.patient_documents.find_one({"patient_id": patient_id, "document_id": record_id})
+    if not doc:
+        raise HTTPException(404, "Processed document not found")
+    if doc.get("preprocessing", {}).get("status") != "complete":
+        raise HTTPException(409, "Structured processing is incomplete; analyze records first")
+    store.audit(current, "fhir_viewed", patient_id, {"record_id": record_id})
+    return Response(__import__("json").dumps(doc["stage_3_fhir_output"]),
+                    media_type="application/fhir+json", headers={"Cache-Control": "no-store"})

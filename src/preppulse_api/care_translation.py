@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import json
+import os
 import re
 import unicodedata
 import uuid
@@ -11,7 +12,11 @@ from datetime import UTC, datetime, timedelta
 
 from preppulse_api.local_translation import MODEL_VERSION, translate_local
 
-TRANSLATION_MODEL_VERSION = MODEL_VERSION
+TRANSLATION_MODEL_VERSION = (
+    "sarvam-translate:v1-numeric-protected-repair-v3-fallback-" + MODEL_VERSION
+    if os.getenv("PREPPULSE_TRANSLATION_PROVIDER") == "sarvam"
+    else MODEL_VERSION
+)
 
 LANGUAGES = {
     "en": "English",
@@ -87,7 +92,16 @@ def source_hash(plan):
 
 
 def translate_batch(batch, language):
-    result = translate_local(batch, language)
+    if os.getenv("PREPPULSE_TRANSLATION_PROVIDER") == "sarvam":
+        from preppulse_api.cloud_services import translate_sarvam
+        try:
+            result = translate_sarvam(batch, language)
+        except (RuntimeError, ValueError):
+            if os.getenv("PREPPULSE_TRANSLATION_FALLBACK", "local") != "local":
+                raise
+            result = translate_local(batch, language)
+    else:
+        result = translate_local(batch, language)
     if not isinstance(result, dict) or set(result) - {key for key, _, _ in batch}:
         raise ValueError("Translation worker returned an invalid segment mapping")
     return result

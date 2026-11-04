@@ -2,6 +2,25 @@
 
 Implementation status and backlog.
 
+## Local API deployment rehearsal - ui_testing (4 November 2026)
+
+- [x] Owner approved isolated local tests and subsequently authorised additional API testing as needed, with usage/limits reported at completion. `UI` and `main` remain unchanged; no cloud deployment is authorised yet.
+- [x] Created `ui_testing` from `UI` commit `9fd08a6`; cloned accounts/data into separate test databases and copied private files without resetting the original workspace.
+- [x] Sarvam/Gemini provider adapters, secret-safe persistent usage reservations, explicit errors, wallet-aware estimated threshold handling and insufficient-credit rotation. No official live-balance API confirmed: the 10-credit guard uses optional manually supplied starting balances; unknown balances are not invented.
+- [x] Pinned multilingual E5-small CPU embeddings with model-scoped persistent cache, independent of LM Studio; lexical fallback stays explicit.
+- [x] Connected OCR, grounded extraction and official base-schema-validated FHIR R4 output; stable transaction identities, resolvable references, standard provenance extensions, immutable versions and authenticated document export. Reconciled every supported verified chart measurement into FHIR with original source geometry and value qualifiers.
+- [x] Added source-bound numeric checks, removed invented oral routes and unassessed-patient prediabetes defaults; supplied declared prompt output contracts that the previous loader omitted.
+- [x] Resumable failed-node checkpoints with patient/source/model/prompt/code identity checks. This is local recovery support, not a distributed cloud job system.
+- [x] Sarvam translation/speech adapters; all five target languages passed synthetic protected-value checks. Hindi/Tamil PDF checks and Bengali/Odia/Telugu PDF checks passed, including a source-only repair attempt where required. Local IndicTrans2 fallback remains available.
+- [x] Sarvam synthetic WAV synthesis/transcription round trip passed, including 35.33-second live dictation split across bounded audio requests. Actual audio is validated; configuration alone is not proof of endpoint health.
+- [x] 100-patient/1,500-document and 100-user local HTTP rehearsal: 100/100 assigned-patient/isolation flows passed at 10 active flows, 8.59 seconds total, 0.906-second p95; 56.70 MiB data plus 0.64 MiB indexes. Database restore hashes matched.
+- [x] 107 selected Python regression tests passed; frontend production build passed; all three existing Edge care/admin/dictation browser workflows passed on the isolated in-memory fixture. Targeted lint passed.
+- [x] Final forced-provider workflow and two conversational answers plus chart/scope checks passed for both Sarvam and Gemini. Both now classify the synthetic documented Type 2 diabetes correctly after the missing prompt-contract fix. Results and remaining limitations are documented in `UI_TESTING_REPORT.md`.
+- [ ] Fluent clinical review of translations and extracted/classified facts remains required; schema/script/number checks do not certify clinical correctness.
+- [ ] Five-day soak, actual Oracle capacity benchmark, object-storage migration, public security configuration and deployment approval remain future work.
+- [ ] Full legacy test invocation still has the previously recorded foot-exam expectation and three tests depending on absent `PP001_Arvind_Narayanan` data; do not misreport them as passing.
+
+
 ## Local IndicTrans2 integration — UI (4 November 2026)
 
 - [x] Owner approved the scoped implementation and a local WSL2 worker alongside LM Studio. The UI branch remains the local implementation; hosted translation is deferred.

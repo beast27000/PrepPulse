@@ -1,0 +1,2 @@
+# Preserve the vendored official schema's published SHA-256 on Windows checkouts.
+src/preppulse_preprocessing/schema/fhir-r4.schema.json text eol=lf

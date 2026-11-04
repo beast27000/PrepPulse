@@ -17,8 +17,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--languages", default="hi,ta,bn,or,te")
     parser.add_argument("--reverse", action="store_true")
+    parser.add_argument("--output", default=".tmp/translation-smoke")
     args = parser.parse_args()
-    output = Path(__file__).resolve().parents[1] / ".tmp/translation-smoke"
+    output = Path(__file__).resolve().parents[1] / args.output
     output.mkdir(parents=True, exist_ok=True)
     batch = [
         (
@@ -101,6 +102,9 @@ def main():
                 )
             assert plan == original
             results[language] = {"seconds": round(time.monotonic() - started, 1), "texts": values}
+            (output / "results.json").write_text(
+                json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
             print(
                 f"PASS {language}: text, numbers/units and PDF ({results[language]['seconds']}s)",
                 flush=True,
@@ -110,7 +114,7 @@ def main():
             values = translate_batch(reverse, "en")
             assert all(usable(values.get(key), text, "en", source) for key, text, source in reverse)
             results["ta-en"] = values
-            print("PASS ta→en: reverse translation and protected values", flush=True)
+            print("PASS ta->en: reverse translation and protected values", flush=True)
         (output / "results.json").write_text(
             json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
         )

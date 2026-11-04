@@ -78,6 +78,8 @@ class WorkspaceStore:
         db.chat_messages.create_index([("session_id", ASCENDING), ("created_at", ASCENDING)])
         db.chat_artifacts.create_index("artifact_id", unique=True)
         db.chat_turns.create_index("turn_id", unique=True)
+        db.fhir_versions.create_index([("document_id", 1), ("fingerprint", 1)], unique=True)
+        db.analysis_checkpoints.create_index("identity", unique=True)
         for account in db.users.find({}, {"_id": 0, "password_hash": 0}):
             self.account_identity(account)
 

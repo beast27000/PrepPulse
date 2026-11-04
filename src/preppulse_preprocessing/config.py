@@ -10,6 +10,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+from preppulse_rag import runtime as _runtime  # noqa: F401 - load server configuration
+
 
 def _env(key: str, default: str) -> str:
     return os.environ.get(key, default)
@@ -31,15 +33,15 @@ def _env_int(key: str, default: int) -> int:
 
 @dataclass(frozen=True)
 class MongoConfig:
-    uri: str = field(default_factory=lambda: _env("MONGO_URI", "mongodb://localhost:27017"))
-    db_name: str = field(default_factory=lambda: _env("MONGO_DB", "preppulse"))
+    uri: str = field(default_factory=lambda: _env("PREPPULSE_MONGO_URI", _env("MONGO_URI", "mongodb://localhost:27017")))
+    db_name: str = field(default_factory=lambda: _env("PREPPULSE_MONGO_DB", _env("MONGO_DB", "preppulse")))
     server_timeout_ms: int = field(default_factory=lambda: _env_int("MONGO_TIMEOUT_MS", 3000))
 
 
 @dataclass(frozen=True)
 class LLMConfig:
     # provider selector: "ollama" (default) or "mock" for offline/deterministic runs
-    provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "ollama"))
+    provider: str = field(default_factory=lambda: _env("PREPPULSE_AI_PROVIDER", _env("LLM_PROVIDER", "ollama")))
     model: str = field(default_factory=lambda: _env("OLLAMA_MODEL", "qwen2.5:7b"))
     base_url: str = field(default_factory=lambda: _env("LLM_BASE_URL", "http://localhost:11434"))
     temperature: float = field(default_factory=lambda: _env_float("LLM_TEMPERATURE", 0.0))

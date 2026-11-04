@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 
 from preppulse_api.chart_intent import (
@@ -24,6 +25,18 @@ from preppulse_rag.llm_provider import LLMFactory, MockClinicalChatModel
 SUPPORTED_CHARTS = (
     "HbA1c, fasting/post-meal glucose, eGFR, urine ACR, creatinine, LDL, and blood pressure"
 )
+
+
+def normalize_answer(answer, citation_count, record_dates):
+    """Make citation syntax clickable without inventing IDs or ambiguous event dates."""
+    answer = re.sub(r"\[(\d+(?:\s*[,;]\s*\d+)+)\]",
+                    lambda match: "".join(f"[{n}]" for n in re.findall(r"\d+", match[1])), answer)
+    answer = re.sub(r"\[[<>]=?\s*\d+\]", "[source unavailable]", answer)
+    answer = re.sub(r"\[(\d+)\]", lambda match: match[0] if 1 <= int(match[1]) <= citation_count
+                    else "[source unavailable]", answer)
+    return re.sub(r"(?m)^(\s*[-*]\s+)\*\*(\d{4}-\d{2}-\d{2})\*\*:\s*",
+                  lambda match: f"{match[1]}**Record dated {match[2]}**: "
+                  if match[2] in record_dates else match[0], answer)
 
 
 def make_chart_artifact(
@@ -209,6 +222,9 @@ def run_chat_turn(
             tuple(citation.get("bbox") or []),
         )
         if key in seen:
+            # The same box can support a concise numeric row as well as its excerpt.
+            # Keep the evidence number stable while exposing the complete measurement.
+            evidence.append(f"[{seen[key]}] DOCUMENT DATE: {record_date or 'not supplied'}: {text}")
             return seen[key]
         citations.append(citation)
         index = len(citations)
@@ -222,6 +238,14 @@ def run_chat_turn(
     for record in catalog["record_summaries"]:
         for item in record["evidence"][:2]:
             add_source(item["citation"], item["text"], record["date"])
+    # Broad history retrieval can rank boilerplate above old laboratory rows.
+    # Supply every verified point for the requested metric, without altering chart tools.
+    for series in catalog["metric_series"]:
+        for point in series["points"]:
+            if point["citation"].get("source_verified"):
+                add_source(point["citation"],
+                           f"VERIFIED MEASUREMENT: {series['metric_name']} {point['value']} {point['unit']}",
+                           point["date"])
     for hit in hits:
         citation = {
             "document_id": hit.metadata.get("document_id", ""),
@@ -283,11 +307,15 @@ def run_chat_turn(
         "Write clear, concise clinical prose with Markdown headings, short bullets, and **bold key values and dates**. "
         "Use a Markdown table for multi-year comparisons (Date | Recorded finding | Source), not ASCII art. "
         "Cite EACH factual sentence or table row with [n] where n is an evidence number. Do not invent or renumber citations. "
+        "Use one citation per bracket, e.g. [1][2], never [1,2] or [<12]. Reference ranges belong in parentheses, not citation brackets. "
         "Citation numbers are for the CURRENT evidence list; never reuse old conversation reference numbers without checking their current source. "
         "Lead with the answer, not demographics or disclaimers. Distinguish the document date from an event date mentioned within it. "
         "A DOCUMENT DATE labels the source only. Never turn a discharge/report date into an admission, symptom-onset, or diagnosis date. "
         "State an event date only when the excerpt explicitly gives it; otherwise say 'documented in the record dated ...' or omit the event date. "
         "Do not extrapolate diagnosis, treatment, or values. Mention actual record gaps only. "
+        "All supported recorded measurements are included below: never claim a blood pressure, lipid, glucose or other measurement is absent if a VERIFIED MEASUREMENT row supplies it. "
+        "Do not turn absence in a retrieved excerpt into a claim that a test was never performed. "
+        "For timelines prefer a table with Record date | Documented information | Source; first-column dates are source document dates. "
         "For requests about all occurrences or lab reports, use a source-linked table and include the available dated records. "
         "Do not claim an interactive chart exists unless the chart tool has actually created an artifact. "
         "Treat phrases such as 'where applicable' as templates, not confirmed patient history, unless a dedicated dated record corroborates them. "
@@ -343,7 +371,9 @@ def run_chat_turn(
     else:
         try:
             answer = str(model.invoke(messages).content).strip()
-        except Exception:  # noqa: BLE001 - a local model outage must still return inspectable evidence
+        except Exception:
+            if os.getenv("PREPPULSE_STRICT_AI") == "1":
+                raise
             progress("Assistant · preparing source excerpts", "fallback")
             answer = (
                 "### Documented source excerpts\n\nThe local synthesis model did not respond. These are retrieved record excerpts, with links to inspect the originals.\n\n"
@@ -351,12 +381,8 @@ def run_chat_turn(
             )
     if not wants_chart and chart_offer(question):
         answer += "\n\nWould you like a chart of the supported recorded measurements as well, or is this information enough?"
-    # Accept only source numbers supplied in this turn. Invalid references cannot become links.
-    answer = re.sub(
-        r"\[(\d+)\]",
-        lambda match: match[0] if 1 <= int(match[1]) <= len(citations) else "[source unavailable]",
-        answer,
-    )
+    answer = normalize_answer(answer, len(citations),
+                              {record["date"] for record in catalog["record_summaries"]})
     source_requested = (
         bool(
             re.search(

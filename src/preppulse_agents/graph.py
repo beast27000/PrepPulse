@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Any, TypedDict
 
@@ -116,9 +117,9 @@ def classification_agent(state: AgentReviewState) -> dict[str, Any]:
         for h in hits
     )
 
-    category = "prediabetic"
-    stage = "Pre-Diabetic"
-    basis = "Documented impaired fasting glucose / borderline HbA1c"
+    category = "unknown"
+    stage = "Not assessed"
+    basis = "Insufficient documented evidence for classification"
 
     if context_text.strip():
         system_prompt, user_msg, params = format_agent_prompt(
@@ -133,14 +134,23 @@ def classification_agent(state: AgentReviewState) -> dict[str, Any]:
             resp = llm.invoke([{"role": "system", "content": system_prompt}, {"role": "user", "content": user_msg}])
             data = _parse_llm_json_object(resp.content)
             if data and data.get("category"):
-                cat = str(data["category"]).strip().lower()
+                cat = re.sub(r"[^a-z0-9]+", "_", str(data["category"]).strip().lower()).strip("_")
+                cat = {"diabetes": "diabetic", "type_1_diabetes": "diabetic", "type_2_diabetes": "diabetic",
+                       "pre_diabetic": "prediabetic", "pre_diabetes": "prediabetic", "prediabetes": "prediabetic",
+                       "non_diabetes": "non_diabetic", "nondiabetic": "non_diabetic"}.get(cat, cat)
                 if cat in ("diabetic", "prediabetic", "non_diabetic"):
                     category = cat
+                else:
+                    raise ValueError("Classification category is outside the output contract")
                 if data.get("stage"):
                     stage = str(data["stage"]).strip()
                 if data.get("diagnostic_basis"):
                     basis = str(data["diagnostic_basis"]).strip()
-        except Exception:  # noqa: BLE001
+            elif os.getenv("PREPPULSE_STRICT_AI") == "1":
+                raise ValueError("Classification response omitted its required category")
+        except Exception:
+            if os.getenv("PREPPULSE_STRICT_AI") == "1":
+                raise
             logging.getLogger(__name__).warning("classification_agent: LLM call failed; using rule fallback")
             content_combined = " ".join(h.page_content.lower() for h in hits)
             if "type 2 diabetes" in content_combined or "t2d" in content_combined or "insulin glargine" in content_combined:
@@ -275,7 +285,9 @@ def trajectory_agent(state: AgentReviewState) -> dict[str, Any]:
                     tabular_flow={str(year): val},
                 ))
                 existing_names.add(metric.lower())
-    except Exception:  # noqa: BLE001
+    except Exception:
+        if os.getenv("PREPPULSE_STRICT_AI") == "1":
+            raise
         logging.getLogger(__name__).debug("trajectory_agent: Lab discovery pass skipped")
 
     # 3. Trajectory Summary via trajectory_agent.yaml
@@ -341,7 +353,9 @@ def care_gaps_agent(state: AgentReviewState) -> dict[str, Any]:
                     severity=severity if severity in ("warning", "info", "critical") else "warning",
                     citation=cit,
                 ))
-        except Exception:  # noqa: BLE001
+        except Exception:
+            if os.getenv("PREPPULSE_STRICT_AI") == "1":
+                raise
             logging.getLogger(__name__).warning("care_gaps_agent: LLM call failed")
 
     if not items:
@@ -413,7 +427,9 @@ def mismatches_agent(state: AgentReviewState) -> dict[str, Any]:
                     source_b_citation=cit_b,
                     citations=[c for c in [cit_a, cit_b] if c],
                 ))
-        except Exception:  # noqa: BLE001
+        except Exception:
+            if os.getenv("PREPPULSE_STRICT_AI") == "1":
+                raise
             logging.getLogger(__name__).warning("mismatches_agent: LLM call failed")
 
     return {"mismatches": RecordMismatches(items=items)}
@@ -477,7 +493,9 @@ def comorbidities_agent(state: AgentReviewState) -> dict[str, Any]:
                     date=date_str,
                     citation=cit,
                 ))
-        except Exception:  # noqa: BLE001
+        except Exception:
+            if os.getenv("PREPPULSE_STRICT_AI") == "1":
+                raise
             logging.getLogger(__name__).warning("comorbidities_agent: LLM call failed")
 
     findings.sort(key=lambda f: f.date, reverse=True)
@@ -541,6 +559,10 @@ def caregiver_prep_agent(state: AgentReviewState) -> dict[str, Any]:
         resp = llm.invoke([{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}])
         parsed = _parse_llm_json_array(resp.content)
         for item_data in parsed[:6]:
+            if isinstance(item_data, str):
+                item_data = {"text_en": item_data}
+            if not isinstance(item_data, dict):
+                raise TypeError("Caregiver agent returned an invalid checklist item")
             text_en = str(
                 item_data.get("text_en")
                 or item_data.get("english")
@@ -565,7 +587,9 @@ def caregiver_prep_agent(state: AgentReviewState) -> dict[str, Any]:
                 c_low = h.page_content.lower()
                 if "allerg" in c_low or "intolerance" in c_low:
                     allergies.append(h.page_content[:80].strip())
-    except Exception:  # noqa: BLE001
+    except Exception:
+        if os.getenv("PREPPULSE_STRICT_AI") == "1":
+            raise
         logging.getLogger(__name__).warning("caregiver_prep_agent: LLM call failed")
 
     if not checklist:
@@ -645,6 +669,10 @@ def assistive_bubbles_agent(state: AgentReviewState) -> dict[str, Any]:
         resp = llm.invoke([{"role": "system", "content": sys_msg}, {"role": "user", "content": user_msg}])
         parsed = _parse_llm_json_array(resp.content)
         for b in parsed[:4]:
+            if isinstance(b, str):
+                b = {"prompt_text": b}
+            if not isinstance(b, dict):
+                raise TypeError("Assistive agent returned an invalid prompt")
             p_text = str(b.get("prompt_text", "")).strip()
             if not p_text:
                 continue
@@ -658,7 +686,9 @@ def assistive_bubbles_agent(state: AgentReviewState) -> dict[str, Any]:
                 target_series=b.get("target_series", []),
                 milestone_id=b.get("milestone_id"),
             ))
-    except Exception:  # noqa: BLE001
+    except Exception:
+        if os.getenv("PREPPULSE_STRICT_AI") == "1":
+            raise
         logging.getLogger(__name__).debug("assistive_bubbles_agent: LLM call failed; using rule fallback")
 
     if len(bubbles) < 2:
@@ -725,7 +755,7 @@ def brief_compiler_node(state: AgentReviewState) -> dict[str, Any]:
 # ---------- state graph workflow builder ----------
 
 
-def create_clinical_review_workflow() -> Any:
+def create_clinical_review_workflow(start_node: str = "classification_agent") -> Any:
     # Builds the LangGraph StateGraph connecting all 8 clinical agents
     workflow = StateGraph(AgentReviewState)
 
@@ -739,7 +769,7 @@ def create_clinical_review_workflow() -> Any:
     workflow.add_node("brief_compiler", brief_compiler_node)
 
     # Workflow edges
-    workflow.set_entry_point("classification_agent")
+    workflow.set_entry_point(start_node)
     workflow.add_edge("classification_agent", "trajectory_agent")
     workflow.add_edge("trajectory_agent", "care_gaps_agent")
     workflow.add_edge("care_gaps_agent", "mismatches_agent")

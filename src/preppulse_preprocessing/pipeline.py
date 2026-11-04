@@ -71,7 +71,7 @@ class Pipeline:
         stage2_dict = stage2.model_dump()
 
         # 5. FHIR (Stage 3)
-        fhir_bundle = to_fhir_bundle(stage2_dict, patient_id)
+        fhir_bundle = to_fhir_bundle(stage2_dict, patient_id, document_id)
 
         if persist:
             self.store.write_stage2(document_id, stage2_dict)

@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from preppulse_rag import runtime as _runtime  # noqa: F401 - load server configuration
+
 ROOT = Path(__file__).resolve().parents[2]
 MONGO_URI = os.getenv("PREPPULSE_MONGO_URI", "mongodb://127.0.0.1:27017")
 MONGO_DB = os.getenv("PREPPULSE_MONGO_DB", "preppulse")

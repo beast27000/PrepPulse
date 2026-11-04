@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,12 @@ def format_agent_prompt(
     # Returns (system_prompt, formatted_user_message, parameters_dict)
     cfg = load_agent_prompt(agent_name)
     system_prompt = cfg.get("system_prompt", "").strip()
+    if cfg.get("output_schema"):
+        system_prompt += (
+            "\n\nOUTPUT CONTRACT (field descriptions, not literal answer values):\n"
+            + json.dumps(cfg["output_schema"], ensure_ascii=False)
+            + "\nReturn this JSON structure. Choose one allowed enum value; do not copy descriptions or the whole enum expression."
+        )
     user_template = cfg.get("user_template", "")
     parameters = cfg.get("parameters", {}) or {}
 

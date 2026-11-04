@@ -87,11 +87,18 @@ def _numeric_present(value: Any, page_text: str, tol: float) -> bool:
 
 def _verify_fact(fact: dict[str, Any], page: dict[str, Any], cfg: GroundingConfig) -> dict[str, Any]:
     tokens = page.get("tokens", [])
-    page_text = page.get("full_text", "")
     anchor = fact.get("anchor_text") or ""
 
     bboxes, ratio = _find_token_span(anchor, tokens)
-    numeric_ok = _numeric_present(fact.get("value"), page_text, cfg.numeric_tolerance)
+    # A number elsewhere on the page cannot justify a different result in the matched row.
+    value = fact.get("value")
+    numeric_ok = _numeric_present(value, anchor, cfg.numeric_tolerance)
+    if isinstance(value, str):
+        numeric_ok = all(_numeric_present(number, anchor, cfg.numeric_tolerance)
+                         for number in re.findall(r"\d+(?:\.\d+)?", value))
+    if fact.get("dosage"):
+        numeric_ok = numeric_ok and all(_numeric_present(number, anchor, 0)
+                                       for number in re.findall(r"\d+(?:\.\d+)?", str(fact["dosage"])))
 
     # OCR confidence of the matched tokens (native text = 1.0)
     ocr_conf = 1.0
@@ -124,7 +131,7 @@ def ground_entities(entities: dict[str, Any], doc: dict[str, Any], cfg: Groundin
     def process(items: list[dict[str, Any]], kind: str) -> list[dict[str, Any]]:
         kept = []
         for fact in items:
-            page = pages.get(fact.get("source_page", 1)) or next(iter(pages.values()), {})
+            page = pages.get(fact.get("source_page", 1), {})
             checked = _verify_fact(fact, page, cfg)
             if checked["_verified"] and checked["confidence"] >= cfg.review_threshold:
                 # strip internal markers before keeping
@@ -146,7 +153,7 @@ def ground_entities(entities: dict[str, Any], doc: dict[str, Any], cfg: Groundin
         "labs": process(entities.get("labs", []), "lab"),
         "medications": process(entities.get("medications", []), "medication"),
         "diagnoses": process(entities.get("diagnoses", []), "diagnosis"),
-        "vitals": entities.get("vitals", []),
+        "vitals": process(entities.get("vitals", []), "vital"),
         "advice": entities.get("advice"),
         "review_queue": review,
     }
