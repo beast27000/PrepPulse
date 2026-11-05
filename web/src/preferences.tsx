@@ -7,7 +7,6 @@ export type Preferences = {
   textSize: "standard" | "large";
   contrast: "standard" | "high";
   dictationLanguage: "auto" | "en" | "hi" | "ta" | "bn" | "te";
-  showReadAloud: boolean;
   appointmentTime: string;
   appointmentInterval: number;
 };
@@ -17,7 +16,6 @@ export const defaultPreferences: Preferences = {
   textSize: "standard",
   contrast: "standard",
   dictationLanguage: "auto",
-  showReadAloud: true,
   appointmentTime: "10:30",
   appointmentInterval: 30,
 };
@@ -117,19 +115,9 @@ export function SettingsControls({
               <option value="te">Telugu</option>
             </select>
           </label>
-          <label className="settings-check">
-            <input
-              type="checkbox"
-              checked={value.showReadAloud}
-              onChange={(event) =>
-                change({ showReadAloud: event.target.checked })
-              }
-            />
-            Show Read aloud action
-          </label>
           <p>
-            Playback always requires a click and an available speech service.
-            Review dictated text before sending.
+            Review dictated text before sending. Microphone recordings are not
+            retained by the application after transcription.
           </p>
         </section>
       ) : (

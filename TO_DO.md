@@ -2,6 +2,11 @@
 
 Implementation status and backlog.
 
+## Appointment view update (5 November 2026)
+
+- [x] Owner approved Today / Upcoming appointments with date filtering and slightly narrower tabs.
+- [x] Browser Read aloud controls removed; microphone dictation retained.
+
 ## Azure pilot — deployment branch (5 November 2026)
 
 - [x] Owner approved full build, cloud deployment and live synthetic testing; latest routing instruction selects `Main_Sarvam_AI_Credits` first and Azure OpenAI second. `UI` and `main` remain unchanged.
