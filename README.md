@@ -40,7 +40,7 @@ For deeper implementation details, use:
 
 ### Branches and release ownership
 
-`UI` is the active browser application branch. Once the reviewed UI release is merged, `main` carries the same application and setup guidance. `old-ui` preserves the earlier `main` revision captured on 3 November 2026; its branch name uses a hyphen because Git branch names cannot contain spaces.
+`UI` is the active browser application branch and `main` now includes its reviewed application release and model-provider setup guidance. `old-ui` preserves the earlier `main` revision captured on 3 November 2026; its branch name uses a hyphen because Git branch names cannot contain spaces.
 
 Pushing to `UI` does not merge anything into `main`. Existing patient data is local runtime state, not part of a Git branch. Switching branches does not roll MongoDB or uploaded files backward.
 
@@ -693,7 +693,7 @@ cd PrepPulse
 git status
 ```
 
-Use `UI` for the active review build. After the owner merges the reviewed release, `main` is the stable copy of that same application. Select the branch deliberately when reproducing a specific revision.
+Use `UI` for the active review build or `main` for the stable copy of the same application release. Select the branch deliberately when reproducing a specific revision.
 
 ### 15.3 Create the Python environment
 

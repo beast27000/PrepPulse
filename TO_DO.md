@@ -7,7 +7,7 @@ Implementation status and backlog.
 - [x] Documented the implemented chat/agent choices: local LM Studio or Sarvam API, selected by `LLM_PROVIDER`; provider changes take effect after restarting the API.
 - [x] Added safe PowerShell setup examples and clarified that credentials must stay server-side and outside Git.
 - [x] Documented the current boundary: Gemini, Azure routing, automatic failover/key rotation, and Sarvam embeddings are not implemented in this UI release. When `LLM_PROVIDER=sarvam`, chat uses Sarvam while the current embedding factory returns deterministic mock embeddings; lexical retrieval remains available, but this is not full semantic hybrid retrieval.
-- [ ] Promote the reviewed UI release and this provider documentation to `main` after branch merge and build verification.
+- [x] Merged the reviewed UI release and this provider documentation into `main` after branch verification.
 
 ## Appointment view update (5 November 2026)
 
