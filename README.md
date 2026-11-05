@@ -1,5 +1,8 @@
 # PrepPulse
 
+Appointment update (5 November 2026): admin Today / Upcoming appointments tabs
+with future-date filtering; browser Read aloud controls removed, dictation retained.
+
 ## Deployment branch — Azure pilot
 
 **Live site:** https://preppulse-pilot-b8bc.centralindia.cloudapp.azure.com/
