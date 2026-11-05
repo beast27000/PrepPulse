@@ -2,6 +2,15 @@
 
 Implementation status and backlog.
 
+## Product documentation restructure (6 November 2026)
+
+- [x] Reworked the local implementation README into a concise physician assistance product overview, architecture summary, technology stack, AI component summaries, chart scope and documentation map.
+- [x] Preserved detailed frontend, backend and data, AI and RAG, architecture, and setup content in separate guides under `docs/product/`.
+- [x] Added focused frontend, backend and evidence flow diagrams. Wrapped long labels in the overall architecture diagram and retained the consultation pipeline diagram.
+- [x] Documented local model and Sarvam API configuration as implemented, including the current embedding limitation when Sarvam is selected.
+- [x] Updated UI with the latest reviewed main changes before the documentation work. Main promotion and deployment documentation remain separately tracked below.
+- [ ] Create the deployment product overview and deployment specific guides on the deployment branch. Do not describe local setup as the deployed product.
+
 ## Logout navigation access (6 November 2026)
 
 - [x] Added a Logout menu action after Settings for doctor/admin navigation and after My care plans for caregiver navigation; it calls the existing logout flow and preserves the bottom sign-out button.
@@ -99,7 +108,7 @@ Implementation status and backlog.
 - [x] Removed Guidance library. README explains actual classifier inputs, fallback limitations and supported diabetes-related chart measures.
 - [x] Verification: 37 focused API/OCR/RAG/pipeline tests and 2 Edge browser flows pass; frontend production build and targeted Ruff pass. Browser fixtures are synthetic/in-memory with deterministic translations.
 - [ ] Owner review with the actual LLM, including translation meaning and PDF wording across all six languages. Fixture tests do not establish live-model translation quality.
-- [ ] Review on `UI` before any later merge into `main`.
+- [x] The reviewed UI release was promoted to `main`; subsequent UI review changes require a separate merge.
 
 - [x] Changed full chat to a left/right layout with independently collapsible chat and chart views; the remaining panel fills the available width. Source Proof continues to open from selected citations in the right panel.
 - [x] Added an explicit diabetes-agent scope warning for heart-disease chart requests, listing supported OCR measurements and offering cited cardiac text summaries.
