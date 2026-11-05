@@ -2,6 +2,13 @@
 
 Implementation status and backlog.
 
+## Repository documentation cleanup (6 November 2026)
+
+- [x] Removed obsolete frontend handoff and Stage 2/3 specification documents, replacing their current guidance with the focused product documentation.
+- [x] Removed user-facing links to the delivery tracker, agent prompt source and API implementation; these remain project maintenance or runtime files, not product guides.
+- [x] Removed an unused Sarvam setup prompt file that contained a credential. Deleting it does not remove the value from earlier Git history; rotate the credential.
+- [x] Retained all 18 focused test files because they cover distinct application behaviors; no generated installer or test output files were found in the tracked source tree.
+
 ## Deployed product documentation restructure (6 November 2026)
 
 - [x] Replaced the deployment README front page with a standalone physician assistance product overview and live website link.
@@ -170,7 +177,7 @@ Implementation status and backlog.
 - [x] Completed browser regression checks in headless Edge against an isolated copy of the imported patient. Verified two independent charts, native reply tables, chart point/inline source links, OCR overlays with automatic source-span centering, full record expansion, panel collapse/reopen, session reload/new chat, and 1000px responsive width. Captured review screenshots outside version control.
 - [ ] Extend deterministic chart extraction to additional analytes and document layouts as needed; unsupported requests currently show a data gap instead of generated measurements.
 - [x] Added local faster-whisper dictation endpoint with transcript review in the UI. Added blank `PREPPULSE_TTS_MODEL_PATH` placeholder and disabled Read aloud control for the pending local GGUF runtime.
-- [x] Rewrote `docs/FRONTEND_INTEGRATION_SPEC.md` as a handoff matching actual code contracts and known gaps.
+- [x] Replaced the previous frontend handoff with focused product documentation matching actual code contracts and known gaps.
 - [ ] Validate the full doctor/admin flow against a running local MongoDB and real downloaded models. Static build and isolated tests are not a substitute for this live check.
 - [ ] Resolve existing full-suite fixture assumptions: some legacy tests require a pre-seeded `PP001_Arvind_Narayanan` Mongo patient, and one agent expectation differs from the current mock-model output. The isolated UI/API suite passes without that seed.
 - [x] Add a historical pathway browser for clinician-approved versions.
@@ -243,7 +250,7 @@ The owner approved a React browser UI on the `UI` branch in place of the earlier
 - [x] Add agent unit test suite (`tests/test_clinical_agents.py`) verifying compilation, schema compliance, and citation preservation.
 
 ### Phase 6: 10-Year Longitudinal Multi-Condition Engine & UI Bindings (COMPLETED)
-*(Detailed architectural specs documented in `priority_items.md` and `docs/FRONTEND_INTEGRATION_SPEC.md`)*
+*(Current architecture and interface documentation is maintained in `docs/product/ARCHITECTURE.md`, `docs/product/FRONTEND.md`, and `docs/product/AI_AND_RAG.md`.)*
 - [x] Ingested and validated real-world 10-year patient records (`PP001_Arvind_Narayanan`, 2016-2026, 13 multi-specialty PDFs) into local MongoDB `stage_1_raw_ocr` preserving normalized `[0, 1000]` bounding boxes.
 - [x] Supported `record_index.json` and `ground_truth.json` manifests in `preppulse_db.ingest`.
 - [x] Extended Pydantic schemas in `src/preppulse_agents/schemas.py`:
@@ -280,7 +287,7 @@ The owner approved a React browser UI on the `UI` branch in place of the earlier
 - [x] Implemented `src/preppulse_agents/prompt_loader.py` with caching and safe string substitution preserving literal JSON formatting.
 - [x] Implemented `src/preppulse_agents/tools.py` with deterministic `extract_metric_timeseries` tool for multi-year clinical trajectory extraction.
 - [x] Expanded multi-lingual caregiver checklist support across 6 languages: English (`en`), Hindi (`hi`), Tamil (`ta`), Bengali (`bn`), Odia (`or`), and Telugu (`te`).
-- [x] Updated `docs/FRONTEND_INTEGRATION_SPEC.md` documenting the 6-language toggle bar, dynamic brief bindings, and full-page expandable chatbot view.
+- [x] Updated frontend documentation to describe language selection, dynamic brief bindings, and the full-page expandable chatbot view.
 
 ### Phase 8: 10-Patient Dataset Verification & Pipeline Audit (COMPLETED)
 - [x] Received and verified 10-patient dataset in `datasets/PrepPulse Dataset/` (6 diabetics, 3 pre-diabetics, 1 non-diabetic).

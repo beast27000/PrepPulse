@@ -1,6 +1,6 @@
 # PrepPulse: Master Project Architecture, Implementation State & Execution Handover (`descriptions.md`)
 
-> Current release note (3 November 2026): this file retains earlier architecture proposals and milestones. Current browser behavior, caregiver follow-up, unified intake and permissions are documented in [README](README.md), [the frontend handoff](docs/FRONTEND_INTEGRATION_SPEC.md) and [TO_DO](TO_DO.md). Numerical charts are limited to supported diabetes-related OCR measures. Broader multi-condition charting, latency targets and temporary-UI proposals below are not current guarantees. The caregiver release is on `UI` for review.
+> Historical handover. Current product behavior is documented in [README](README.md) and the focused guides in [`docs/README.md`](docs/README.md). This file contains earlier proposals and should not be used as the current implementation contract.
 
 > **Document Purpose**: Complete, uncompromised, zero-loss handover and technical blueprint for PrepPulse. This document captures every architectural decision, data contract, teammate boundary, prompt strategy, RAG design, agent swarm configuration, and UI requirement so any developer or AI agent can immediately pick up and execute the project with 100% precision and zero hardcoded fallbacks.
 
