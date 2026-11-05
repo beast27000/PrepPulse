@@ -20,7 +20,7 @@
 | Recovery | Leased Mongo work queues, encrypted private Azure Blob backups, separate restore verification |
 | Secrets | Azure Key Vault plus root-only server environment file; managed identity for backups |
 
-The local `UI` branch remains independent. This branch deploys the same patient, doctor, administrator and caregiver workflows without requiring the owner's computer to remain switched on. It is a controlled synthetic-data demonstration, with clinician review required for generated output.
+The deployed product provides patient, doctor, administrator and caregiver workflows through the hosted website. It is a controlled synthetic-data demonstration, with clinician review required for generated output.
 
 ## Current endpoint and operating status
 
@@ -30,7 +30,7 @@ The local `UI` branch remains independent. This branch deploys the same patient,
 
 The site, Sarvam LLM pipeline, Azure translation and Azure voice were exercised against the live HTTPS endpoint. Azure created the OpenAI account `ai-preppulse-pilot-b8bc`, but rejected its `preppulse-chat` model deployment with **715-123420, unusual activity**. The owner is contacting Azure support. An Azure key and account alone do not mean a model is running: forced Azure inference currently returns 404. Sarvam is the working primary; there is no working second LLM until Azure allows deployment. Translation and voice have separate working Azure resources and are unaffected by this chat restriction.
 
-Credentials are private, outside Git, in `.tmp/azure_pilot/pilot_access.json` on the operator's PC and the `pilot-access` Key Vault secret. The file contains admin, assigned demonstration doctor and assigned family caregiver logins. The **cloud** admin password was rotated; local credentials/data were not changed. Do not publish this credential file or share admin credentials with participants.
+Credentials are private, outside Git, in the operator's protected credential store and the `pilot-access` Key Vault secret. Demonstration credentials include an administrator, assigned doctor and assigned family caregiver. The administrator password was rotated. Do not publish the credential file or share administrator credentials with participants.
 
 ## How inference is routed
 
@@ -39,13 +39,13 @@ Credentials are private, outside Git, in `.tmp/azure_pilot/pilot_access.json` on
 3. A provider request failure, rate limit or budget failure can advance automatic routing to Azure. Structured output still must pass the clinical pipeline's existing parsing, schema and provenance checks. Invalid clinical output is not accepted merely because a request returned HTTP 200.
 4. Admin **Settings → Cloud LLM routing** can choose automatic, Sarvam only, Azure only, or AI disabled. The preference is stored on the private disk and shared by the API/workers. Azure-only currently fails visibly until support resolves the model block.
 5. Translation and voice continue to prefer Azure regardless of the LLM choice. AI-disabled blocks these outbound services too. Azure-service failures may use Sarvam when `PREPPULSE_AZURE_FALLBACK=sarvam`.
-6. `PREPPULSE_ALLOW_LOCAL_AI=0` prevents accidental calls back to a developer PC. No IndicTrans2, LM Studio or local TTS server is required in this deployment.
+6. Provider calls are made by the deployed services using server-side configuration. Browser requests never contain provider keys.
 
 An unavailable Azure chat deployment enters a chat-specific cooldown, not a global Azure cooldown. Thus an OpenAI 404 cannot disable working Translator or Speech calls. Existing answered conversations, saved charts, records, signed plans and completed reports remain stored when inference is unavailable; new processing reports an error rather than producing fabricated substitutes.
 
 ## Patient data and page behavior
 
-The migration copied the existing local database into a new cloud database. It preserved the six original patients, aliases, permanent PrepPulse IDs, assignments, documents, visits, appointments, chat sessions/messages, charts, source provenance, FHIR versions, decisions, signed pathways and caregiver reports. All **68 distinct private files** in the migration manifest were copied and SHA-256 checked. The source local database was read only. A clearly labelled seventh patient, **Deployment verification (synthetic)**, holds the new end-to-end upload/caregiver tests.
+The migration copied the source workspace into the deployed database. It preserved the six original patients, aliases, permanent PrepPulse IDs, assignments, documents, visits, appointments, chat sessions/messages, charts, source provenance, FHIR versions, decisions, signed pathways and caregiver reports. All **68 distinct private files** in the migration manifest were copied and SHA-256 checked. The source database was read only. A clearly labelled seventh patient, **Deployment verification (synthetic)**, holds the end-to-end upload and caregiver tests.
 
 - **Patients:** consultation cards, source-linked findings, collapsible chat/source/checklist panels, Analyze records, record upload, visit lifecycle and review actions. Source boxes remain linked to authenticated original-page previews.
 - **Today:** assigned doctor's current appointments and links to the patient workspace.
@@ -98,9 +98,9 @@ Full results: [VERIFICATION.md](VERIFICATION.md). Key live checks:
 
 The Azure subscription was confirmed **Free Trial, spending limit On**. No Pay-As-You-Go upgrade was performed. This deployment consumes trial credit; it is **not an indefinitely free hosting offer**. The selected VM's queried Linux rate was approximately **USD 0.101/hour**, or USD 12.12 for 120 hours and **USD 72.72 for 30 days of continuous VM compute**, before disks, IP/storage and AI usage. The original short pilot used an infrastructure planning reserve of USD 25 for five days. For the owner's requested longer trial window, a rough USD 90 infrastructure planning allowance plus the USD 50 application Azure-AI allowance would fit within a fresh USD 200 credit **if actual usage and other subscription spending stay within those estimates**. These are estimates, not an Azure billing guarantee or a global subscription budget.
 
-Application reservations cap Sarvam at **INR 500** and Azure AI at **USD 50** using configured conservative estimates. The Sarvam model's reported tokens adjust successful LLM estimates. Provider invoices and shared-account spending can differ. The application does not have a verified live Sarvam wallet-balance API; it cannot claim to know the remaining 1000+ credits. `scripts/report_pilot_usage.py` reports content-free local estimates only. Credit exhaustion and Azure restrictions can make new AI actions unavailable while previously saved data remains readable.
+Application reservations cap Sarvam at **INR 500** and Azure AI at **USD 50** using configured conservative estimates. The Sarvam model's reported tokens adjust successful LLM estimates. Provider invoices and shared-account spending can differ. The application does not have a verified live Sarvam wallet-balance API; it cannot claim to know the remaining 1000+ credits. `scripts/report_pilot_usage.py` reports content-free application estimates only. Credit exhaustion and Azure restrictions can make new AI actions unavailable while previously saved data remains readable.
 
-Monitor Azure Cost Management and the Sarvam dashboard throughout the trial. **There is no five-day service cutoff.** Use the actual trial-expiry date and remaining credit displayed in the Azure portal; credit exhaustion or subscription expiry can stop resources before any desired 30-day period ends. The 2-core single-VM design, one clinical worker, provider rate limits and upload/CPU load remain the principal capacity limits. The earlier local 100-patient rehearsal is useful sizing evidence, not a guarantee of all workloads at that scale in this VM.
+Monitor Azure Cost Management and the Sarvam dashboard throughout the trial. **There is no five-day service cutoff.** Use the actual trial-expiry date and remaining credit displayed in the Azure portal; credit exhaustion or subscription expiry can stop resources before any desired 30-day period ends. The 2-core single-VM design, one clinical worker, provider rate limits and upload/CPU load remain the principal capacity limits. The measured login workload is not a guarantee for concurrent clinical analyses.
 
 ## Reproduce the deployed runtime
 
@@ -149,9 +149,9 @@ DNS must point to the VM before Caddy can obtain its HTTPS certificate. Expose 8
 
 ### Migration and repeat deployment
 
-`prepare_azure_pilot.py` reads the original local database and prepares a private snapshot and copied/hash-checked files. **It is configured for this operator's pilot**, including resource names; review and adjust it before reuse. `import_azure_snapshot.py` refuses a nonempty destination database. Do not rerun an initial import over an active deployed workspace. Use a fresh target and compare source/destination counts and file hashes. Never run the repository's destructive audit/reset script against the live database.
+`prepare_azure_pilot.py` reads the designated source database and prepares a private snapshot and copied, hash-checked files. **It is configured for this operator's pilot**, including resource names; review and adjust it before reuse. `import_azure_snapshot.py` refuses a nonempty destination database. Do not rerun an initial import over an active deployed workspace. Use a fresh target and compare source/destination counts and file hashes. Never run the repository's destructive audit/reset script against the live database.
 
-After code changes, rebuild `web/dist` locally, package the allowlisted release, and copy it to the VM. For this existing pilot, the operator's private SSH key is in ignored staging:
+After code changes, rebuild `web/dist` in the release environment, package the allowlisted release, and copy it to the VM. For this existing pilot, the operator's private SSH key is stored in protected staging:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/package_azure_release.py
@@ -184,7 +184,7 @@ sudo python3 /opt/preppulse/scripts/verify_pilot_restore.py
 
 The restore verifier uses **`preppulse_restore_verification`**, never the live database. Its `--drop` applies only to that explicitly mapped verification namespace. It decrypts to a private temporary directory, validates archived source hashes and compares stable collection counts; plaintext verification files are deleted on success. Actual disaster recovery must restore both Mongo and files/SQLite/preferences from the same snapshot, with correct ownership and runtime secrets restored separately.
 
-Encrypted copies live on the VM and in Blob storage. The encryption key is `/etc/preppulse/backup.key`, with a separate private local copy and Key Vault secret. **Export a copy outside the resource group before deleting the group**: deleting the group also deletes its VM, disk, storage and Key Vault. A backup inside a deleted resource group is not independent disaster recovery.
+Encrypted copies live on the VM and in Blob storage. The encryption key is `/etc/preppulse/backup.key`, with a separate protected copy outside Azure and a Key Vault secret. **Export a copy outside the resource group before deleting the group**: deleting the group also deletes its VM, disk, storage and Key Vault. A backup inside a deleted resource group is not independent disaster recovery.
 
 ## Security and next steps
 

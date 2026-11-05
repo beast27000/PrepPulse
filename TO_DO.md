@@ -2,6 +2,14 @@
 
 Implementation status and backlog.
 
+## Deployed product documentation restructure (6 November 2026)
+
+- [x] Replaced the deployment README front page with a standalone physician assistance product overview and live website link.
+- [x] Added separate deployed product guides for overview, architecture, frontend, backend, AI and retrieval, and setup and operations.
+- [x] Preserved the detailed Azure operations runbook and release verification report as linked references.
+- [x] Added deployed architecture, frontend navigation, and evidence flow diagrams.
+- [x] Documented the current Sarvam primary, Azure OpenAI deployment restriction, Azure translation and speech, CPU E5 embeddings, and tested operational limits without claiming an unavailable fallback.
+
 ## Logout navigation access (6 November 2026)
 
 - [x] Added a Logout menu action after Settings for doctor/admin navigation and after My care plans for caregiver navigation; it calls the existing logout flow and preserves the bottom sign-out button.

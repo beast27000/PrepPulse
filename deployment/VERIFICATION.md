@@ -8,10 +8,10 @@ This report describes checks actually performed on the `deployment` release. The
 | --- | --- | --- |
 | Sarvam LLM, new hackathon key | Passed | Main account connectivity plus complete 15-document extraction/FHIR/agent workflow and real cited chat |
 | Azure OpenAI LLM | Blocked | Azure rejected model deployment with 715-123420 unusual-activity restriction; account exists but deployment does not. Forced inference returns 404. Owner contacting support |
-| Automatic fallback adapter | Unit-tested | Azure/Sarvam fallback, disabled state, cap rejection, service-specific cooldown and no-local policy tested; a successful live Azure fallback is not claimed |
+| Automatic fallback adapter | Unit-tested | Azure/Sarvam fallback, disabled state, cap rejection, service-specific cooldown and provider egress restrictions tested; a successful live Azure fallback is not claimed |
 | Azure Translator | Passed | Hindi, Tamil, Bengali, Odia and Telugu; protected numbers/units, complete snapshots, translated notes/checklists/dosage and downloadable PDFs |
 | Azure Speech | Passed | Synthetic TTS→STT, plus actual public authenticated voice endpoints with default-language auto-detection |
-| Python embeddings | Passed | Server-side CPU E5, patient-scoped cloud retrieval; no LM Studio connection |
+| Python embeddings | Passed | Server-side CPU E5 and patient-scoped retrieval |
 
 The new key is selected via `Main_Sarvam_AI_Credits`. While configured, old Sarvam test-account keys are not selected. The admin routing preference was switched to Sarvam-only and back to automatic through the actual HTTPS API, then read back. Automatic remains the deployed setting.
 
@@ -55,9 +55,9 @@ Automatic script/number checks and successful PDFs do **not** establish fluent c
 
 All original six patients and associated collection records were copied into the separate cloud database. The migration hash manifest verified **68 distinct private files**. The seventh patient is explicitly a deployment verification fixture; it is not imported as a real patient.
 
-Application containers were recreated and restarted while Mongo, files and model caches stayed on the persistent disk. The subsequent live tests could still read all seven patients and the signed care data. Source local data remained unchanged.
+Application containers were recreated and restarted while Mongo, files and model caches stayed on the persistent disk. The subsequent live tests could still read all seven patients and the signed care data. The migration source remained unchanged.
 
-**100 live login → assigned-patient list → logout flows passed at 10 active flows**, taking **13.72 seconds total**, with **2.02-second p95 flow time**. These reused a demonstration doctor account in independent sessions. This verifies a bounded auth/read workload, not 100 distinct real accounts, 100 simultaneous analyses, a production capacity guarantee or a completed five-day soak. Earlier isolated local tests of 100 users/100 patient records remain documented in `UI_TESTING_REPORT.md` and must not be confused with this cloud workload.
+**100 live login → assigned-patient list → logout flows passed at 10 active flows**, taking **13.72 seconds total**, with **2.02-second p95 flow time**. These reused a demonstration doctor account in independent sessions. This verifies a bounded auth/read workload, not 100 distinct real accounts, 100 simultaneous analyses, a production capacity guarantee or a completed five-day soak.
 
 An encrypted snapshot was uploaded using VM managed identity. Downloaded Blob content matched the upload SHA-256. The archive was decrypted and restored into **`preppulse_restore_verification`**, leaving the live database intact:
 
@@ -67,7 +67,7 @@ An encrypted snapshot was uploaded using VM managed identity. Downloaded Blob co
 - 68 archived private-file hashes matched their content-addressed filenames.
 - Plaintext verification archives were removed after verification.
 
-The backup timer is installed for 22:30 UTC daily. The operator also retains a separate local encrypted copy and encryption key. Future scheduled runs still need monitoring; the timer has not completed a five-day soak.
+The backup timer is installed for 22:30 UTC daily. The operator also retains a separate encrypted copy and encryption key outside the Azure resource group. Future scheduled runs still need monitoring; the timer has not completed a five-day soak.
 
 The owner subsequently clarified that hosting should remain available during the Azure trial rather than stop after five days. No application expiry or five-day shutdown was installed. Azure's resource lookup returned no VM auto-shutdown schedules in the deployment group. The initial five-day wording describes the test window only; trial expiry and available credit remain external service limits.
 
@@ -90,7 +90,7 @@ cd web
 npx playwright test e2e/deployment.spec.ts
 ```
 
-Targeted Ruff and Git whitespace checks passed. Bicep compilation, ARM validation, ARM what-if and actual VM deployment succeeded. Some newly versioned Azure resource APIs did not have local Bicep type definitions; actual ARM validation/deployment established their accepted properties.
+Targeted Ruff and Git whitespace checks passed. Bicep compilation, ARM validation, ARM what-if and actual VM deployment succeeded. Some newly versioned Azure resource APIs lacked type definitions in the installed Bicep tooling; actual ARM validation/deployment established their accepted properties.
 
 ## Issues found during verification
 
