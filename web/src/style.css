@@ -1295,6 +1295,7 @@ a {
 }
 .appointment-switcher {
   display: flex;
+  width: 94%;
   gap: 8px;
   margin: 16px 0;
   padding: 4px;

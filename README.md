@@ -1,4 +1,9 @@
 # PrepPulse
+
+Appointment update (5 November 2026): admin Today and Upcoming appointments tabs
+include a future-date filter. Browser Read aloud controls are removed; dictation
+remains available. Historical TTS notes describe the retained backend adapter.
+
 ## Diabetes Clinical Intelligence
 
 PrepPulse is a patient-centered, evidence-linked workspace for clinical chart review. It brings uploaded medical records, OCR text, longitudinal measurements, retrieval, clinical review agents, and clinician-approved care instructions into one local browser application.
