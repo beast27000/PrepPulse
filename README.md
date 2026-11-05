@@ -109,7 +109,7 @@ Numerical charts support these measurement families: HbA1c, fasting glucose, pos
 2. **Administrator workspace:** New patient intake, Patient appointments, Patient directory, Accounts, Caregivers and Settings. Administrators manage identity, access, assignments and schedules.
 3. **Caregiver portal:** My care plans displays signed plans assigned to that caregiver type, supports the available language rendering and download, and records caregiver reported completion and notes.
 
-The [Frontend guide](docs/product/FRONTEND.md) describes each page and interaction. The [Frontend integration handoff](docs/FRONTEND_INTEGRATION_SPEC.md) documents UI contracts and workflow details.
+The [Frontend guide](docs/product/FRONTEND.md) describes each page and interaction.
 
 ## Set up the local implementation
 
@@ -129,10 +129,7 @@ The UI and main branches contain the local browser implementation. UI is the rev
 4. [Backend and data](docs/product/BACKEND.md): OCR, source storage, database collections, identity, access and API contracts.
 5. [AI and RAG](docs/product/AI_AND_RAG.md): provider behavior, retrieval, agents, charts, translation and limitations.
 6. [Setup and operations](docs/product/SETUP.md): installation and local configuration.
-7. [Delivery tracker](TO_DO.md): completed work, verification status and known limitations.
-8. [Stage 2 and 3 specification](docs/STAGE_2_AND_3_SPECIFICATION.md): structured extraction, grounding and FHIR oriented preprocessing.
-9. [Prompt files](prompts/agents): the instructions used by the review agents.
-10. [Documentation index](docs/README.md): all detailed guides and existing integration references.
+7. [Documentation index](docs/README.md): detailed product guides.
 
 ## Clinical use boundary
 

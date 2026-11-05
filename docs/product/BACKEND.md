@@ -151,4 +151,4 @@ The current runtime compatibility contract is `preppulse-ui-care-4` at `GET /api
 
 The browser's persisted conversation flow uses `/api/chat/sessions` and asynchronous turns. A legacy `/api/chat/query` route also exists; it is not the complete saved-chart conversation contract.
 
-See the [frontend integration handoff](../FRONTEND_INTEGRATION_SPEC.md) for detailed payloads rather than inferring API fields from screenshots.
+Request and response shapes are defined by the FastAPI contracts. The running service exposes its interactive OpenAPI schema at `/docs` for exact payload details.
