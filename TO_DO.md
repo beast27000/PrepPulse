@@ -2,6 +2,12 @@
 
 Implementation status and backlog.
 
+## Appointment view update (5 November 2026)
+
+- [x] Added admin Today / Upcoming appointments tabs and optional future-date filtering.
+- [x] Removed browser Read aloud controls while retaining microphone dictation.
+- [x] Owner approved applying the reviewed changes to UI and deployment.
+
 ## Local IndicTrans2 integration — UI (4 November 2026)
 
 - [x] Owner approved the scoped implementation and a local WSL2 worker alongside LM Studio. The UI branch remains the local implementation; hosted translation is deferred.

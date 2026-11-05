@@ -764,16 +764,24 @@ class AppointmentIn(BaseModel):
 @app.get("/api/appointments")
 def appointments(
     date_filter: str | None = None,
+    scope: str = "today",
     current: dict = Depends(user),
     store: WorkspaceStore = Depends(db),
 ):
     if current["role"] == "caregiver":
         raise HTTPException(403, "Doctor or admin access required")
-    day = date_filter or local_day().isoformat()
-    criteria = {"date": day}
+    today_value = local_day().isoformat()
+    if date_filter:
+        criteria = {"date": date_filter}
+    elif scope == "upcoming":
+        criteria = {"date": {"$gt": today_value}}
+    elif scope == "all":
+        criteria = {}
+    else:
+        criteria = {"date": today_value}
     if current["role"] == "doctor":
         criteria["doctor_id"] = current["user_id"]
-    rows = list(store.db.appointments.find(criteria, {"_id": 0}).sort("time", 1))
+    rows = list(store.db.appointments.find(criteria, {"_id": 0}).sort([("date", 1), ("time", 1)]))
     for row in rows:
         p = store.patient(row["patient_id"])
         row["patient_name"] = p["name"] if p else "Unknown patient"

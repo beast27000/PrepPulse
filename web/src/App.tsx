@@ -567,7 +567,7 @@ export default function App() {
   const loadAppointments = useCallback(async () => {
     if (!user || user.role === "caregiver") return;
     try {
-      setAppointments(await request<Appointment[]>("/appointments"));
+      setAppointments(await request<Appointment[]>("/appointments?scope=all"));
     } catch (err) {
       setNotice((err as Error).message);
     }
@@ -1571,10 +1571,15 @@ export default function App() {
                     text={`Appointments for ${shortDate(today())}. Select a card to open the patient workspace.`}
                   />
                   <div className="card-carousel">
-                    {appointments.filter((a) => a.status === "scheduled")
+                    {appointments
+                      .filter(
+                        (a) => a.date === today() && a.status === "scheduled",
+                      )
                       .length ? (
                       appointments
-                        .filter((a) => a.status === "scheduled")
+                        .filter(
+                          (a) => a.date === today() && a.status === "scheduled",
+                        )
                         .map((a) => (
                           <button
                             className="patient-card"
@@ -2131,6 +2136,15 @@ function AdminPages({
     day?: string;
   } | null>(null);
   const selectedDoctor = doctor || doctors[0]?.user_id || "";
+  const [appointmentView, setAppointmentView] = useState<"today" | "upcoming">("today");
+  const [appointmentDateFilter, setAppointmentDateFilter] = useState("");
+  const todayAppointments = appointments.filter((a) => a.date === today());
+  const upcomingAppointments = appointments.filter(
+    (a) => a.date > today() && a.status === "scheduled",
+  );
+  const visibleAppointments = (
+    appointmentView === "today" ? todayAppointments : upcomingAppointments
+  ).filter((a) => !appointmentDateFilter || a.date === appointmentDateFilter);
   useEffect(() => {
     if (!editAppointment) setAppointmentTime(preferences.appointmentTime);
   }, [preferences.appointmentTime]);
@@ -2275,9 +2289,39 @@ function AdminPages({
               </form>
             </section>
             <section className="panel admin-form">
-              <h3>Today’s appointments</h3>
-              {appointments.length ? (
-                appointments.map((a) => (
+              <h3>
+                {appointmentView === "today"
+                  ? "Today’s appointments"
+                  : "Upcoming appointments"}
+              </h3>
+              <div className="appointment-switcher" role="tablist" aria-label="Appointment view">
+                <button
+                  type="button"
+                  className={appointmentView === "today" ? "active" : ""}
+                  onClick={() => setAppointmentView("today")}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  className={appointmentView === "upcoming" ? "active" : ""}
+                  onClick={() => setAppointmentView("upcoming")}
+                >
+                  Upcoming appointments
+                </button>
+              </div>
+              {appointmentView === "upcoming" && (
+                <label className="appointment-date-filter">
+                  Filter by date
+                  <input
+                    type="date"
+                    value={appointmentDateFilter}
+                    onChange={(e) => setAppointmentDateFilter(e.target.value)}
+                  />
+                </label>
+              )}
+              {visibleAppointments.length ? (
+                visibleAppointments.map((a) => (
                   <div className="appointment-row" key={a.appointment_id}>
                     <span className="card-time">{a.time}</span>
                     <div>
@@ -2313,7 +2357,13 @@ function AdminPages({
                   </div>
                 ))
               ) : (
-                <p>No appointments today.</p>
+                <p>
+                  {appointmentView === "today"
+                    ? "No appointments today."
+                    : appointmentDateFilter
+                      ? "No upcoming appointments match this date."
+                      : "No upcoming appointments."}
+                </p>
               )}
             </section>
           </div>
