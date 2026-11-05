@@ -69,6 +69,8 @@ An encrypted snapshot was uploaded using VM managed identity. Downloaded Blob co
 
 The backup timer is installed for 22:30 UTC daily. The operator also retains a separate local encrypted copy and encryption key. Future scheduled runs still need monitoring; the timer has not completed a five-day soak.
 
+The owner subsequently clarified that hosting should remain available during the Azure trial rather than stop after five days. No application expiry or five-day shutdown was installed. Azure's resource lookup returned no VM auto-shutdown schedules in the deployment group. The initial five-day wording describes the test window only; trial expiry and available credit remain external service limits.
+
 ## Automated regression selection
 
 **116 selected Python tests passed**, including new Azure/provider-budget, hackathon-account priority, cooldown isolation, durable lease recovery and shared routing-preference checks. Command:

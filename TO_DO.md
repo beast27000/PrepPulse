@@ -17,6 +17,7 @@ Implementation status and backlog.
 - [x] Encrypted backup uploaded/downloaded with checksum verification; restored into a separate verification database: 32 collections, 7 patients, 6 users and 68 matching file hashes. Daily backup timer installed.
 - [x] 116 selected Python regression tests passed; frontend production build and live Playwright all-role workflow passed. Known legacy exclusions below remain excluded and are not claimed as passing.
 - [x] Deployment operating guide, setup/env example, verification report and branch-specific technology stack documented.
+- [x] Owner clarified hosting should continue through the available Azure trial, not stop after five days. No five-day shutdown/expiry/deletion was configured; Azure schedule lookup confirmed none. Updated 30-day planning estimate (VM compute about USD 72.72 before disks/storage/AI) and trial-credit caveats.
 - [ ] Azure OpenAI model deployment blocked by Azure restriction 715-123420. Owner contacting support. Adapter is tested with mocked responses; actual Azure LLM inference/fallback cannot be verified until an approved model deployment exists. Sarvam primary is working.
 - [ ] Complete five-day soak, fluent clinical translation review and real-patient operational/privacy/security review; no high-availability or 100-concurrent-AI guarantee.
 - [ ] Monitor actual Sarvam wallet/Azure costs; application estimates are not live provider balances or a subscription-wide spending guarantee. Export a backup outside the resource group before cleanup.
