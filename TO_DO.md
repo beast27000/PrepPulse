@@ -2,6 +2,13 @@
 
 Implementation status and backlog.
 
+## Model-provider documentation and branch promotion (6 November 2026)
+
+- [x] Documented the implemented chat/agent choices: local LM Studio or Sarvam API, selected by `LLM_PROVIDER`; provider changes take effect after restarting the API.
+- [x] Added safe PowerShell setup examples and clarified that credentials must stay server-side and outside Git.
+- [x] Documented the current boundary: Gemini, Azure routing, automatic failover/key rotation, and Sarvam embeddings are not implemented in this UI release. When `LLM_PROVIDER=sarvam`, chat uses Sarvam while the current embedding factory returns deterministic mock embeddings; lexical retrieval remains available, but this is not full semantic hybrid retrieval.
+- [ ] Promote the reviewed UI release and this provider documentation to `main` after branch merge and build verification.
+
 ## Appointment view update (5 November 2026)
 
 - [x] Added admin Today / Upcoming appointments tabs and optional future-date filtering.

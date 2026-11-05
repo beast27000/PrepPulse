@@ -40,7 +40,7 @@ For deeper implementation details, use:
 
 ### Branches and release ownership
 
-`UI` contains the current application changes for project-owner review. `main` remains the previously reviewed release. `old-ui` preserves the `main` revision captured on 3 November 2026; its branch name uses a hyphen because Git branch names cannot contain spaces.
+`UI` is the active browser application branch. Once the reviewed UI release is merged, `main` carries the same application and setup guidance. `old-ui` preserves the earlier `main` revision captured on 3 November 2026; its branch name uses a hyphen because Git branch names cannot contain spaces.
 
 Pushing to `UI` does not merge anything into `main`. Existing patient data is local runtime state, not part of a Git branch. Switching branches does not roll MongoDB or uploaded files backward.
 
@@ -105,8 +105,8 @@ flowchart LR
     API --> CAT[Verified OCR evidence catalog]
     API --> RAG[Patient-scoped hybrid retriever]
     RAG --> AGENTS[LangGraph review workflow]
-    AGENTS --> LLM[Local chat model]
-    RAG --> EMB[Local embedding model]
+    AGENTS --> LLM[Configured chat provider: local or Sarvam API]
+    RAG --> EMB[Local embedding provider or lexical fallback]
     CAT --> CHART[Deterministic chart tool]
     API --> STT[Local transcription]
     API -. optional .-> TTS[Compatible WAV audio service]
@@ -680,12 +680,12 @@ Install or provide:
 3. Node.js 20.19+ with a compatible npm installation.
 4. A local MongoDB service.
 5. Tesseract OCR for scanned PDFs/images, available on `PATH`.
-6. LM Studio or another compatible local text/embedding server for full agent synthesis.
+6. For chat/agent synthesis, either LM Studio with a compatible local chat model or a Sarvam API key. Embeddings are configured separately and currently use a compatible local embedding server when semantic retrieval is enabled.
 7. Microsoft Edge for the repository's default browser test configuration, if running E2E checks.
 
 The synthetic dataset, private uploads, model weights, and existing account database are not included in a clone. A new machine starts with its own data and accounts.
 
-### 15.2 Clone the UI release
+### 15.2 Clone the current application
 
 ```powershell
 git clone --branch UI https://github.com/beast27000/PrepPulse.git
@@ -693,7 +693,7 @@ cd PrepPulse
 git status
 ```
 
-Use `UI` to reproduce the current review build. Do not assume `main` already contains it.
+Use `UI` for the active review build. After the owner merges the reviewed release, `main` is the stable copy of that same application. Select the branch deliberately when reproducing a specific revision.
 
 ### 15.3 Create the Python environment
 
@@ -741,7 +741,29 @@ Set these variables in the terminals that start the API or bootstrap accounts if
 
 The local setup does not automatically configure MongoDB authentication or encryption. Keep it restricted to the intended local environment.
 
-### 15.6 Configure LM Studio
+### 15.6 Choose a chat and agent model provider
+
+The review agents use one configured chat provider. Choose **one** of these modes:
+
+- **Local LM Studio (private/local inference):** set `LLM_PROVIDER=local` and configure `LOCAL_LLM_BASE_URL` plus `LOCAL_CHAT_MODEL` as below.
+- **Sarvam API (hosted inference):** set `LLM_PROVIDER=sarvam`, provide `SARVAM_AI_CREDITS` or `SARVAM_API_KEY`, and optionally set `SARVAM_MODEL` and `SARVAM_BASE_URL`. Patient-context prompts are sent to that external API, so use only an account and data handling arrangement approved for the data being processed.
+
+The provider factory also checks a reachable local LM Studio server when `LLM_PROVIDER` is unset; configure the provider explicitly for repeatable runs. If the selected provider cannot initialize, some paths can fall back to a mock model. A mock response is for development only and must not be treated as live agent analysis. Check startup/runtime logs and the UI job state to confirm which provider actually answered.
+
+This branch does **not** implement Gemini or Azure model routing or automatic provider failover. It does not rotate multiple Sarvam keys based on remaining credits. To switch providers, stop and restart the API after changing its environment variables.
+
+For Sarvam, set the key only in the API process environment (or a private ignored `.env` file loaded by your launcher). In PowerShell:
+
+```powershell
+$env:LLM_PROVIDER = "sarvam"
+$env:SARVAM_AI_CREDITS = "<your-sarvam-api-key>"
+# Optional; defaults to sarvam-2b and https://api.sarvam.ai/v1
+$env:SARVAM_MODEL = "sarvam-2b"
+```
+
+Restart the API after setting these values. Never place a real key in source control, screenshots, or a browser-side variable. Sarvam receives the prompts and retrieved excerpts used for the request.
+
+#### Local LM Studio configuration
 
 Download and load a chat model and an embedding model appropriate for your machine. Start the local server and copy the exact API identifiers from its model list.
 
@@ -763,9 +785,7 @@ Invoke-RestMethod http://127.0.0.1:1234/v1/models
 
 A different model identifier or port is acceptable when explicitly configured. If LM Studio runs on another machine, use its reachable private-network address and understand that record text is sent to that service.
 
-The chat and embedding models serve different purposes. A text-to-speech model is not a replacement for either one. If embeddings fail, lexical retrieval can remain available; if text synthesis fails, the application can show sourced excerpts. Those are fallback modes, not full live-agent operation.
-
-The optional standalone preprocessing provider reads `LLM_BASE_URL` / other preprocessing settings as well. See `src/preppulse_preprocessing/config.py` and its provider factory if running that pipeline independently.
+The chat and embedding models serve different purposes. **Current limitation:** the browser app uses the same `LLM_PROVIDER` setting when it selects embeddings. The `local` choice creates LM Studio embeddings; `ollama` creates Ollama embeddings; `sarvam` currently resolves to deterministic mock embeddings because this branch has no Sarvam embedding adapter. Therefore Sarvam chat currently runs with lexical retrieval plus mock dense vectors, not real semantic embeddings. Do not describe that configuration as full semantic hybrid retrieval. If real embeddings are needed with Sarvam chat, use the local provider configuration explicitly in code or add a separately configurable embedding provider in a reviewed code change. The optional standalone preprocessing provider reads `LLM_BASE_URL` and its own settings; it is separate from the browser application's `LLM_PROVIDER` factory.
 
 ### 15.6a Install the local IndicTrans2 translator
 
@@ -919,7 +939,10 @@ Restart the API after changing imported configuration values. Text chat remains 
 | `PREPPULSE_DATASET_ROOT` | Authorized local dataset root; not an automatic bulk import. |
 | `PREPPULSE_SESSION_SECRET` | Signed-session secret; launcher can generate/reuse a private file if unset. |
 | `PREPPULSE_ADMIN_USER/NAME/PASSWORD` | Initial bootstrap identity; not a general password-reset mechanism. |
-| `LLM_PROVIDER` | Provider selection; use `local` for the documented LM Studio configuration. |
+| `LLM_PROVIDER` | Chat and embedding provider selector: `local`, `lmstudio`, `sarvam`, or `ollama`; see the Sarvam embedding limitation above. |
+| `SARVAM_AI_CREDITS` or `SARVAM_API_KEY` | Sarvam chat API credential; keep it in a private environment and never commit it. |
+| `SARVAM_BASE_URL` | Sarvam OpenAI-compatible API base; defaults to `https://api.sarvam.ai/v1`. |
+| `SARVAM_MODEL` | Sarvam chat model identifier; defaults to `sarvam-2b` in the current factory. |
 | `LOCAL_LLM_BASE_URL` | OpenAI-compatible base URL including `/v1`. |
 | `LOCAL_CHAT_MODEL` | Exact chat model API identifier. |
 | `LOCAL_EMBED_MODEL` | Exact embedding model API identifier. |
