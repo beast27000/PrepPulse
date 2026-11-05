@@ -2298,7 +2298,10 @@ function AdminPages({
                 <button
                   type="button"
                   className={appointmentView === "today" ? "active" : ""}
-                  onClick={() => setAppointmentView("today")}
+                  onClick={() => {
+                    setAppointmentView("today");
+                    setAppointmentDateFilter("");
+                  }}
                 >
                   Today
                 </button>
@@ -2326,6 +2329,9 @@ function AdminPages({
                     <span className="card-time">{a.time}</span>
                     <div>
                       <strong>{a.patient_name}</strong>
+                      {appointmentView === "upcoming" && (
+                        <small>{shortDate(a.date)}</small>
+                      )}
                       <small>
                         {a.patient_id} · {a.status}
                       </small>

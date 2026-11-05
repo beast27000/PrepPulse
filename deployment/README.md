@@ -10,7 +10,7 @@
 | Clinical LLM | Sarvam `sarvam-105b`, using `Main_Sarvam_AI_Credits` as the first and only selected Sarvam account when supplied |
 | LLM fallback | Azure OpenAI adapter; actual Azure model deployment currently blocked by subscription review |
 | Translation | Azure AI Translator; complete versioned multilingual snapshots; Sarvam service fallback |
-| Dictation / read aloud | Azure AI Speech; Sarvam fallback; no LM Studio or PC dependency |
+| Dictation | Azure AI Speech; Sarvam fallback; browser Read aloud controls removed |
 | Retrieval | Patient-scoped hybrid retrieval and CPU multilingual E5-small Python embeddings, pinned model revision |
 | OCR / evidence | Existing PyMuPDF/Tesseract pipeline, provenance chunking, original-page rendering and normalized source boxes |
 | Clinical orchestration | Existing eight-node LangGraph workflow and validated application contracts |
@@ -52,7 +52,7 @@ The migration copied the existing local database into a new cloud database. It p
 - **Records:** prior visits, FHIR exports, earlier signed caregiver plans, original documents and the full evidence browser. Saved chat sessions and chart artifacts remain patient-scoped.
 - **Care pathways:** editable clinician checklist, notes and prescribed schedules; explicit review/sign-off; selected-language downloads. English archive copies remain in patient records.
 - **Admin intake/directory:** repeat-patient uploads, demographic editing, folder aliases, assigned doctors and patient record management.
-- **Admin appointments:** current scheduling and previous appointments with name/ID/date filters.
+- **Admin appointments:** Today / Upcoming appointments tabs, future-date filtering and previous appointments with name/ID/date filters.
 - **Accounts/caregivers:** administrator-created identities, family/professional caregiver types, patient assignments and type-scoped access. Caregivers see assigned signed instructions, daily tasks and notes rather than clinical briefs or unrestricted records.
 - **Settings:** existing preferences plus deployed cloud LLM routing for administrators.
 
@@ -78,7 +78,7 @@ English, Hindi, Tamil, Bengali, Odia and Telugu use the existing synchronized la
 
 Doctor checklist edits, clinician notes and dosage descriptions are translated as derived display text. Signed source content, item identities, source citations, completion history and caregiver notes remain attached to the original patient/pathway. Selected-language PDF downloads render using installed Noto fonts and page breaks. The permanent archived pathway record remains English.
 
-Azure Speech read aloud is opt-in. Browser microphone audio is uploaded to authenticated dictation, decoded in memory and sent to Speech; the transcript is returned for correction before chat submission. The application does not retain microphone recordings. Language auto-detection and the public TTS→STT round trip were verified. Provider-side data processing is distinct from application retention and must be reviewed before processing real patient information.
+Browser Read aloud controls have been removed. Browser microphone audio is uploaded to authenticated dictation, decoded in memory and sent to Speech; the transcript is returned for correction before chat submission. The application does not retain microphone recordings. Language auto-detection and the public TTS→STT round trip were verified in the earlier release; the backend speech adapter remains available. Provider-side data processing is distinct from application retention and must be reviewed before processing real patient information.
 
 ## Verification performed against this release
 
