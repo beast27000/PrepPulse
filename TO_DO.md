@@ -6,6 +6,7 @@ Implementation status and backlog.
 
 - [x] Added a Logout menu action after Settings for doctor/admin navigation and after My care plans for caregiver navigation; it calls the existing logout flow and preserves the bottom sign-out button.
 - [x] Deployment verification: production build passed; mocked phone-portrait doctor/admin logout returns to login; desktop retains both menu Logout and bottom sign-out.
+- [x] Published the frontend-only bundle to the live Azure site after saving a private rollback copy of the prior static bundle. Verified the public page and new JS bundle return 200, the bundle contains the Logout label, API health is ready, and API/workers/Mongo remain healthy.
 - [ ] Phone landscape layout remains separate follow-up work.
 
 ## Appointment view update (5 November 2026)

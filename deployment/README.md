@@ -55,6 +55,7 @@ The migration copied the existing local database into a new cloud database. It p
 - **Admin appointments:** Today / Upcoming appointments tabs, future-date filtering and previous appointments with name/ID/date filters.
 - **Accounts/caregivers:** administrator-created identities, family/professional caregiver types, patient assignments and type-scoped access. Caregivers see assigned signed instructions, daily tasks and notes rather than clinical briefs or unrestricted records.
 - **Settings:** existing preferences plus deployed cloud LLM routing for administrators.
+- **Global navigation:** doctor/admin menus place **Logout** directly below Settings; caregiver menus place it below My care plans. Desktop keeps the bottom sign-out control too. On phone portrait, the top navigation is horizontally scrollable, so swipe the menu to reach Logout after the other entries.
 
 No guidance-library or separate previous-patients page has been reintroduced. The existing responsive chat, chart links, source proof and OCR geometry have not been redesigned for deployment.
 
