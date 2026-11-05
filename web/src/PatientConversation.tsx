@@ -9,7 +9,6 @@ import {
   Plus,
   Send,
   Sparkles,
-  Volume2,
   X,
 } from "lucide-react";
 import {
@@ -20,7 +19,6 @@ import {
   Citation,
   Patient,
   post,
-  postAudio,
   request,
   SavedChatMessage,
 } from "./api";
@@ -219,13 +217,10 @@ export default function PatientConversation({
   const [activeSource, setActiveSource] = useState<Citation | null>(null);
   const [recording, setRecording] = useState(false);
   const [voiceBusy, setVoiceBusy] = useState(false);
-  const [ttsReady, setTtsReady] = useState(false);
-  const [playing, setPlaying] = useState<string | null>(null);
   const [showSavedCharts, setShowSavedCharts] = useState(false);
   const sessionRef = useRef("");
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
-  const audio = useRef<HTMLAudioElement | null>(null);
   const busy = turn?.status === "queued" || turn?.status === "running";
   const storageKey = `preppulse.chat.${userId}.${patient?.patient_id}`;
   const artifact = artifacts.find(
@@ -380,18 +375,14 @@ export default function PatientConversation({
       messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
   }, [messages.length, busy]);
   useEffect(() => {
-    request<{ tts_ready: boolean }>("/voice/capabilities")
-      .then((result) => setTtsReady(result.tts_ready))
-      .catch(() => {});
     return () => {
-      audio.current?.pause();
       recorder.current?.stream.getTracks().forEach((track) => track.stop());
     };
   }, []);
   async function send(event?: React.FormEvent) {
     event?.preventDefault();
     const question = input.trim();
-    if (!patient || !question || busy || voiceBusy) return;
+    if (!patient || !question || busy || voiceBusy || recording) return;
     setError("");
     setInput("");
     try {
@@ -446,32 +437,6 @@ export default function PatientConversation({
       };
       rec.start();
       setRecording(true);
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }
-  async function readAloud(message: SavedChatMessage) {
-    if (!patient) return;
-    if (playing === message.message_id) {
-      audio.current?.pause();
-      setPlaying(null);
-      return;
-    }
-    try {
-      audio.current?.pause();
-      const blob = await postAudio("/voice/speak", {
-        patient_id: patient.patient_id,
-        text: message.text.replace(/[#*|\[\]]/g, "").slice(0, 1200),
-      });
-      const url = URL.createObjectURL(blob);
-      const player = new Audio(url);
-      audio.current = player;
-      player.onended = () => {
-        setPlaying(null);
-        URL.revokeObjectURL(url);
-      };
-      await player.play();
-      setPlaying(message.message_id);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -705,23 +670,6 @@ export default function PatientConversation({
                           </div>
                         </details>
                       )}
-                      {preferences.showReadAloud && (
-                        <button
-                          className="text-button"
-                          disabled={!ttsReady}
-                          title={
-                            ttsReady
-                              ? "Read this reply aloud"
-                              : "A compatible local audio server is required"
-                          }
-                          onClick={() => readAloud(message)}
-                        >
-                          <Volume2 size={14} />
-                          {playing === message.message_id
-                            ? "Stop playback"
-                            : "Read aloud"}
-                        </button>
-                      )}
                     </>
                   )}
                 </article>
@@ -754,11 +702,27 @@ export default function PatientConversation({
               )}
             </div>
           )}
+          {(recording || voiceBusy) && (
+            <div className="dictation-status" role="status" aria-live="polite">
+              <Mic size={14} />
+              <span>
+                {recording
+                  ? "Listening · click the microphone to stop"
+                  : "Transcribing · your text will appear for review"}
+              </span>
+              <span className="process-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            </div>
+          )}
           <form className="conversation-composer" onSubmit={send}>
             <button
               type="button"
               className={`icon-button ${recording ? "recording" : ""}`}
               aria-label={recording ? "Stop dictation" : "Dictate request"}
+              aria-pressed={recording}
               disabled={!patient || busy || voiceBusy}
               onClick={dictate}
             >
@@ -787,7 +751,9 @@ export default function PatientConversation({
             <button
               className="send-button"
               aria-label="Send message"
-              disabled={!input.trim() || !patient || busy || voiceBusy}
+              disabled={
+                !input.trim() || !patient || busy || voiceBusy || recording
+              }
             >
               <Send size={19} />
             </button>

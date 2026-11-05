@@ -29,6 +29,9 @@ class WorkspaceStore:
     def indexes(self) -> None:
         db = self.db
         db.users.create_index("username", unique=True)
+        db.users.create_index("account_id", unique=True, sparse=True)
+        db.staff_directory.create_index("user_id", unique=True)
+        db.staff_directory.create_index("account_id", unique=True)
         db.patients.create_index("patient_id", unique=True)
         db.patient_aliases.create_index("alias", unique=True)
         db.patients.create_index("name_search")
@@ -49,6 +52,23 @@ class WorkspaceStore:
         )
         db.pathways.create_index([("visit_id", ASCENDING), ("version", ASCENDING)], unique=True)
         db.pathway_items.create_index("item_id", unique=True)
+        db.care_drafts.create_index("visit_id", unique=True)
+        db.care_visit_checks.create_index(
+            [("visit_id", ASCENDING), ("item_id", ASCENDING)], unique=True
+        )
+        db.care_translations.create_index("pathway_id", unique=True)
+        db.care_segment_cache.create_index([("patient_id", 1), ("key", 1)], unique=True)
+        db.care_language_cache.create_index(
+            [("kind", 1), ("identity", 1), ("revision", 1), ("language", 1), ("source_hash", 1)],
+            unique=True,
+        )
+        db.caregiver_access.create_index(
+            [("patient_id", ASCENDING), ("caregiver_id", ASCENDING)], unique=True
+        )
+        db.care_reports.create_index(
+            [("pathway_id", ASCENDING), ("task_id", ASCENDING)], unique=True
+        )
+        db.care_notes.create_index([("pathway_id", ASCENDING), ("created_at", ASCENDING)])
         db.jobs.create_index("job_id", unique=True)
         db.chat_sessions.create_index("session_id", unique=True)
         db.chat_sessions.create_index(
@@ -58,6 +78,56 @@ class WorkspaceStore:
         db.chat_messages.create_index([("session_id", ASCENDING), ("created_at", ASCENDING)])
         db.chat_artifacts.create_index("artifact_id", unique=True)
         db.chat_turns.create_index("turn_id", unique=True)
+        for account in db.users.find({}, {"_id": 0, "password_hash": 0}):
+            self.account_identity(account)
+
+    def account_identity(self, account: dict) -> dict:
+        """Backfill public staff IDs without changing existing assignment/login keys."""
+        kind = account.get("caregiver_type")
+        if account["role"] == "caregiver" and not kind:
+            professional = self.db.caregiver_access.find_one(
+                {"caregiver_id": account["user_id"], "kind": "professional"}
+            )
+            kind = "professional" if professional else "family"
+        prefix = {
+            "doctor": "DOC",
+            "admin": "ADM",
+            "caregiver": "HCW" if kind == "professional" else "FAM",
+        }[account["role"]]
+        if not account.get("account_id"):
+            self.db.users.update_one(
+                {"user_id": account["user_id"], "account_id": {"$exists": False}},
+                {"$set": {"account_id": new_id(prefix)}},
+            )
+        actual = (
+            self.db.users.find_one({"user_id": account["user_id"]}, {"_id": 0, "password_hash": 0})
+            or account
+        )
+        if actual["role"] == "caregiver":
+            defaults = {
+                "caregiver_type": kind or "family",
+                "availability": actual.get("availability", "free"),
+            }
+            self.db.users.update_one({"user_id": actual["user_id"]}, {"$set": defaults})
+            actual.update(defaults)
+        fields = {
+            k: actual.get(k)
+            for k in (
+                "user_id",
+                "account_id",
+                "account_aliases",
+                "name",
+                "username",
+                "role",
+                "caregiver_type",
+                "availability",
+                "disabled",
+            )
+        }
+        self.db.staff_directory.update_one(
+            {"user_id": actual["user_id"]}, {"$set": fields}, upsert=True
+        )
+        return actual
 
     def patient(self, patient_id: str) -> dict | None:
         return self.db.patients.find_one({"patient_id": patient_id}, {"_id": 0})
@@ -65,6 +135,17 @@ class WorkspaceStore:
     def allowed(self, user: dict, patient_id: str) -> bool:
         if user["role"] == "admin":
             return True
+        if user["role"] == "caregiver":
+            return (
+                self.db.caregiver_access.find_one(
+                    {
+                        "patient_id": patient_id,
+                        "caregiver_id": user["user_id"],
+                        "kind": user.get("caregiver_type", "family"),
+                    }
+                )
+                is not None
+            )
         return (
             self.db.patient_access.find_one(
                 {"patient_id": patient_id, "doctor_id": user["user_id"]}
@@ -78,15 +159,28 @@ class WorkspaceStore:
         if q:
             safe = re.escape(q)
             criteria["$or"] = [
+                {"name": {"$regex": safe, "$options": "i"}},
                 {"name_search": {"$regex": safe, "$options": "i"}},
                 {"patient_id": {"$regex": safe, "$options": "i"}},
                 {"external_aliases": {"$regex": safe, "$options": "i"}},
             ]
-        if user["role"] == "doctor":
+        if user["role"] in {"doctor", "caregiver"}:
+            collection = (
+                self.db.caregiver_access if user["role"] == "caregiver" else self.db.patient_access
+            )
+            key = "caregiver_id" if user["role"] == "caregiver" else "doctor_id"
             ids = [
                 x["patient_id"]
-                for x in self.db.patient_access.find(
-                    {"doctor_id": user["user_id"]}, {"patient_id": 1}
+                for x in collection.find(
+                    {
+                        key: user["user_id"],
+                        **(
+                            {"kind": user.get("caregiver_type", "family")}
+                            if user["role"] == "caregiver"
+                            else {}
+                        ),
+                    },
+                    {"patient_id": 1},
                 )
             ]
             criteria["patient_id"] = {"$in": ids}

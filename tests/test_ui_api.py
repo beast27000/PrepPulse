@@ -20,7 +20,22 @@ from preppulse_api.store import WorkspaceStore
 
 
 @pytest.fixture
-def workspace():
+def workspace(monkeypatch, tmp_path):
+    # No test worker or generated pathway may touch the live local workspace.
+    api_module = importlib.import_module("preppulse_api.app")
+    monkeypatch.setattr(api_module.workers, "submit", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        importlib.import_module("preppulse_api.care_translation").executor,
+        "submit",
+        lambda *args, **kwargs: None,
+    )
+    for module_name in (
+        "preppulse_api.app",
+        "preppulse_api.care",
+        "preppulse_api.clinical",
+        "preppulse_api.folder_import",
+    ):
+        monkeypatch.setattr(importlib.import_module(module_name), "PRIVATE_ROOT", tmp_path)
     client = mongomock.MongoClient()
     store = WorkspaceStore.__new__(WorkspaceStore)
     store.client = client

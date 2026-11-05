@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   Bell,
-  BookOpen,
   CalendarDays,
   Check,
   ChevronRight,
@@ -43,6 +42,15 @@ import {
   setCsrf,
 } from "./api";
 import RecordWorkspace from "./RecordWorkspace";
+import CareWorkspace, { CollapsePanel, flushCareDrafts } from "./CareWorkspace";
+import UnifiedIntake from "./UnifiedIntake";
+import CaregiverAdmin from "./CaregiverAdmin";
+import AccountsAdmin from "./AccountsAdmin";
+import AdminPatientDetails from "./AdminPatientDetails";
+import CareChecklist, { CareCardHeading } from "./CareChecklist";
+import { useCareLanguage, useCareLabels } from "./careView";
+import "./administration.css";
+import VisitHistory, { AppointmentHistory } from "./VisitHistory";
 import PatientConversation from "./PatientConversation";
 import ProcessBubble from "./ProcessBubble";
 import BriefHistory from "./BriefHistory";
@@ -54,16 +62,18 @@ import {
 } from "./preferences";
 
 type Page =
+  | "Appointment history"
   | "Today"
   | "Patients"
   | "Records"
   | "Care pathways"
-  | "Guidance library"
   | "Settings"
   | "New patient intake"
   | "Patient appointments"
   | "Patient directory"
   | "Accounts"
+  | "Caregivers"
+  | "My care plans"
   | "Chat workspace"
   | "Record workspace";
 const doctorPages: Page[] = [
@@ -71,7 +81,6 @@ const doctorPages: Page[] = [
   "Patients",
   "Records",
   "Care pathways",
-  "Guidance library",
   "Settings",
 ];
 const adminPages: Page[] = [
@@ -79,6 +88,7 @@ const adminPages: Page[] = [
   "Patient appointments",
   "Patient directory",
   "Accounts",
+  "Caregivers",
   "Settings",
 ];
 const navIcons: Record<string, typeof Activity> = {
@@ -86,12 +96,13 @@ const navIcons: Record<string, typeof Activity> = {
   Patients: HeartPulse,
   Records: FolderOpen,
   "Care pathways": ClipboardCheck,
-  "Guidance library": BookOpen,
   Settings: Settings2,
   "New patient intake": Plus,
   "Patient appointments": CalendarDays,
   "Patient directory": HeartPulse,
   Accounts: ShieldCheck,
+  Caregivers: HeartPulse,
+  "My care plans": ClipboardCheck,
 };
 const labels: Record<string, string> = {
   en: "English",
@@ -407,9 +418,16 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("preppulse.sidebar-collapsed") === "true",
   );
-  const [page, setPage] = useState<Page>("Patients");
+  const [page, commitPage] = useState<Page>("Patients");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selected, setSelected] = useState<Patient | null>(null);
+  const [careLanguage] = useCareLanguage(selected?.patient_id || "");
+  const careLabel = useCareLabels(
+    careLanguage,
+    !!user && user.role !== "admin",
+  );
+  const portalLabel = (text: string) =>
+    user?.role === "caregiver" ? careLabel(text) : text;
   const selectedPatientRef = useRef<string | null>(null);
   selectedPatientRef.current = selected?.patient_id || null;
   const [search, setSearch] = useState("");
@@ -420,40 +438,56 @@ export default function App() {
   const [job, setJob] = useState<ProcessingJob | null>(null);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [citation, setCitation] = useState<Citation | null>(null);
-  const [recordPreview, setRecordPreview] = useState<Doc | null>(null);
   const [chatExpanded, setChatExpanded] = useState(false);
+  const [rightClosed, setRightClosed] = useState(false);
+  const [requestedVisit, setRequestedVisit] = useState("");
   const [language, setLanguage] = useState("en");
   const [notice, setNotice] = useState("");
+  const [apiMismatch, setApiMismatch] = useState(false);
+  const [historical, setHistorical] = useState<{
+    patient: Patient;
+    visit: Visit | null;
+    brief: Brief | null;
+    documents: Doc[];
+    visits: Visit[];
+    snapshot_available: boolean;
+  } | null>(null);
+  const historicalRef = useRef(historical);
+  historicalRef.current = historical;
   const [uploadOpen, setUploadOpen] = useState(false);
   const [chatFullscreen, setChatFullscreen] = useState(false);
   const [recordReturnPage, setRecordReturnPage] = useState<Page>("Patients");
-  const [pathway, setPathway] = useState<{
-    mode: string;
-    doctor_notes: string;
-    reviewed_evidence: { title: string; citation: Citation }[];
-    items: { item_id: string; text: string; completed: boolean }[];
-    agent_suggestions: string[];
-  } | null>(null);
-  const [pathwayHistory, setPathwayHistory] = useState<
-    {
-      pathway_id: string;
-      mode: string;
-      approved_at: string;
-      doctor_notes: string;
-      items: { text: string; completed: boolean }[];
-    }[]
-  >([]);
-  const [notes, setNotes] = useState("");
-  const [newPathwayItem, setNewPathwayItem] = useState("");
   const [accounts, setAccounts] = useState<User[]>([]);
   const activeVisit = visits.find(
-    (v) => v.status === "active" && v.doctor_id === user?.user_id,
+    (v) =>
+      !historical && v.status === "active" && v.doctor_id === user?.user_id,
   );
-  const nav = user?.role === "admin" ? adminPages : doctorPages;
+  const nav: Page[] =
+    user?.role === "admin"
+      ? adminPages
+      : user?.role === "caregiver"
+        ? ["My care plans"]
+        : doctorPages;
+  async function setPage(next: Page) {
+    if (await flushCareDrafts()) {
+      commitPage(next);
+      return true;
+    }
+    setNotice(
+      "Complete the care draft fields and wait for saving before switching pages.",
+    );
+    return false;
+  }
   function acceptLogin(next: User) {
     setPreferences(readPreferences(next.user_id));
     setUser(next);
-    setPage(next.role === "admin" ? "New patient intake" : "Patients");
+    setPage(
+      next.role === "admin"
+        ? "New patient intake"
+        : next.role === "caregiver"
+          ? "My care plans"
+          : "Patients",
+    );
   }
   useEffect(() => {
     if (!user) return;
@@ -489,7 +523,7 @@ export default function App() {
           "/patients?q=" + encodeURIComponent(q),
         );
         setPatients(rows);
-        if (!selected && rows.length && user.role === "doctor")
+        if (!selected && rows.length && user.role !== "admin")
           setSelected(rows[0]);
       } catch (err) {
         setNotice((err as Error).message);
@@ -500,6 +534,14 @@ export default function App() {
   const loadSelected = useCallback(async () => {
     if (!selected || user?.role !== "doctor") return;
     const id = selected.patient_id;
+    if (historicalRef.current?.patient.patient_id === id) {
+      const old = historicalRef.current;
+      setDocuments(old.documents);
+      setBrief(old.brief);
+      setVisits(old.visits);
+      setJob(null);
+      return;
+    }
     const results = await Promise.allSettled([
       request<Doc[]>(`/patients/${id}/documents`),
       request<{ brief: Brief }>(`/patients/${id}/brief`),
@@ -523,19 +565,39 @@ export default function App() {
     if (results[3].status === "fulfilled") setJob(results[3].value);
   }, [selected, user]);
   const loadAppointments = useCallback(async () => {
-    if (!user) return;
+    if (!user || user.role === "caregiver") return;
     try {
-      setAppointments(await request<Appointment[]>("/appointments"));
+      setAppointments(await request<Appointment[]>("/appointments?scope=all"));
     } catch (err) {
       setNotice((err as Error).message);
     }
   }, [user]);
   useEffect(() => {
+    async function checkRuntime() {
+      try {
+        const r = await fetch("/api/runtime");
+        const value = r.ok ? await r.json() : null;
+        setApiMismatch(value?.contract !== "preppulse-ui-care-4");
+      } catch {
+        setApiMismatch(true);
+      }
+    }
+    checkRuntime();
+    const timer = setInterval(checkRuntime, 30000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
     request<User>("/auth/me")
       .then((u) => {
         setCsrf(u.csrf);
         acceptLogin(u);
-        setPage(u.role === "admin" ? "New patient intake" : "Patients");
+        setPage(
+          u.role === "admin"
+            ? "New patient intake"
+            : u.role === "caregiver"
+              ? "My care plans"
+              : "Patients",
+        );
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -553,7 +615,7 @@ export default function App() {
     setVisits([]);
     setCitation(null);
     loadSelected();
-  }, [selected?.patient_id]);
+  }, [selected?.patient_id, historical]);
   useEffect(() => {
     if (user) loadAppointments();
     const timer = setInterval(loadAppointments, 15000);
@@ -579,28 +641,15 @@ export default function App() {
     return () => clearInterval(timer);
   }, [selected, job?.status, loadSelected]);
   useEffect(() => {
-    if (user?.role === "admin")
+    if (user?.role !== "admin") return;
+    const load = () =>
       request<User[]>("/admin/accounts")
         .then(setAccounts)
         .catch(() => {});
+    load();
+    const timer = setInterval(load, 10000);
+    return () => clearInterval(timer);
   }, [user]);
-  useEffect(() => {
-    if (activeVisit && page === "Care pathways") {
-      request<typeof pathway>(`/visits/${activeVisit.visit_id}/pathway`)
-        .then(setPathway)
-        .catch(() => {});
-      setNotes(activeVisit.doctor_notes || "");
-    }
-  }, [activeVisit?.visit_id, page]);
-  useEffect(() => {
-    if (selected && page === "Care pathways")
-      request<typeof pathwayHistory>(
-        `/patients/${selected.patient_id}/pathways`,
-      )
-        .then(setPathwayHistory)
-        .catch(() => setPathwayHistory([]));
-  }, [selected?.patient_id, page, visits]);
-
   async function run<T>(
     action: () => Promise<T>,
     success?: string,
@@ -613,7 +662,15 @@ export default function App() {
       setNotice((err as Error).message);
     }
   }
-  function pick(p: Patient) {
+  async function pick(p: Patient) {
+    if (!(await flushCareDrafts())) {
+      setNotice(
+        "Complete and save the current care draft before changing patients.",
+      );
+      return;
+    }
+    historicalRef.current = null;
+    setHistorical(null);
     setSelected(p);
     setSearch("");
     setShowSearch(false);
@@ -657,14 +714,17 @@ export default function App() {
     setPage("Record workspace");
   }
   function selectEvidence(source: Citation | null | undefined, title: string) {
+    setRightClosed(false);
     setCitation(
-      source || {
-        document_id: "",
-        document_title: title,
-        page_number: 1,
-        bbox: [],
-        source_verified: false,
-      },
+      source
+        ? { ...source }
+        : {
+            document_id: "",
+            document_title: title,
+            page_number: 1,
+            bbox: [],
+            source_verified: false,
+          },
     );
   }
   async function reviewFinding(
@@ -690,72 +750,45 @@ export default function App() {
       "Review decision saved",
     );
   }
-  async function saveNotes() {
-    if (!activeVisit) return;
-    await run(
-      () => post(`/visits/${activeVisit.visit_id}/notes`, { notes }),
-      "Clinician notes saved",
-    );
-    loadSelected();
-  }
-  async function refreshPathway() {
-    if (activeVisit) {
-      const next = await run(() =>
-        request<typeof pathway>(`/visits/${activeVisit.visit_id}/pathway`),
+  async function choosePatient(p: Patient) {
+    if (await flushCareDrafts()) {
+      historicalRef.current = null;
+      setHistorical(null);
+      setSelected(p);
+    } else
+      setNotice(
+        "Complete and save the current care draft before changing patients.",
       );
-      if (next) setPathway(next);
-    }
   }
-  async function addPathwayItem(text: string) {
-    if (!activeVisit || !text.trim()) return;
-    const result = await run(
-      () => post(`/visits/${activeVisit.visit_id}/pathway/items`, { text }),
-      "Pathway item added for clinician review",
-    );
-    if (result) {
-      setNewPathwayItem("");
-      refreshPathway();
-    }
-  }
-  async function checkPathwayItem(itemId: string, completed: boolean) {
-    if (!activeVisit) return;
-    await run(() =>
-      patch(`/visits/${activeVisit.visit_id}/pathway/items/${itemId}`, {
-        completed,
-      }),
-    );
-    refreshPathway();
-  }
-  async function endVisit() {
-    if (!activeVisit) return;
-    if (
-      !confirm(
-        "Review and finalize this visit pathway? This records your clinical approval.",
-      )
-    )
-      return;
-    const confirm_evidence_only =
-      !notes.trim() &&
-      confirm(
-        "No clinician notes were entered. Finalize an evidence-only record?",
+  async function openHistorical(p: Patient, visitId?: string) {
+    if (!(await flushCareDrafts())) return;
+    try {
+      const value = await request<NonNullable<typeof historical>>(
+        `/patients/${p.patient_id}/historical-workspace${visitId ? `?visit_id=${visitId}` : ""}`,
       );
-    if (!notes.trim() && !confirm_evidence_only) return;
-    if (notes !== activeVisit.doctor_notes)
-      await post(`/visits/${activeVisit.visit_id}/notes`, { notes });
-    const result = await run(
-      () =>
-        post(`/visits/${activeVisit.visit_id}/end`, {
-          confirm: true,
-          confirm_evidence_only,
-        }),
-      "Visit ended and pathway finalized",
-    );
-    if (result) {
-      loadSelected();
-      setPage("Care pathways");
+      historicalRef.current = value;
+      setHistorical(value);
+      setSelected(value.patient);
+      setDocuments(value.documents);
+      setBrief(value.brief);
+      setVisits(value.visits);
+      setJob(null);
+      setCitation(null);
+      setChatFullscreen(false);
+      commitPage("Patients");
+    } catch (e) {
+      setNotice((e as Error).message);
     }
+  }
+  async function expandChat() {
+    if (await flushCareDrafts()) setChatFullscreen(true);
+    else setNotice("Complete and save the care draft before opening chat.");
   }
   async function logout() {
+    if (!(await flushCareDrafts())) {
+      setNotice("Complete and save the care draft before signing out.");
+      return;
+    }
     await run(() => post("/auth/logout", {}));
     setUser(null);
     setSelected(null);
@@ -770,6 +803,7 @@ export default function App() {
   return (
     <div
       className={"app-shell " + (sidebarCollapsed ? "sidebar-collapsed" : "")}
+      lang={user.role === "caregiver" ? careLanguage : undefined}
     >
       <aside className="sidebar">
         <div className="brand">
@@ -782,22 +816,26 @@ export default function App() {
           </span>
         </div>
         <nav aria-label="Main navigation">
-          <span className="nav-caption">WORKSPACE</span>
+          <span className="nav-caption">{portalLabel("WORKSPACE")}</span>
           {nav.map((item) => {
             const Icon = navIcons[item];
             return (
               <button
                 key={item}
-                title={item}
-                aria-label={item}
+                title={portalLabel(item)}
+                aria-label={portalLabel(item)}
                 className={"nav-item " + (page === item ? "active" : "")}
-                onClick={() => {
-                  setPage(item);
+                onClick={async () => {
+                  if (!(await setPage(item))) return;
+                  if (item === "Patients") {
+                    historicalRef.current = null;
+                    setHistorical(null);
+                  }
                   setChatFullscreen(false);
                 }}
               >
                 <Icon size={17} />
-                <span className="nav-label">{item}</span>
+                <span className="nav-label">{portalLabel(item)}</span>
                 {item === "Today" &&
                   appointments.some((a) => a.status === "scheduled") && (
                     <i className="nav-dot" />
@@ -817,9 +855,19 @@ export default function App() {
           </div>
           <div>
             <strong>{user.name}</strong>
-            <small>{user.role === "admin" ? "Administrator" : "Doctor"}</small>
+            <small>
+              {user.role === "admin"
+                ? "Administrator"
+                : user.role === "caregiver"
+                  ? careLabel("Caregiver")
+                  : "Doctor"}
+            </small>
           </div>
-          <button className="icon-button" onClick={logout} title="Sign out">
+          <button
+            className="icon-button"
+            onClick={logout}
+            title={portalLabel("Sign out")}
+          >
             <LogOut size={17} />
           </button>
         </div>
@@ -849,8 +897,10 @@ export default function App() {
                 <PanelLeftClose size={18} />
               )}
             </button>
-            Workspace <ChevronRight size={14} />{" "}
-            <strong>{chatFullscreen ? "Chat workspace" : page}</strong>
+            {portalLabel("Workspace")} <ChevronRight size={14} />{" "}
+            <strong>
+              {chatFullscreen ? "Chat workspace" : portalLabel(page)}
+            </strong>
           </div>
           <div className="topbar-right">
             {user.role === "doctor" && (
@@ -903,6 +953,16 @@ export default function App() {
             </div>
           </div>
         </header>
+        {apiMismatch && (
+          <div className="api-version-notice" role="alert">
+            The API process is older than this UI. Run{" "}
+            <code>
+              powershell -ExecutionPolicy Bypass -File scripts/start_ui_api.ps1
+            </code>{" "}
+            from the PrepPulse folder, then refresh and sign in. New
+            caregiver/history features cannot work until the API is restarted.
+          </div>
+        )}
         {notice && (
           <div className="notice" role="status">
             <span>{notice}</span>
@@ -921,8 +981,42 @@ export default function App() {
         >
           {user.role === "doctor" ? (
             <>
+              {page === "Appointment history" && (
+                <AppointmentHistory
+                  full
+                  onBack={() => setPage("Records")}
+                  onOpen={(a) => {
+                    const p = patients.find(
+                      (x) => x.patient_id === a.patient_id,
+                    );
+                    if (p) openHistorical(p, a.visit_id);
+                  }}
+                />
+              )}
               {page === "Patients" && !chatFullscreen && (
                 <>
+                  {historical && (
+                    <div className="historical-banner">
+                      <strong>
+                        Historical patient workspace
+                        {historical.visit
+                          ? ` · ${new Date(historical.visit.started_at).toLocaleString()}`
+                          : ""}
+                      </strong>
+                      <p>
+                        {historical.snapshot_available
+                          ? "Showing the brief saved at this visit. Source Proof and chat remain available."
+                          : "This older visit has no saved brief snapshot. The latest available brief is shown for reference, not as a reconstruction of that visit."}{" "}
+                        Chat searches all uploaded patient records.
+                      </p>
+                      <button
+                        className="secondary"
+                        onClick={() => setPage("Records")}
+                      >
+                        Back to Records
+                      </button>
+                    </div>
+                  )}
                   <div className="page-intro">
                     <div>
                       <div className="eyebrow teal">
@@ -947,26 +1041,41 @@ export default function App() {
                     <div className="intro-actions">
                       {selected && (
                         <>
-                          <button className="secondary" onClick={startVisit}>
-                            {activeVisit ? "Visit active" : "Start visit"}
-                          </button>
                           <button
                             className="secondary"
-                            onClick={generateBrief}
-                            disabled={
-                              job?.status === "queued" ||
-                              job?.status === "running" ||
-                              !documents.length
-                            }
+                            onClick={() => setRightClosed(!rightClosed)}
                           >
-                            <Activity size={17} /> Analyze records
+                            {rightClosed
+                              ? "Show assistant / care panels"
+                              : "Collapse right panels"}
                           </button>
-                          <button
-                            className="primary"
-                            onClick={() => setUploadOpen(true)}
-                          >
-                            <CloudUpload size={17} /> Upload new record
-                          </button>
+                          {!historical && (
+                            <>
+                              <button
+                                className="secondary"
+                                onClick={startVisit}
+                              >
+                                {activeVisit ? "Visit active" : "Start visit"}
+                              </button>
+                              <button
+                                className="secondary"
+                                onClick={generateBrief}
+                                disabled={
+                                  job?.status === "queued" ||
+                                  job?.status === "running" ||
+                                  !documents.length
+                                }
+                              >
+                                <Activity size={17} /> Analyze records
+                              </button>
+                              <button
+                                className="primary"
+                                onClick={() => setUploadOpen(true)}
+                              >
+                                <CloudUpload size={17} /> Upload new record
+                              </button>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -979,7 +1088,12 @@ export default function App() {
                   {selected ? (
                     <div
                       className={
-                        "workspace-grid " + (chatExpanded ? "panel-wide" : "")
+                        "workspace-grid " +
+                        (rightClosed
+                          ? "rail-collapsed"
+                          : chatExpanded
+                            ? "panel-wide"
+                            : "")
                       }
                     >
                       <div className="main-column">
@@ -992,10 +1106,10 @@ export default function App() {
                               </h2>
                               <p>
                                 {selected.name} <span>·</span>{" "}
-                                {brief?.age_sex ||
-                                  (ageOf(selected.dob)
-                                    ? `${ageOf(selected.dob)} years`
-                                    : "Age unavailable")}{" "}
+                                {selected.dob || selected.age != null
+                                  ? `${ageOf(selected.dob) ?? selected.age} years / ${selected.sex || brief?.gender || "Not recorded"}`
+                                  : brief?.age_sex ||
+                                    `Age unavailable / ${selected.sex || "Not recorded"}`}{" "}
                                 <span>·</span>{" "}
                                 {brief?.classification.stage ||
                                   "Classification pending"}{" "}
@@ -1047,7 +1161,9 @@ export default function App() {
                             <>
                               <BriefHistory
                                 brief={brief}
-                                onCitation={setCitation}
+                                onCitation={(source) =>
+                                  selectEvidence(source, "Record")
+                                }
                               />
                               <div className="four-cards">
                                 <div className="brief-card cool">
@@ -1177,33 +1293,23 @@ export default function App() {
                                     </p>
                                   )}
                                 </div>
-                                <div className="brief-card blue">
-                                  <div className="card-head">
-                                    <span className="card-no">04</span>
-                                    <div>
-                                      <span className="eyebrow">
-                                        FAMILY HANDOFF
-                                      </span>
-                                      <h3>
-                                        {activeVisit?.admitted
-                                          ? "Caregiver pathway"
-                                          : "Family prep sheet"}
-                                      </h3>
-                                    </div>
-                                    <ClipboardCheck size={17} />
-                                  </div>
-                                  {brief.caregiver_prep.checklist
-                                    .slice(0, 3)
-                                    .map((item, i) => (
-                                      <div className="check-preview" key={i}>
-                                        <Check size={15} />
-                                        {String(
-                                          item[`text_${language}`] ||
-                                            item.text_en,
-                                        )}
+                                {!historical && (
+                                  <div className="brief-card blue">
+                                    <div className="card-head">
+                                      <span className="card-no">04</span>
+                                      <div>
+                                        <CareCardHeading patient={selected} />
                                       </div>
-                                    ))}
-                                </div>
+                                      <ClipboardCheck size={17} />
+                                    </div>
+                                    <CareChecklist
+                                      key={selected.patient_id}
+                                      patient={selected}
+                                      summary
+                                      onEdit={() => setPage("Care pathways")}
+                                    />
+                                  </div>
+                                )}
                               </div>
                               <div className="visit-strip">
                                 <div>
@@ -1268,7 +1374,7 @@ export default function App() {
                                             !f.citation?.source_verified
                                           }
                                           onClick={() =>
-                                            setCitation(f.citation || null)
+                                            selectEvidence(f.citation, f.title)
                                           }
                                         >
                                           <FileText size={13} />
@@ -1292,7 +1398,10 @@ export default function App() {
                                           ),
                                         )}
                                       </div>
-                                      <div className="finding-controls">
+                                      <div
+                                        className="finding-controls"
+                                        hidden={!!historical}
+                                      >
                                         <div>
                                           <button
                                             onClick={() =>
@@ -1331,7 +1440,7 @@ export default function App() {
                             </>
                           )}
                         </section>
-                        <div className="bottom-actions">
+                        <div className="bottom-actions" hidden={!!historical}>
                           <button
                             className="secondary"
                             onClick={generateBrief}
@@ -1358,7 +1467,6 @@ export default function App() {
                                 className="primary"
                                 onClick={() => {
                                   setPage("Care pathways");
-                                  setNotes(activeVisit.doctor_notes || "");
                                 }}
                               >
                                 Review pathway / end session
@@ -1372,7 +1480,7 @@ export default function App() {
                               <button
                                 key={b.bubble_id}
                                 onClick={() => {
-                                  setChatFullscreen(true);
+                                  expandChat();
                                   setPage("Chat workspace");
                                 }}
                               >
@@ -1384,71 +1492,55 @@ export default function App() {
                         ) : null}
                       </div>
                       <div
+                        hidden={rightClosed}
                         className={
                           "right-column " +
                           (chatExpanded ? "chat-inline-expanded" : "")
                         }
                       >
-                        <SourceProof
-                          patient={selected}
-                          citation={citation}
-                          expanded={false}
-                          onExpand={openRecordWorkspace}
-                        />
-                        <button
-                          className="secondary inline-expand"
-                          onClick={() => setChatExpanded((v) => !v)}
+                        <CollapsePanel title="PrepPulse assistant">
+                          <button
+                            className="secondary inline-expand"
+                            onClick={() => setChatExpanded((v) => !v)}
+                          >
+                            {chatExpanded
+                              ? "Standard column width"
+                              : "Expand assistant inline"}
+                          </button>
+                          <PatientConversation
+                            patient={selected}
+                            userId={user.user_id}
+                            preferences={preferences}
+                            onOpenRecord={(source) => {
+                              setCitation(source);
+                              openRecordWorkspace();
+                            }}
+                            onExpand={() => expandChat()}
+                          />
+                        </CollapsePanel>
+                        <CollapsePanel
+                          title="Source Proof"
+                          revealKey={citation}
                         >
-                          {chatExpanded
-                            ? "Collapse assistant"
-                            : "Expand assistant inline"}
-                        </button>
-                        <PatientConversation
-                          patient={selected}
-                          userId={user.user_id}
-                          onOpenRecord={(source) => {
-                            setCitation(source);
-                            openRecordWorkspace();
-                          }}
-                          preferences={preferences}
-                          onExpand={() => setChatFullscreen(true)}
-                        />
-                        {brief && (
-                          <section className="panel checklist-panel">
-                            <div className="panel-heading">
-                              <div>
-                                <div className="eyebrow teal">
-                                  <ClipboardCheck size={14} /> CAREGIVER HANDOFF
-                                </div>
-                                <h3>Visit checklist</h3>
-                              </div>
-                              <select
-                                aria-label="Checklist language"
-                                value={language}
-                                onChange={(e) => setLanguage(e.target.value)}
-                              >
-                                {brief.caregiver_prep.available_languages.map(
-                                  (l) => (
-                                    <option key={l} value={l}>
-                                      {labels[l] || l}
-                                    </option>
-                                  ),
-                                )}
-                              </select>
-                            </div>
-                            {brief.caregiver_prep.checklist.map((item) => (
-                              <label key={item.id} className="check-row">
-                                <input type="checkbox" />
-                                {String(
-                                  item[`text_${language}`] || item.text_en,
-                                )}
-                              </label>
-                            ))}
-                            <p className="small-muted">
-                              Checklist selections are for this view; approved
-                              pathway notes are saved separately.
-                            </p>
-                          </section>
+                          <SourceProof
+                            patient={selected}
+                            citation={citation}
+                            expanded={false}
+                            onExpand={openRecordWorkspace}
+                          />
+                        </CollapsePanel>
+                        {!historical && (
+                          <CollapsePanel
+                            title={careLabel("Caregiver handoff / checklist")}
+                          >
+                            <section className="panel checklist-panel">
+                              <CareChecklist
+                                key={selected.patient_id}
+                                patient={selected}
+                                onEdit={() => setPage("Care pathways")}
+                              />
+                            </section>
+                          </CollapsePanel>
                         )}
                         <div className="freshness">
                           <div>
@@ -1479,10 +1571,15 @@ export default function App() {
                     text={`Appointments for ${shortDate(today())}. Select a card to open the patient workspace.`}
                   />
                   <div className="card-carousel">
-                    {appointments.filter((a) => a.status === "scheduled")
+                    {appointments
+                      .filter(
+                        (a) => a.date === today() && a.status === "scheduled",
+                      )
                       .length ? (
                       appointments
-                        .filter((a) => a.status === "scheduled")
+                        .filter(
+                          (a) => a.date === today() && a.status === "scheduled",
+                        )
                         .map((a) => (
                           <button
                             className="patient-card"
@@ -1523,75 +1620,45 @@ export default function App() {
                   <PageHeading
                     eyebrow="DOCUMENT LIBRARY"
                     title="Patient records"
-                    text="Browse assigned patients and inspect their dated source files."
+                    text="Browse previous visits, signed care pathways, caregiver follow-up and original source records."
                   />
                   <PatientCarousel
                     patients={patients}
                     selected={selected}
-                    onPick={setSelected}
+                    onPick={(p) => {
+                      setSelected(p);
+                      setRequestedVisit("");
+                    }}
+                  />
+                  <AppointmentHistory
+                    onExpand={() => setPage("Appointment history")}
+                    onOpen={(a) => {
+                      const p = patients.find(
+                        (x) => x.patient_id === a.patient_id,
+                      );
+                      if (p) {
+                        setSelected(p);
+                        setRequestedVisit(a.visit_id || "");
+                      }
+                    }}
                   />
                   {selected && (
-                    <section className="panel records-panel">
-                      <div className="panel-heading">
-                        <div>
-                          <div className="eyebrow teal">PATIENT RECORDS</div>
-                          <h3>{selected.name}</h3>
-                        </div>
-                        <button
-                          className="secondary"
-                          onClick={() => setUploadOpen(true)}
-                        >
-                          <CloudUpload size={15} /> Add record
-                        </button>
-                      </div>
-                      {documents.length ? (
-                        documents.map((d) => (
-                          <div key={d.record_id} className="record-row">
-                            <FileText size={19} />
-                            <div>
-                              <strong>{d.filename}</strong>
-                              <small>
-                                {shortDate(d.visit_date)} · {d.document_type} ·{" "}
-                                {d.status}
-                                {d.error ? ` · ${d.error}` : ""}
-                              </small>
-                            </div>
-                            <button
-                              className="text-button"
-                              onClick={() => setRecordPreview(d)}
-                            >
-                              Preview
-                            </button>
-                          </div>
-                        ))
-                      ) : (
-                        <p>No documents uploaded for this patient.</p>
-                      )}
-                      {recordPreview &&
-                        documents.some(
-                          (d) => d.record_id === recordPreview.record_id,
-                        ) && (
-                          <div className="records-preview">
-                            <div className="section-heading">
-                              <strong>{recordPreview.filename}</strong>
-                              <button
-                                className="text-button"
-                                onClick={() => setRecordPreview(null)}
-                              >
-                                Close
-                              </button>
-                            </div>
-                            <img
-                              alt={`First page of ${recordPreview.filename}`}
-                              src={`/api/patients/${selected.patient_id}/documents/${recordPreview.record_id}/page/1`}
-                            />
-                            <p>
-                              Original document preview. No finding is
-                              highlighted unless its citation is verified.
-                            </p>
-                          </div>
-                        )}
-                    </section>
+                    <VisitHistory
+                      key={selected.patient_id}
+                      patient={selected}
+                      visits={visits}
+                      initialVisit={requestedVisit}
+                      onRecords={() => {
+                        setCitation(null);
+                        setRecordReturnPage("Records");
+                        setPage("Record workspace");
+                      }}
+                      onEvidence={(source) => {
+                        setCitation(source);
+                        setRecordReturnPage("Records");
+                        setPage("Record workspace");
+                      }}
+                    />
                   )}
                 </>
               )}
@@ -1600,202 +1667,28 @@ export default function App() {
                   <PageHeading
                     eyebrow="CONTINUITY OF CARE"
                     title="Care pathways"
-                    text="Clinician-reviewed family or caregiver handoff, based on visit context."
+                    text="Review and sign the visit checklist, clinician notes and prescription schedule."
                   />
                   <PatientCarousel
                     patients={patients}
                     selected={selected}
-                    onPick={setSelected}
+                    onPick={choosePatient}
                   />
                   {selected && (
                     <section className="panel pathway-panel">
-                      <div className="panel-heading">
-                        <div>
-                          <div className="eyebrow teal">
-                            {activeVisit?.admitted
-                              ? "CAREGIVER PATHWAY"
-                              : "FAMILY PATHWAY"}
-                          </div>
-                          <h3>{selected.name}</h3>
-                        </div>
-                        <span className="status-pill">
-                          {activeVisit ? "Draft visit" : "No active visit"}
-                        </span>
-                      </div>
-                      {activeVisit ? (
-                        <>
-                          <p className="pathway-help">
-                            Add what you discussed with the patient or
-                            caregiver. Only your notes, approved checklist
-                            items, and verified, reviewed evidence can enter the
-                            finalized pathway.
-                          </p>
-                          <div className="pathway-tools">
-                            <button
-                              className="secondary"
-                              onClick={() =>
-                                setAdmission(!activeVisit.admitted)
-                              }
-                            >
-                              {activeVisit.admitted
-                                ? "Switch to family pathway"
-                                : "Admit · caregiver pathway"}
-                            </button>
-                            <span>
-                              Admission is a PrepPulse care-workflow flag.
-                            </span>
-                          </div>
-                          <label className="notes-label">
-                            Clinician handoff notes
-                            <textarea
-                              rows={6}
-                              placeholder="Enter instructions, follow-up details, and points discussed during this visit…"
-                              value={notes}
-                              onChange={(e) => setNotes(e.target.value)}
-                            />
-                          </label>
-                          <div className="pathway-evidence">
-                            <h4>Pathway checklist</h4>
-                            {pathway?.items?.map((item) => (
-                              <label className="check-row" key={item.item_id}>
-                                <input
-                                  type="checkbox"
-                                  checked={item.completed}
-                                  onChange={(e) =>
-                                    checkPathwayItem(
-                                      item.item_id,
-                                      e.target.checked,
-                                    )
-                                  }
-                                />
-                                {item.text}
-                              </label>
-                            ))}
-                            <div className="inline-form">
-                              <input
-                                aria-label="New pathway checklist item"
-                                placeholder="Add a clinician-approved checklist item"
-                                value={newPathwayItem}
-                                onChange={(e) =>
-                                  setNewPathwayItem(e.target.value)
-                                }
-                              />
-                              <button
-                                className="secondary"
-                                onClick={() => addPathwayItem(newPathwayItem)}
-                                disabled={!newPathwayItem.trim()}
-                              >
-                                Add
-                              </button>
-                            </div>
-                            {pathway?.agent_suggestions?.length ? (
-                              <>
-                                <h4>
-                                  Agent suggestions · review before adding
-                                </h4>
-                                {pathway.agent_suggestions.map((text, i) => (
-                                  <div className="suggestion-row" key={i}>
-                                    <span>{text}</span>
-                                    <button
-                                      className="text-button"
-                                      onClick={() => addPathwayItem(text)}
-                                    >
-                                      Review and add
-                                    </button>
-                                  </div>
-                                ))}
-                              </>
-                            ) : null}
-                          </div>
-                          <div className="form-actions">
-                            <button className="secondary" onClick={saveNotes}>
-                              Save draft notes
-                            </button>
-                            <button className="primary" onClick={endVisit}>
-                              Review and end session
-                            </button>
-                          </div>
-                          <div className="pathway-evidence">
-                            <h4>Verified, reviewed findings</h4>
-                            {pathway?.reviewed_evidence?.length ? (
-                              pathway.reviewed_evidence.map((e, i) => (
-                                <button
-                                  key={i}
-                                  className="source-link"
-                                  onClick={() => setCitation(e.citation)}
-                                >
-                                  {e.title}
-                                </button>
-                              ))
-                            ) : (
-                              <p>
-                                No findings have both verified source proof and
-                                clinician review yet.
-                              </p>
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="brief-empty">
-                          <ClipboardCheck size={24} />
-                          <p>
-                            Start a visit on the Patients page to draft a
-                            pathway.
-                          </p>
-                          <button
-                            className="primary"
-                            onClick={() => setPage("Patients")}
-                          >
-                            Open patient workspace
-                          </button>
-                        </div>
-                      )}
+                      <CareWorkspace
+                        key={selected.patient_id}
+                        patient={selected}
+                        role="doctor"
+                        onStart={startVisit}
+                        onAdmission={setAdmission}
+                        onEnded={() => {
+                          loadSelected();
+                          setPage("Records");
+                        }}
+                      />
                     </section>
                   )}
-                  {selected && pathwayHistory.length > 0 && (
-                    <section className="panel pathway-panel">
-                      <div className="eyebrow teal">
-                        PREVIOUS APPROVED PATHWAYS
-                      </div>
-                      <h3>Earlier visits</h3>
-                      {pathwayHistory.map((entry) => (
-                        <div className="history-row" key={entry.pathway_id}>
-                          <strong>
-                            {entry.mode === "caregiver"
-                              ? "Caregiver"
-                              : "Family"}{" "}
-                            pathway ·{" "}
-                            {shortDate(entry.approved_at.slice(0, 10))}
-                          </strong>
-                          <p>
-                            {entry.doctor_notes ||
-                              "Evidence-only record approved by the clinician."}
-                          </p>
-                          <small>
-                            {entry.items?.length || 0} clinician-approved
-                            checklist items
-                          </small>
-                        </div>
-                      ))}
-                    </section>
-                  )}
-                </>
-              )}
-              {page === "Guidance library" && (
-                <>
-                  <PageHeading
-                    eyebrow="APPROVED RESOURCES"
-                    title="Guidance library"
-                    text="Clinician-approved resources will be available here."
-                  />
-                  <div className="panel empty-page">
-                    <BookOpen size={28} />
-                    <h3>No guidance has been approved for publication.</h3>
-                    <p>
-                      PrepPulse does not generate library guidance from patient
-                      records.
-                    </p>
-                  </div>
                 </>
               )}
               {page === "Settings" && (
@@ -1850,6 +1743,37 @@ export default function App() {
                 </>
               )}
             </>
+          ) : user.role === "caregiver" ? (
+            <>
+              <PageHeading
+                eyebrow={careLabel("PREPPULSE CARE")}
+                title={careLabel("My care plans")}
+                text={careLabel(
+                  "Your assigned patients, signed instructions, daily tasks and notes for the doctor.",
+                )}
+              />
+              <PatientCarousel
+                patients={patients}
+                selected={selected}
+                onPick={choosePatient}
+                label={careLabel}
+              />
+              {selected ? (
+                <section className="panel pathway-panel">
+                  <CareWorkspace
+                    key={selected.patient_id}
+                    patient={selected}
+                    role="caregiver"
+                  />
+                </section>
+              ) : (
+                <section className="panel empty-page">
+                  {careLabel(
+                    "No patient has been assigned. Ask your administrator to assign caregiver access.",
+                  )}
+                </section>
+              )}
+            </>
           ) : (
             <AdminPages
               page={page}
@@ -1863,6 +1787,7 @@ export default function App() {
               run={run}
               preferences={preferences}
               setPreferences={setPreferences}
+              navigate={setPage}
             />
           )}
         </main>
@@ -1874,7 +1799,7 @@ export default function App() {
             <FloatingAssistant
               patient={selected}
               userId={user.user_id}
-              onExpand={() => setChatFullscreen(true)}
+              onExpand={() => expandChat()}
               onCitation={(source) => {
                 setCitation(source);
                 openRecordWorkspace();
@@ -1931,10 +1856,12 @@ function PatientCarousel({
   patients,
   selected,
   onPick,
+  label = (text) => text,
 }: {
   patients: Patient[];
   selected: Patient | null;
   onPick: (p: Patient) => void;
+  label?: (text: string) => string;
 }) {
   return (
     <div className="card-carousel compact">
@@ -1953,10 +1880,11 @@ function PatientCarousel({
           <strong>{p.name}</strong>
           <small>{p.patient_id}</small>
           <div className="card-meta">
-            {alias(p) || "PrepPulse intake"} · {ageOf(p.dob) || "—"} years
+            {alias(p) || label("PrepPulse intake")} ·{" "}
+            {ageOf(p.dob) ?? p.age ?? "—"} {label("years")}
           </div>
           <span className="card-open">
-            View patient <ChevronRight size={15} />
+            {label("View patient")} <ChevronRight size={15} />
           </span>
         </button>
       ))}
@@ -1965,37 +1893,86 @@ function PatientCarousel({
 }
 
 function UploadModal({
+  visitId,
+  initialDate,
   patient,
   onClose,
   onUploaded,
 }: {
   patient: Patient;
+  visitId?: string;
+  initialDate?: string;
   onClose: () => void;
   onUploaded: () => void;
 }) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [folder, setFolder] = useState(false);
   const [type, setType] = useState("consult");
-  const [date, setDate] = useState(today());
+  const [date, setDate] = useState(initialDate || today());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [result, setResult] = useState<FolderImportResult | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (folder) input.current?.setAttribute("webkitdirectory", "");
+    else input.current?.removeAttribute("webkitdirectory");
+    setFiles([]);
+  }, [folder]);
+  useEffect(() => {
+    if (!result?.job || !["queued", "running"].includes(result.job.status))
+      return;
+    const timer = setInterval(async () => {
+      try {
+        let job: ProcessingJob | null;
+        try {
+          job = await request<ProcessingJob>(
+            `/patients/${patient.patient_id}/brief/jobs/latest`,
+          );
+        } catch {
+          job = (
+            await request<AdminPatientOverview>(
+              `/admin/patients/${patient.patient_id}/overview`,
+            )
+          ).latest_job;
+        }
+        if (job)
+          setResult((current) => (current ? { ...current, job } : current));
+        onUploaded();
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [result?.job?.status, patient.patient_id]);
   async function upload(e: React.FormEvent) {
     e.preventDefault();
-    if (!file) return;
+    if (!files.length) return;
     const form = new FormData();
-    form.append("file", file);
-    form.append("document_type", type);
-    form.append("visit_date", date);
+    if (folder)
+      files.forEach((file) => {
+        form.append("files", file, file.name);
+        form.append("paths", file.webkitRelativePath);
+      });
+    else {
+      form.append("file", files[0]);
+      form.append("document_type", type);
+      form.append("visit_date", date);
+      if (visitId) form.append("visit_id", visitId);
+    }
     setBusy(true);
     setError("");
     try {
-      await request(`/patients/${patient.patient_id}/documents`, {
-        method: "POST",
-        body: form,
-      });
+      const response = await request<FolderImportResult>(
+        `/patients/${patient.patient_id}/${folder ? "folder" : "documents"}`,
+        { method: "POST", body: form },
+      );
       onUploaded();
-      onClose();
-    } catch (err) {
-      setError((err as Error).message);
+      if (folder) {
+        setResult(response);
+        setFiles([]);
+      } else onClose();
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -2012,60 +1989,103 @@ function UploadModal({
         <div className="panel-heading">
           <div>
             <div className="eyebrow teal">PATIENT RECORD</div>
-            <h2>Upload new record</h2>
+            <h2>Upload patient records</h2>
             <p>
               {patient.name} · {patient.patient_id}
             </p>
           </div>
-          <button className="icon-button" onClick={onClose}>
+          <button
+            className="icon-button"
+            onClick={onClose}
+            aria-label="Close upload"
+          >
             <X size={18} />
+          </button>
+        </div>
+        <div className="form-actions">
+          <button
+            className={!folder ? "primary" : "secondary"}
+            onClick={() => setFolder(false)}
+          >
+            Upload record
+          </button>
+          <button
+            className={folder ? "primary" : "secondary"}
+            onClick={() => setFolder(true)}
+          >
+            Upload patient folder
           </button>
         </div>
         <form onSubmit={upload}>
           <label>
-            Document
+            {folder ? "Patient folder (ID_Patient_Name)" : "Document"}
             <input
+              key={String(folder)}
+              ref={input}
               type="file"
-              accept=".pdf,.png,.jpg,.jpeg"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              multiple={folder}
+              accept={folder ? undefined : ".pdf,.png,.jpg,.jpeg"}
+              onChange={(e) => setFiles(Array.from(e.target.files || []))}
               required
             />
           </label>
-          <div className="form-grid">
-            <label>
-              Document type
-              <select value={type} onChange={(e) => setType(e.target.value)}>
-                <option value="consult">Consultation</option>
-                <option value="lab">Lab report</option>
-                <option value="rx">Prescription</option>
-                <option value="discharge">Discharge summary</option>
-              </select>
-            </label>
-            <label>
-              Visit date
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-              />
-            </label>
-          </div>
-          {error && <div className="error">{error}</div>}
+          {!folder && (
+            <div className="form-grid">
+              <label>
+                Document type
+                <select value={type} onChange={(e) => setType(e.target.value)}>
+                  <option value="consult">Consultation</option>
+                  <option value="lab">Lab report</option>
+                  <option value="rx">Prescription</option>
+                  <option value="discharge">Discharge summary</option>
+                </select>
+              </label>
+              <label>
+                Visit date
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
+          {!!files.length && <p>{files.length} files selected</p>}
+          {error && (
+            <div className="error" role="alert">
+              {error}
+            </div>
+          )}
           <div className="form-actions">
             <button className="secondary" type="button" onClick={onClose}>
-              Cancel
+              Close
             </button>
-            <button className="primary" disabled={busy || !file}>
-              {busy ? "Uploading…" : "Upload record"}
+            <button className="primary" disabled={busy || !files.length}>
+              {busy ? "Uploading…" : folder ? "Upload folder" : "Upload record"}
             </button>
           </div>
         </form>
+        {result && (
+          <div role="status">
+            <p>
+              {result.files_saved} files saved · {result.files_unchanged}{" "}
+              unchanged · {result.documents_queued} documents queued
+            </p>
+            <p>
+              {result.job?.stage || result.job?.status} ·{" "}
+              {result.job?.documents_ready || 0}/
+              {result.job?.documents_total || result.documents_queued} processed
+            </p>
+            {result.job?.error && <p className="error">{result.job.error}</p>}
+          </div>
+        )}
       </section>
     </div>
   );
 }
 
 function AdminPages({
+  navigate,
   page,
   user,
   patients,
@@ -2079,6 +2099,7 @@ function AdminPages({
   setPreferences,
 }: {
   page: Page;
+  navigate: (page: Page) => void;
   user: User;
   patients: Patient[];
   accounts: User[];
@@ -2097,9 +2118,6 @@ function AdminPages({
     (a) =>
       a.role === "doctor" && !(a as User & { disabled?: boolean }).disabled,
   );
-  const [name, setName] = useState("");
-  const [dob, setDob] = useState("");
-  const [sex, setSex] = useState("");
   const [doctor, setDoctor] = useState("");
   const [appointmentPatient, setAppointmentPatient] = useState("");
   const [appointmentDate, setAppointmentDate] = useState(today());
@@ -2107,97 +2125,29 @@ function AdminPages({
     preferences.appointmentTime,
   );
   const [reason, setReason] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [accountName, setAccountName] = useState("");
-  const [role, setRole] = useState<"doctor" | "admin">("doctor");
-  const [intakePatient, setIntakePatient] = useState<Patient | null>(null);
-  const folderInput = useRef<HTMLInputElement | null>(null);
-  const [folderFiles, setFolderFiles] = useState<File[]>([]);
-  const [folderError, setFolderError] = useState("");
-  const [folderBusy, setFolderBusy] = useState(false);
-  const [folderResult, setFolderResult] = useState<FolderImportResult | null>(
-    null,
-  );
   const [directoryPatient, setDirectoryPatient] = useState<Patient | null>(
     null,
   );
-  const [directoryOverview, setDirectoryOverview] =
-    useState<AdminPatientOverview | null>(null);
-  const [directoryLoading, setDirectoryLoading] = useState(false);
-  const [directoryError, setDirectoryError] = useState("");
   const [editAppointment, setEditAppointment] = useState<Appointment | null>(
     null,
   );
+  const [directoryUpload, setDirectoryUpload] = useState<{
+    visitId?: string;
+    day?: string;
+  } | null>(null);
   const selectedDoctor = doctor || doctors[0]?.user_id || "";
+  const [appointmentView, setAppointmentView] = useState<"today" | "upcoming">("today");
+  const [appointmentDateFilter, setAppointmentDateFilter] = useState("");
+  const todayAppointments = appointments.filter((a) => a.date === today());
+  const upcomingAppointments = appointments.filter(
+    (a) => a.date > today() && a.status === "scheduled",
+  );
+  const visibleAppointments = (
+    appointmentView === "today" ? todayAppointments : upcomingAppointments
+  ).filter((a) => !appointmentDateFilter || a.date === appointmentDateFilter);
   useEffect(() => {
     if (!editAppointment) setAppointmentTime(preferences.appointmentTime);
   }, [preferences.appointmentTime]);
-  useEffect(() => {
-    folderInput.current?.setAttribute("webkitdirectory", "");
-    folderInput.current?.setAttribute("directory", "");
-  }, [page]);
-  useEffect(() => {
-    if (!directoryPatient || page !== "Patient directory") return;
-    let active = true;
-    setDirectoryLoading(true);
-    setDirectoryOverview(null);
-    setDirectoryError("");
-    request<AdminPatientOverview>(
-      `/admin/patients/${directoryPatient.patient_id}/overview`,
-    )
-      .then((result) => {
-        if (active) setDirectoryOverview(result);
-      })
-      .catch((error) => {
-        if (active) setDirectoryError((error as Error).message);
-      })
-      .finally(() => {
-        if (active) setDirectoryLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [directoryPatient?.patient_id, page]);
-  useEffect(() => {
-    if (
-      !folderResult?.job ||
-      !["queued", "running"].includes(folderResult.job.status)
-    )
-      return;
-    const timer = setInterval(async () => {
-      try {
-        const next = await request<AdminPatientOverview>(
-          `/admin/patients/${folderResult.patient_id}/overview`,
-        );
-        setFolderResult((current) =>
-          current ? { ...current, job: next.latest_job || undefined } : current,
-        );
-      } catch {
-        /* The last visible status remains until retry. */
-      }
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [folderResult?.patient_id, folderResult?.job?.status]);
-  async function addPatient(e: React.FormEvent) {
-    e.preventDefault();
-    const result = await run(
-      () =>
-        post<Patient>("/patients", {
-          name,
-          dob: dob || null,
-          sex: sex || null,
-          doctor_id: selectedDoctor,
-        }),
-      "Patient registered. Add initial documents now.",
-    );
-    if (result) {
-      setName("");
-      setDob("");
-      setIntakePatient(result);
-      reloadPatients();
-    }
-  }
   async function addAppointment(e: React.FormEvent) {
     e.preventDefault();
     const body = {
@@ -2226,52 +2176,6 @@ function AdminPages({
     setAppointmentTime(a.time);
     setReason(a.reason);
   }
-  async function addAccount(e: React.FormEvent) {
-    e.preventDefault();
-    const result = await run(
-      () =>
-        post<User>("/admin/accounts", {
-          name: accountName,
-          username,
-          password,
-          role,
-        }),
-      "Account created",
-    );
-    if (result) {
-      setAccounts([...accounts, result]);
-      setPassword("");
-      setUsername("");
-      setAccountName("");
-    }
-  }
-  async function importFolder(e: React.FormEvent) {
-    e.preventDefault();
-    if (!selectedDoctor || !folderFiles.length) return;
-    setFolderBusy(true);
-    setFolderError("");
-    setFolderResult(null);
-    const form = new FormData();
-    form.append("doctor_id", selectedDoctor);
-    for (const file of folderFiles) {
-      form.append("files", file, file.name);
-      form.append("paths", file.webkitRelativePath);
-    }
-    try {
-      const result = await request<FolderImportResult>("/admin/import-folder", {
-        method: "POST",
-        body: form,
-      });
-      setFolderResult(result);
-      reloadPatients();
-      setFolderFiles([]);
-      if (folderInput.current) folderInput.current.value = "";
-    } catch (error) {
-      setFolderError((error as Error).message);
-    } finally {
-      setFolderBusy(false);
-    }
-  }
   return (
     <>
       {page === "New patient intake" && (
@@ -2281,218 +2185,19 @@ function AdminPages({
             title="New patient intake"
             text="Create a permanent PrepPulse patient record, then add documents across visits."
           />
-          <div className="admin-grid">
-            <section className="panel admin-form">
-              <div className="panel-heading">
-                <div>
-                  <div className="eyebrow teal">01 · REGISTER</div>
-                  <h3>Patient details</h3>
-                </div>
-                <Plus size={18} />
-              </div>
-              <form onSubmit={addPatient}>
-                <label>
-                  Full name
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                </label>
-                <div className="form-grid">
-                  <label>
-                    Date of birth
-                    <input
-                      type="date"
-                      value={dob}
-                      onChange={(e) => setDob(e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Sex
-                    <select
-                      value={sex}
-                      onChange={(e) => setSex(e.target.value)}
-                    >
-                      <option value="">Not provided</option>
-                      <option>Female</option>
-                      <option>Male</option>
-                      <option>Other</option>
-                    </select>
-                  </label>
-                </div>
-                <label>
-                  Assign doctor
-                  <select
-                    value={selectedDoctor}
-                    onChange={(e) => setDoctor(e.target.value)}
-                    required
-                  >
-                    <option value="">Select doctor</option>
-                    {doctors.map((d) => (
-                      <option key={d.user_id} value={d.user_id}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button className="primary" disabled={!selectedDoctor}>
-                  Register patient
-                </button>
-              </form>
-            </section>
-            <section className="panel admin-form">
-              <div className="panel-heading">
-                <div>
-                  <div className="eyebrow teal">02 · ADD DOCUMENTS</div>
-                  <h3>Initial or later visit records</h3>
-                </div>
-                <CloudUpload size={18} />
-              </div>
-              <p>
-                Choose a registered patient to append a document. Additional
-                visits use the same permanent PrepPulse ID.
-              </p>
-              <select
-                aria-label="Patient for document upload"
-                value={intakePatient?.patient_id || ""}
-                onChange={(e) =>
-                  setIntakePatient(
-                    patients.find((p) => p.patient_id === e.target.value) ||
-                      null,
-                  )
-                }
-              >
-                <option value="">Select patient</option>
-                {patients.map((p) => (
-                  <option key={p.patient_id} value={p.patient_id}>
-                    {p.name} · {p.patient_id}
-                  </option>
-                ))}
-              </select>
-              {intakePatient && (
-                <UploadModal
-                  patient={intakePatient}
-                  onClose={() => setIntakePatient(null)}
-                  onUploaded={reloadPatients}
-                />
-              )}
-            </section>
-            <section className="panel admin-form">
-              <div className="panel-heading">
-                <div>
-                  <div className="eyebrow teal">03 · FOLDER INTAKE</div>
-                  <h3>Upload one patient folder</h3>
-                </div>
-                <FolderOpen size={18} />
-              </div>
-              <p>
-                Choose one folder such as PP001_Ananya_Baruah. PrepPulse stores
-                every file, creates a separate permanent patient ID, and
-                processes the clinical documents.
-              </p>
-              <form onSubmit={importFolder}>
-                <label>
-                  Patient folder
-                  <input
-                    ref={folderInput}
-                    type="file"
-                    multiple
-                    onChange={(event) => {
-                      const chosen = Array.from(event.target.files || []);
-                      const roots = new Set(
-                        chosen.map(
-                          (file) => file.webkitRelativePath.split("/")[0],
-                        ),
-                      );
-                      setFolderFiles(chosen);
-                      setFolderResult(null);
-                      setFolderError(
-                        !chosen.length
-                          ? ""
-                          : roots.size !== 1 ||
-                              chosen.some((file) => !file.webkitRelativePath)
-                            ? "Choose exactly one folder in a browser that supports folder selection."
-                            : "",
-                      );
-                    }}
-                  />
-                </label>
-                {folderFiles.length > 0 && (
-                  <div className="folder-summary">
-                    <strong>
-                      {folderFiles[0].webkitRelativePath.split("/")[0]}
-                    </strong>
-                    <span>
-                      {folderFiles.length} files ·{" "}
-                      {(
-                        folderFiles.reduce((sum, file) => sum + file.size, 0) /
-                        1024 /
-                        1024
-                      ).toFixed(1)}{" "}
-                      MB
-                    </span>
-                    <span>
-                      Assign to{" "}
-                      {doctors.find((d) => d.user_id === selectedDoctor)
-                        ?.name || "a doctor"}
-                    </span>
-                  </div>
-                )}
-                {folderError && (
-                  <p className="small-error" role="alert">
-                    {folderError}
-                  </p>
-                )}
-                <button
-                  className="secondary"
-                  disabled={
-                    !selectedDoctor ||
-                    !folderFiles.length ||
-                    !!folderError ||
-                    folderBusy
-                  }
-                >
-                  {folderBusy
-                    ? "Uploading folder…"
-                    : "Upload this patient folder"}
-                </button>
-              </form>
-              {folderResult && (
-                <div className="folder-result" role="status">
-                  <strong>
-                    {folderResult.patient_name} · {folderResult.patient_id}
-                  </strong>
-                  <span>
-                    Folder ID {folderResult.external_id} ·{" "}
-                    {folderResult.files_saved} files saved ·{" "}
-                    {folderResult.files_unchanged} unchanged
-                  </span>
-                  <span>
-                    {folderResult.documents_queued} clinical documents queued
-                    for OCR and analysis.
-                  </span>
-                  {folderResult.job && (
-                    <span>
-                      Processing:{" "}
-                      {folderResult.job.stage || folderResult.job.status} ·{" "}
-                      {folderResult.job.documents_ready || 0}/
-                      {folderResult.job.documents_total ||
-                        folderResult.documents_queued}{" "}
-                      ready
-                      {folderResult.job.documents_failed
-                        ? ` · ${folderResult.job.documents_failed} failed`
-                        : ""}
-                      {folderResult.job.error
-                        ? ` · ${folderResult.job.error}`
-                        : ""}
-                    </span>
-                  )}
-                </div>
-              )}
-            </section>
-          </div>
+          <UnifiedIntake
+            patients={patients}
+            accounts={accounts}
+            reload={reloadPatients}
+          />
         </>
+      )}
+      {page === "Caregivers" && (
+        <CaregiverAdmin
+          patients={patients}
+          accounts={accounts}
+          setAccounts={setAccounts}
+        />
       )}
       {page === "Patient appointments" && (
         <>
@@ -2584,13 +2289,49 @@ function AdminPages({
               </form>
             </section>
             <section className="panel admin-form">
-              <h3>Today’s appointments</h3>
-              {appointments.length ? (
-                appointments.map((a) => (
+              <h3>
+                {appointmentView === "today"
+                  ? "Today’s appointments"
+                  : "Upcoming appointments"}
+              </h3>
+              <div className="appointment-switcher" role="tablist" aria-label="Appointment view">
+                <button
+                  type="button"
+                  className={appointmentView === "today" ? "active" : ""}
+                  onClick={() => {
+                    setAppointmentView("today");
+                    setAppointmentDateFilter("");
+                  }}
+                >
+                  Today
+                </button>
+                <button
+                  type="button"
+                  className={appointmentView === "upcoming" ? "active" : ""}
+                  onClick={() => setAppointmentView("upcoming")}
+                >
+                  Upcoming appointments
+                </button>
+              </div>
+              {appointmentView === "upcoming" && (
+                <label className="appointment-date-filter">
+                  Filter by date
+                  <input
+                    type="date"
+                    value={appointmentDateFilter}
+                    onChange={(e) => setAppointmentDateFilter(e.target.value)}
+                  />
+                </label>
+              )}
+              {visibleAppointments.length ? (
+                visibleAppointments.map((a) => (
                   <div className="appointment-row" key={a.appointment_id}>
                     <span className="card-time">{a.time}</span>
                     <div>
                       <strong>{a.patient_name}</strong>
+                      {appointmentView === "upcoming" && (
+                        <small>{shortDate(a.date)}</small>
+                      )}
                       <small>
                         {a.patient_id} · {a.status}
                       </small>
@@ -2622,11 +2363,40 @@ function AdminPages({
                   </div>
                 ))
               ) : (
-                <p>No appointments today.</p>
+                <p>
+                  {appointmentView === "today"
+                    ? "No appointments today."
+                    : appointmentDateFilter
+                      ? "No upcoming appointments match this date."
+                      : "No upcoming appointments."}
+                </p>
               )}
             </section>
           </div>
+          <AppointmentHistory
+            onExpand={() => navigate("Appointment history")}
+            onOpen={(a) => {
+              const p = patients.find((x) => x.patient_id === a.patient_id);
+              if (p) {
+                setDirectoryPatient(p);
+                navigate("Patient directory");
+              }
+            }}
+          />
         </>
+      )}
+      {page === "Appointment history" && (
+        <AppointmentHistory
+          full
+          onBack={() => navigate("Patient appointments")}
+          onOpen={(a) => {
+            const p = patients.find((x) => x.patient_id === a.patient_id);
+            if (p) {
+              setDirectoryPatient(p);
+              navigate("Patient directory");
+            }
+          }}
+        />
       )}
       {page === "Patient directory" && (
         <>
@@ -2667,7 +2437,7 @@ function AdminPages({
                   aria-label={`Assign doctor to ${p.name}`}
                   defaultValue=""
                   onChange={async (e) => {
-                    const assigned = await run(
+                    await run(
                       () =>
                         post(
                           `/patients/${p.patient_id}/assign/${e.target.value}`,
@@ -2675,20 +2445,6 @@ function AdminPages({
                         ),
                       "Doctor assigned",
                     );
-                    if (
-                      assigned &&
-                      directoryPatient?.patient_id === p.patient_id
-                    ) {
-                      try {
-                        setDirectoryOverview(
-                          await request<AdminPatientOverview>(
-                            `/admin/patients/${p.patient_id}/overview`,
-                          ),
-                        );
-                      } catch (error) {
-                        setDirectoryError((error as Error).message);
-                      }
-                    }
                   }}
                 >
                   <option value="">Assign another doctor</option>
@@ -2702,202 +2458,32 @@ function AdminPages({
             ))}
           </div>
           {directoryPatient && (
-            <section className="panel directory-overview">
-              <div className="panel-heading">
-                <div>
-                  <div className="eyebrow teal">ADMIN PATIENT RECORD</div>
-                  <h3>{directoryPatient.name}</h3>
-                  <p>
-                    {directoryPatient.patient_id} ·{" "}
-                    {directoryPatient.external_aliases?.join(" · ") ||
-                      "No external ID"}
-                  </p>
-                </div>
-                <button
-                  className="icon-button"
-                  title="Close patient details"
-                  onClick={() => setDirectoryPatient(null)}
-                >
-                  <X size={17} />
-                </button>
-              </div>
-              {directoryLoading && <p>Loading patient details…</p>}
-              {directoryError && (
-                <p className="small-error" role="alert">
-                  {directoryError}
-                </p>
-              )}
-              {directoryOverview && (
-                <div className="overview-grid">
-                  <div>
-                    <span className="overview-label">Assigned doctors</span>
-                    <strong>
-                      {directoryOverview.doctors
-                        .map((d) => d.name)
-                        .join(", ") || "None"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="overview-label">Date of birth / sex</span>
-                    <strong>
-                      {directoryOverview.patient.dob || "Not recorded"} ·{" "}
-                      {directoryOverview.patient.sex || "Not recorded"}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="overview-label">Stored files</span>
-                    <strong>
-                      {directoryOverview.stored_files ||
-                        directoryOverview.documents.length}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="overview-label">Processing</span>
-                    <strong>
-                      {directoryOverview.latest_job
-                        ? `${directoryOverview.latest_job.status} · ${directoryOverview.latest_job.documents_ready || 0}/${directoryOverview.latest_job.documents_total || directoryOverview.documents.length} ready`
-                        : "No analysis job"}
-                    </strong>
-                  </div>
-                  <div className="overview-section">
-                    <h4>Appointments</h4>
-                    {directoryOverview.appointments.length ? (
-                      directoryOverview.appointments.map((a) => (
-                        <p key={a.appointment_id}>
-                          {shortDate(a.date)} · {a.time} · {a.status} ·{" "}
-                          {directoryOverview.doctors.find(
-                            (d) => d.user_id === a.doctor_id,
-                          )?.name || "Doctor"}
-                        </p>
-                      ))
-                    ) : (
-                      <p>No appointments recorded.</p>
-                    )}
-                  </div>
-                  <div className="overview-section">
-                    <h4>Visit log</h4>
-                    {directoryOverview.visits.length ? (
-                      directoryOverview.visits.map((v) => (
-                        <p key={v.visit_id}>
-                          {shortDate(v.started_at.slice(0, 10))} · {v.status} ·{" "}
-                          {v.admitted ? "Caregiver pathway" : "Family pathway"}
-                        </p>
-                      ))
-                    ) : (
-                      <p>No visits recorded.</p>
-                    )}
-                  </div>
-                  <div className="overview-section wide">
-                    <h4>Documents</h4>
-                    {directoryOverview.documents.length ? (
-                      directoryOverview.documents.map((d) => (
-                        <p key={d.record_id}>
-                          {shortDate(d.visit_date)} · {d.filename} · {d.status}
-                          {d.error ? ` · ${d.error}` : ""}
-                        </p>
-                      ))
-                    ) : (
-                      <p>No clinical documents recorded.</p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </section>
+            <AdminPatientDetails
+              key={directoryPatient.patient_id}
+              patient={directoryPatient}
+              doctors={doctors}
+              onClose={() => setDirectoryPatient(null)}
+              onUpdated={reloadPatients}
+              onUpload={(visitId, day) => setDirectoryUpload({ visitId, day })}
+            />
+          )}
+          {directoryPatient && directoryUpload && (
+            <UploadModal
+              patient={directoryPatient}
+              onClose={() => setDirectoryUpload(null)}
+              onUploaded={reloadPatients}
+              visitId={directoryUpload.visitId}
+              initialDate={directoryUpload.day}
+            />
           )}
         </>
       )}
       {page === "Accounts" && (
-        <>
-          <PageHeading
-            eyebrow="ACCESS CONTROL"
-            title="Accounts"
-            text="Administrators create and disable doctor accounts. No public registration is available."
-          />
-          <div className="admin-grid">
-            <section className="panel admin-form">
-              <h3>Create account</h3>
-              <form onSubmit={addAccount}>
-                <label>
-                  Full name
-                  <input
-                    value={accountName}
-                    onChange={(e) => setAccountName(e.target.value)}
-                    required
-                  />
-                </label>
-                <label>
-                  Username
-                  <input
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                  />
-                </label>
-                <label>
-                  Temporary password, minimum 12 characters
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    minLength={12}
-                    required
-                  />
-                </label>
-                <label>
-                  Role
-                  <select
-                    value={role}
-                    onChange={(e) =>
-                      setRole(e.target.value as "doctor" | "admin")
-                    }
-                  >
-                    <option value="doctor">Doctor</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </label>
-                <button className="primary">Create account</button>
-              </form>
-            </section>
-            <section className="panel admin-form">
-              <h3>Current accounts</h3>
-              {accounts.map((a) => (
-                <div className="appointment-row" key={a.user_id}>
-                  <div className="patient-avatar tiny">
-                    {a.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <strong>{a.name}</strong>
-                    <small>
-                      {a.username} · {a.role}
-                    </small>
-                  </div>
-                  <button
-                    className="text-button"
-                    disabled={
-                      a.user_id === user.user_id ||
-                      !!(a as User & { disabled?: boolean }).disabled
-                    }
-                    onClick={async () => {
-                      await run(
-                        () => patch(`/admin/accounts/${a.user_id}/disable`, {}),
-                        "Account disabled",
-                      );
-                      setAccounts(
-                        accounts.map((x) =>
-                          x.user_id === a.user_id
-                            ? ({ ...x, disabled: true } as User)
-                            : x,
-                        ),
-                      );
-                    }}
-                  >
-                    Disable
-                  </button>
-                </div>
-              ))}
-            </section>
-          </div>
-        </>
+        <AccountsAdmin
+          user={user}
+          accounts={accounts}
+          setAccounts={setAccounts}
+        />
       )}
       {page === "Settings" && (
         <>

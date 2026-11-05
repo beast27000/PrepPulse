@@ -29,6 +29,8 @@ web/test-results/
 web/playwright-report/
 private_data/
 .tmp/
+.local_models/
+.venv-translation/
 
 # Local-only documentation (un-ignore shared specifications)
 docs/*

@@ -1,6 +1,6 @@
 # PrepPulse browser workspace: UI and integration handoff
 
-Updated 30 October 2026. This document describes the `UI` branch implementation and its intended user flows. PrepPulse is assistive clinical chart review. A generated finding, gap, or pathway suggestion is not an autonomous diagnosis or treatment instruction.
+Updated 3 November 2026. This document describes the `UI` branch implementation and its intended user flows. PrepPulse is assistive clinical chart review. A generated finding, gap, or pathway suggestion is not an autonomous diagnosis or treatment instruction.
 
 ## 1. Source of truth and visual reference
 
@@ -10,28 +10,30 @@ The current code contract is `src/preppulse_agents/schemas.py:ConsultationBrief`
 
 ## 2. Roles, access, and navigation
 
-| Capability | Doctor | Admin |
-|---|---|---|
-| Sign in | Yes | Yes |
-| Search/open patients | Assigned patients only | Registry metadata |
-| Register patient | No | Yes |
-| Append documents | Assigned patients | Any registered patient |
-| Clinical brief, source proof, chat | Assigned patients | No |
-| Start/admit/end visit, review finding, approve pathway | Assigned patients | No |
-| Create/edit/cancel appointments | No | Yes |
-| Create/disable accounts, assign doctor | No | Yes |
+| Capability | Doctor | Admin | Caregiver |
+|---|---|---|---|
+| Sign in | Yes | Yes | Yes |
+| Search patients | Assigned patients | Registry metadata | Assigned patient cards |
+| Register patient | No | Yes | No |
+| Append documents | Assigned patients | Any registered patient | No |
+| Clinical brief, source proof, chat | Assigned patients | No | No |
+| Start/admit/end visit, review finding, approve pathway | Assigned patients | No | No |
+| Create/edit/cancel appointments | No | Yes | No |
+| Create/disable accounts, assign doctor/caregiver | No | Yes | No |
+| Read signed care instructions / PDF | Assigned patients | No | Assigned patients |
+| Report task completion and caregiver notes | Read reports | No | Assigned signed plans |
 
 Accounts are admin managed. There is no public signup. The first account is created with `scripts/bootstrap_ui_admin.py` and environment variables. Session cookies are signed, HTTP only, and SameSite Strict. Mutating requests require the CSRF token returned by login or `/api/auth/me` in `X-CSRF-Token`. API routes enforce role and assignment. The first release binds to local loopback; this is not a shared production deployment.
 
-Doctor rail: **Today**, **Patients**, **Records**, **Care pathways**, **Guidance library**, **Settings**. Patients is the landing page. Admin rail: **New patient intake**, **Patient appointments**, **Patient directory**, **Accounts**, **Settings**. New patient intake is first and is the admin landing page. The admin has no clinical brief view by default.
+Doctor rail: **Today**, **Patients**, **Records**, **Care pathways**, **Settings**. Admin rail: **New patient intake**, **Patient appointments**, **Patient directory**, **Accounts**, **Caregivers**, **Settings**. Caregiver rail: **My care plans** only. Patients and intake are the respective doctor/admin landing pages. Guidance library and the separate Previous patients page have been removed. Previous visits remain in Records. Caregivers receive assigned signed instructions and follow-up only; admins have no clinical brief view.
 
 ## 3. Patient identity and longitudinal records
 
 `patient_id` is an immutable internal ID with the `PRP-` prefix. It is the join key for visits, appointments, documents, brief jobs, and pathways. Existing sample folder codes, such as `PP001`, and the full folder name, such as `PP001_Ananya_Baruah`, are searchable aliases in `external_aliases`. Both IDs appear in the doctor's patient context where an external alias exists. A name search may return multiple patients; the user chooses one explicitly. Doctors can only search their assigned patients.
 
-Option 3 in New patient intake accepts one browser-selected folder named `ID_Patient_Name`, such as `PP001_Ananya_Baruah`. The folder name supplies the external ID and display name; a new `PRP-` ID is assigned internally. The short ID and full folder name are searchable aliases. The browser uploads the selected files and their relative paths, and the API copies every file to patient-scoped private storage. PDF, PNG, and JPEG files become clinical documents; auxiliary files such as `manifest.json` and `RECORD_INDEX.txt` are retained but not sent through OCR. A manifest can supply visit date and document type, but cannot override the folder identity. Reimporting an unchanged relative path and hash skips that file; a changed file becomes a new stored version. Colliding external IDs are rejected rather than assigned to a different patient. The old all-dataset scanner was removed.
+New patient intake now uses one panel for name, DOB or recorded age, sex, doctor, and record/folder upload. One selected folder must be named `ID_Patient_Name`; its short/full names become searchable aliases. Explicit registration demographics are authoritative. Select an existing patient to append files without another registration. Private storage, relative-path/hash deduplication, auxiliary-file retention and background progress remain unchanged. Alias collisions with another patient produce a conflict.
 
-Admins register the patient name, optional birth date and sex, and an assigned doctor. They may immediately attach initial records or later select the same patient to append visit documents. Doctors may append records for assigned patients from the Patients and Records pages. Each file gets a distinct `DOC-` record ID, visit date, document type, and private source path. Accepted formats: PDF, PNG, JPEG; maximum upload size: 30 MB. The browser never receives a filesystem path. Generated OCR is written to the existing `patient_documents` collection using the internal PrepPulse ID, so RAG patient filtering stays consistent across imported and new patients.
+Admins register the patient name, optional birth date or recorded age and sex, and an assigned doctor. They may immediately attach initial records or later select the same patient to append visit documents. Doctors may append records for assigned patients from the Patients and Records pages. Each file gets a distinct `DOC-` record ID, visit date, document type, and private source path. Accepted formats: PDF, PNG, JPEG; maximum upload size: 30 MB. The browser never receives a filesystem path. Generated OCR is written to the existing `patient_documents` collection using the internal PrepPulse ID, so RAG patient filtering stays consistent across imported and new patients.
 
 ## 4. Doctor screens and interactions
 
@@ -47,7 +49,7 @@ The center consultation panel follows the screenshot:
 
 1. Patient header: name, age/sex when available, agent classification, PrepPulse ID, optional external alias, and review status.
    The diabetes journey leads the brief with dated source coverage, the documented diagnosis consultation when present, first/latest HbA1c, and selectable visit cards. Admissions, procedures, and other consultations also appear as source-linked tiles. These use `diabetes_history` and `record_summaries`; laboratory summaries preserve extracted values rather than model-generated interpretations.
-2. Four cards: `trajectory.kpis`; `care_gaps.items`; `mismatches.items`; and `caregiver_prep.checklist`. Card four's displayed family/caregiver mode follows the active visit's admission flag. Agent checklist content remains suggestions until a clinician chooses items for the pathway.
+2. Four cards: `trajectory.kpis`; `care_gaps.items`; `mismatches.items`; and the shared care bundle's active draft, previous signed checklist or first-visit suggestions. Card four is titled **Family / caregiver pathway** and shows at most three instructions, with doctor-written/edited items first and other items in generated priority order. Its language and ticks match the lower checklist. Suggestions require clinician review; fallback preparation uses everyday actions rather than raw lab values or diagnostic labels. An empty source-backed care gap is not converted to a fabricated instruction.
 3. Visit focus strip: agent visit focus, latest available metric, and count of potential review items. It is not a clinical freshness claim.
 4. Priority findings: verified current observations with prior-measurement links, and source-backed earlier admissions/procedures/consultations. Repeated unit suffixes are normalized. Unverified agent claims and generic care gaps without source evidence are excluded. Each finding has Accept/Edit/Reject review controls. Review decisions are stored per visit.
 5. Assistive bubbles: exploratory prompts that open the chat workspace.
@@ -56,7 +58,7 @@ If no brief exists, show an empty state and **Run clinical analysis**. The top *
 
 ### Source Proof and chat
 
-The right column has a Source Proof panel above chat, followed by a six-language checklist and source/review status. When a brief loads, the first verified finding is selected as the initial source. Source Proof expands into a full record workspace with page navigation, text search, and selectable file tiles on the right. Chat opens its own dedicated workspace with patient context. On narrower browser widths, panels reflow below the consultation panel. The same selected patient context is used in both chat views.
+The right column has chat first, Source Proof second, then a simple six-language checkbox checklist with **Edit pathway** and the selected-language download for the latest signed plan. No checklist text/frequency/add/remove editor appears in Patients. Each section collapses independently; the whole rail can hide to give the brief the full width. When a brief loads, the first verified finding is selected as the initial source. Source Proof expands into a full record workspace with page navigation, text search, and selectable file tiles on the right. Chat opens its own dedicated workspace with patient context. On narrower browser widths, panels reflow below the consultation panel. The same selected patient context is used in both chat views.
 
 For a verified citation, `document_id` is a `DOC-` record ID, `page_number` starts at 1, and `bbox` is `[x0, y0, x1, y1]` normalized to 0–1000. The authenticated page endpoint renders a PNG. The browser overlays the box with:
 
@@ -73,31 +75,37 @@ The chat workspace starts as one full-width conversation. A requested chart open
 
 Replies render through `react-markdown` with `remark-gfm`: headings, lists, bold values, and actual HTML tables. Raw HTML is not enabled. Numeric references `[n]` become buttons bound to that response's structured citation array; artifact links bind to the saved artifact ID. Unverified spans remain inspectable as records but do not receive fabricated highlights. A model-generated answer remains assistive; chat never alters clinical records or care pathways.
 
-Chart requests are handled by a chart tool. It extracts measurements from normalized OCR rows, retains document/page/box provenance, applies requested metric/year filters, creates a new artifact ID, and persists its series/events in the session. Recharts renders time-based axes, tooltips, keyboard-accessible source points, and an optional data table. Different units use separate plots. No missing observations are filled in. Distinct source reports on the same day retain their individual values and citations. HbA1c, fasting/post-meal glucose, eGFR, urine ACR, creatinine, LDL, and blood pressure are currently supported. Unsupported chart requests show a data gap. Chart construction is independent of model and embedding availability.
+Chart requests are handled by a deterministic tool. Singular/plural chart, graph and plot wording, visualization phrasing, and supported timeline/table requests must route to it rather than relying on the text model to create a chart. A short follow-up can inherit the previous user topic; a new explicit period overrides the previous one. Relative windows accept digits or English number words from 1 to 10 years and filter observation dates against a rolling server-date window. Explicit calendar-year ranges are also supported. The artifact saves `requested_window`; missing periods remain gaps.
+
+The tool extracts measurements from normalized OCR rows, retains document/page/box provenance, creates a new artifact ID, and persists its series/events in the session. Recharts renders time-based axes, tooltips, keyboard-accessible source points, and an optional data table. Different units use separate plots. No missing observations are filled in. Distinct source reports on the same day retain their individual values and citations. HbA1c, fasting/post-meal glucose, eGFR, urine ACR, creatinine, LDL, and blood pressure are currently supported: seven families/up to nine series. Generic patient-chart requests select available supported series. Unsupported targets produce a scope warning and, where matching patient-owned OCR rows exist, a cited occurrence table (up to 200 rows with truncation disclosed). A table-only request for another condition does not claim a numerical chart was requested. A supported target lacking dated values produces a data gap. Chart construction is independent of model and embedding availability. Ordinary diabetes/measurement answers offer a chart without creating one; explicit no-chart wording suppresses that offer.
 
 Non-chart questions use source records plus hybrid question retrieval and prior conversation turns. If embeddings fail, retrieval continues with BM25. The default inference URL is `http://127.0.0.1:1234/v1`, configurable via `LOCAL_LLM_BASE_URL`; connection timeouts are bounded. A synthesis outage produces labeled source excerpts rather than an ungrounded answer. Background turns expose actual processing stages and failure/retry states. Analysis uses LangGraph node updates for its stage bubble, followed by a bounded history synthesis pass. A restarted server marks interrupted work retryable instead of leaving it queued indefinitely. This local worker tracking assumes one API process.
 
 ### Records
 
-Use horizontally browsable patient cards, then a dated list of the selected patient's documents. Show type and processing state (`pending`, `ready`, `failed`) with useful failure text. New visits append documents to the same patient. Search and cards are scoped to assigned patients.
+Use assigned-patient cards, previous-appointment filters and dated visit links. Each link opens saved visit information, snapshots when captured, and signed care plans with caregiver follow-up. Older missing snapshots are explicitly identified. Browse patient records opens the existing full record workspace with file tiles, page navigation and text search; signed pathway PDFs appear beside uploaded source files.
 
 ### Care pathways
 
-An active visit starts as a **family pathway**. **Admit patient** records only a PrepPulse care-workflow flag and changes the draft to a **caregiver pathway**. It does not create a hospital admission. Switching the flag back restores the family mode. The doctor can save narrative handoff notes, add checklist items, check them off, and review agent suggestions before adding any suggestion as a clinician-selected item. Agent suggestions are not silently finalized.
+An active visit starts as a **family pathway**; the admission flag switches it to **caregiver**. Patients and Care pathways share a saved care state. The pathway page shows checkbox rows first; each row's Edit link reveals its text/frequency/remove controls, and Done editing hides them. Adding instructions, notes and prescriptions stays on this page. Edits autosave with revision checks. Prescribed treatments retain name/dose, start date, duration, time-of-day slots and food timing. AI checklist content is marked as a suggestion until clinician sign-off.
 
-The draft may list only clinician-reviewed findings with verified citations. **End session** asks for explicit confirmation. A visit with no notes or checklist items requires a separate evidence-only confirmation. Finalization stores a versioned, doctor-approved pathway and marks the visit ended. A later visit starts a new draft and preserves the older version. The Care pathways UI displays prior approved versions from the patient-scoped pathway history route.
+English, Hindi, Tamil, Bengali, Odia and Telugu are supported. Text edits invalidate old translations and queue a revision-checked local IndicTrans2 job. Target-language clinical text is published only as a complete snapshot; pending/failed snapshots show localized progress/retry states instead of mixed English/target rows. Medication names remain verbatim, numeric values and units are protected, and dose/application instructions receive a derived translation. Fixed controls and schedule labels are localized.
+
+Sign-off requires clinician confirmation and records the source plan, approver, patient/available brief snapshot and document IDs. It ends the draft, completes a linked appointment and appends an English PDF to Records. If the source is non-English, the archive waits for the English translation; the immutable original signed JSON remains stored. PDFs paginate automatically; selected-language downloads require complete translations and do not replace the English archive. Signed instructions remain immutable while derived translations and caregiver reports are stored separately. Earlier plans are accessed through Records.
+
+Caregiver ticks and notes persist with actor/date/time. Each daily task has a distinct date/slot ID, future reporting is rejected, and past calendar-day tasks lacking completion reports are flagged. A later signed plan supersedes old daily tasks. This records caregiver-reported completion, not verified administration.
 
 ### Other pages
 
-Guidance library has an empty approved-content state. No clinical guidance is generated or imported without owner approval. Settings supports local per-account display, voice, and scheduling defaults saved in the browser; no patient information is saved in those preferences. On Today, Records, Care pathways, Guidance library, and Settings, a small movable assistant bubble opens compact chat with typed or spoken input. It does not offer uploads and should not obscure essential controls.
+Guidance library has been removed. Settings supports local per-account display, voice, and scheduling defaults saved in the browser; no patient information is saved in those preferences. On Today, Records, Care pathways, and Settings, a small movable assistant bubble opens compact chat with typed or spoken input. It does not offer uploads and should not obscure essential controls.
 
 ## 5. Admin screens
 
-**New patient intake:** Option 1 registers a patient and doctor; option 2 appends a single document to an existing patient; option 3 uploads exactly one patient folder and all its files. Folder intake reports saved/unchanged file counts and an OCR/analysis job with ready/failed document counts. Registration and folder intake reject a missing active doctor assignment.
+**New patient intake:** one panel registers/selects a patient and captures demographics, doctor and record/folder uploads. The standalone option 3 was removed. Folder intake reports saved/unchanged file counts and an OCR/analysis job with ready/failed document counts. Registration and folder intake reject a missing active doctor assignment.
 
-**Patient appointments:** choose registered patient and assigned doctor, visit date/time, and a scheduling note. Create, edit, and cancel appointments. The doctor sees scheduled appointments on Today after the next refresh. Appointment status and clinical visit status are separate.
+**Patient appointments:** choose registered patient and assigned doctor, visit date/time, and a scheduling note. Create, edit, and cancel appointments. The doctor sees scheduled appointments on Today after the next refresh. New appointment and Today's appointments are the first row; separate search and scrollable history panels occupy the second row. History supports name/either ID and exact-date filtering, is newest first, includes completed appointments from today, and has no edit/delete controls. Expand opens a separate workspace with Back, not a nested overlay. Starting a visit links the first scheduled appointment for that patient/doctor on that date; ending it completes the appointment.
 
-**Patient directory:** browse registry cards with internal and optional external IDs and assign an additional doctor. Clicking a card opens an admin-only overview with assigned doctors, document states, visit log, and all appointments; clinical notes and the consultation brief are excluded. **Accounts:** create doctor/admin accounts and disable accounts; self-disable is rejected. **Settings:** Light/Dark/System display, text and contrast, and appointment start-time/step defaults; preferences remain in that browser.
+**Patient directory:** browse registry cards with internal and optional external IDs and assign an additional doctor. Clicking a card opens editable demographics, assigned doctors, document states, visit log, and appointments; clinical notes and the consultation brief are excluded. All records is the default; select a visit/appointment date to filter, preview records, edit display title/type/date, or upload another record linked to the chosen visit. Source bytes, original filenames and signed pathway dates/types remain immutable. Poll every five seconds for records and processing states. **Accounts:** the sole place to create doctor/admin/family-caregiver/professional-caregiver accounts; search by name, username or public/internal ID, disable accounts; self-disable is rejected. **Caregivers:** patient-access assignment left and searchable roster/free-active status right; account creation is absent. **Settings:** Light/Dark/System display, text and contrast, and appointment start-time/step defaults; preferences remain in that browser.
 
 ## 6. API and data contracts
 
@@ -127,7 +135,7 @@ The API adapter also adds `record_summaries`, `diabetes_history`, `history_synth
 
 ## 7. Voice and local models
 
-Doctor microphone dictation uses browser audio capture, then `faster-whisper` `small` with CPU INT8 through `POST /voice/transcribe`. The transcript populates the input for review; it is never auto-sent. Temporary audio is deleted after transcription. Initial model download and CPU performance must be checked on the target machine.
+Doctor microphone dictation uses browser audio capture, then `faster-whisper` `small` with CPU INT8 through `POST /voice/transcribe`. Recording shows a listening status with animated dots; stopping shows a transcribing status. Reduced-motion preferences disable the animation. The transcript populates the input for review; it is never auto-sent. Sending is disabled during recording/transcription. Temporary audio is deleted after transcription. Initial model download and CPU performance must be checked on the target machine.
 
 The downloaded `mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF` is intended for optional spoken replies; it cannot transcribe dictation. `PREPPULSE_TTS_MODEL_PATH` is an optional local file reference. The active adapter uses `PREPPULSE_TTS_ENDPOINT` (a full `/v1/audio/speech` URL) and `PREPPULSE_TTS_MODEL_ID` (default `qwen3-1.7b-multilingual-tts`). `/voice/capabilities` sends a harmless probe and enables **Read aloud** only after the endpoint returns actual WAV data. `POST /voice/speak` requires a doctor, assignment to the specified patient, and an explicit click; audio is not stored, and the response is marked `Cache-Control: no-store`. The tested LM Studio server at `192.168.1.50:1234` lists the model but does not implement `/v1/audio/speech`, so this server does **not** currently enable playback. A compatible audio runtime and language tests remain required. Text chat and dictation remain usable. Spoken patient information must always be opt-in.
 
@@ -137,4 +145,64 @@ Install Python dependencies from `requirements.txt` and frontend dependencies wi
 
 For the owner-approved fresh start, `scripts/reset_ui_patient_data.py` previews collection counts and `--apply --confirm preppulse` clears patient-linked MongoDB collections after the API is stopped. It retains both login accounts, database indexes, and original local dataset files. It also clears patient audit events so old patient IDs do not remain in the workspace.
 
-The current integration is local-only. It has no shared-host HTTPS, production secret management, backups, or approved content library. A working GGUF audio runtime remains to be connected, and the sidebar checklist's temporary check marks are not persisted. `scripts/audit_dataset_pipeline.py` is **not** a UI entry point; it clears MongoDB. Existing agent citation generation and fixed freshness score remain backend limitations. The UI therefore hides unverified highlights and avoids a clinical freshness claim.
+The current integration is local-only. It has no shared-host HTTPS, production secret management, backups, or approved content library. A working GGUF audio runtime remains to be connected, and target-model clinical translations need owner review. Checklist edits and caregiver reports now persist in MongoDB. `scripts/audit_dataset_pipeline.py` is **not** a UI entry point; it clears MongoDB. Existing agent citation generation and fixed freshness score remain backend limitations. The UI therefore hides unverified highlights and avoids a clinical freshness claim.
+
+## 9. Caregiver release API and persistence (3 November 2026)
+
+The detailed user workflow, classifier input rules and chart scope are also documented in [README](../README.md). Role checks remain server-side. Caregiver assignments are separate from doctor assignments; caregivers cannot access raw sources, briefs, chat, appointment history or unsigned drafts. Signed-plan responses exclude historical clinician snapshots and reviewed source citations.
+
+| Route | Role / purpose |
+|---|---|
+| `GET /care/labels` | Authenticated six-language fixed-label dictionary |
+| `GET /care/patients/{patient_id}?day=YYYY-MM-DD` | Assigned doctor/caregiver; returns `{draft, visit, plans, followup, day}`; caregiver draft/visit are null |
+| `PUT /care/visits/{visit_id}/draft` | Owning doctor, active visit; accepts `{revision, items, medications, doctor_notes, notes_language}`; returns incremented revision; conflicting updates return 409 |
+| `POST /care/visits/{visit_id}/translate` | Owning doctor; retry draft translation |
+| `POST /visits/{visit_id}/end` | Owning doctor; `{confirm, confirm_evidence_only, draft_revision?}`; stores signed source plan/snapshots |
+| `GET /care/pathways/{pathway_id}?day=...` | Assigned doctor/caregiver; returns `{plan, tasks, reports, past_due_unreported, notes}` |
+| `PUT /care/pathways/{pathway_id}/report` | Assigned caregiver; `{task_id, day, completed}`; checks task/date membership and stores reporter/time |
+| `POST /care/pathways/{pathway_id}/notes` | Assigned caregiver; `{text}`; appends timestamped note |
+| `GET /care/pathways/{pathway_id}/pdf?language=en` | Assigned doctor/caregiver; private paginated download, 409 for incomplete translation |
+| `POST /care/pathways/{pathway_id}/translate` | Assigned doctor/caregiver; retries a derived signed-plan translation |
+| `GET/POST /admin/caregiver-assignments` | Admin; list/upsert `{patient_id, caregiver_id, kind: family|professional}` |
+| `DELETE /admin/caregiver-assignments/{caregiver_id}/{patient_id}` | Admin revocation |
+| `PATCH /patients/{patient_id}/demographics` | Admin; explicit name, DOB/recorded age, sex, selected active doctor |
+| `POST /patients/{patient_id}/folder` | Admin/assigned doctor; multipart `files` and matching `paths`; append existing-patient folder and queue processing |
+| `GET /appointment-history?q=&on=&scope=past&offset=0&limit=50` | Admin/doctor; name/either ID/date filters and pagination; doctor results are scoped |
+| `GET /patients/{patient_id}/visit-records/{visit_id}` | Assigned doctor; saved visit, signed plan, snapshot availability, patient/brief snapshots, follow-up |
+
+Checklist input: `{item_id, text, source_language, frequency: once|daily, source: agent|doctor}`. The server maintains `texts` by language; stale client translations are ignored. Prescription input: `{medication_id, name, dose, kind: medicine|injection|treatment, start_date, duration, duration_unit: days|months, times: [morning|afternoon|evening|bedtime], food: before food|after food|with food|not applicable}`. Durations are bounded to 730 days or 24 months. Month intervals use calendar months with month-end clamping.
+
+New collections/indexes: `care_drafts` (unique visit), `caregiver_access` (unique patient/caregiver), `care_reports` (unique pathway/task), `care_notes` (pathway/time) and `care_translations` (unique signed pathway). Existing visits, appointments, pathways, source documents and audit events retain linked data. First API connection after restart creates indexes idempotently; existing accounts/patients remain intact.
+
+Translations use the two pinned official IndicTrans2 1B checkpoints through `src/preppulse_api/local_translation.py` and `local_translation/worker.py`. The API starts an isolated WSL2 Python process and exchanges JSON through local pipes; there is no translation network endpoint or cloud inference. The worker loads local weights in offline mode, protects numeric/unit/biomarker tokens through IndicProcessor entities, splits long text without truncation, and returns text without generating clinical advice. English is the pivot for non-English→non-English edits. `scripts/setup_translation.ps1` installs/configures it independently of LM Studio and the OCR environment.
+
+Translations are checked for number/unit preservation and target script; a stale result cannot overwrite a newer revision. Requests use a separate executor serialized through one persistent model worker. `care_language_cache` stores complete versions and internal retry progress (unique kind/identity/revision/language/model-versioned-source-hash). `care_segment_cache` reuses validated, unchanged segments within the same patient and model version. Old chat-model translations are excluded from the current display. Partial successes are retained internally but never published as a partly translated care view. Medicine names and signed source doses stay verbatim, while `medications[].dose_texts[language]` supplies a derived display translation. These safeguards do not establish clinical translation accuracy: fluent review is still required.
+
+Tests use `tests/test_caregiver_workflow.py` and the isolated synthetic/in-memory browser fixture `tests/care_browser_app.py`, plus existing chart/citation/API/RAG regressions. Browser-fixture translations are deterministic substitutes; they do not measure live LLM quality.
+
+## 10. Runtime, identity and historical review repairs
+
+The browser checks `GET /api/runtime` every 30 seconds for `contract: preppulse-ui-care-4`. A missing/older API displays a clear restart notice. This distinguishes absent routes from absent patient data. The Windows launcher recognizes only `uvicorn preppulse_api.app:app` before stopping a listener, checks active jobs, preserves a private secret when no environment secret exists, and enables source reload. It does not modify patient collections or source files. See README for explicit restart behavior.
+
+Existing `user_id` joins remain stable. Unique sparse `users.account_id` and unique `staff_directory.user_id/account_id` indexes support public `ADM-`, `DOC-`, `FAM-` and new `HCW-` identities; existing `CGV-` professional IDs remain valid. New caregiver accounts require an explicit family/professional choice. `PATCH /api/admin/accounts/{user_id}/caregiver-type` changes only caregiver profiles, rotates the public ID, retains the old ID in `account_aliases`, audits the change and revokes current patient links; the administrator must reassign patients. Index initialization and account reads backfill older profiles; account creation, disable and availability updates mirror safe profile fields. Password hashes are excluded from the staff directory and responses. Availability is an admin-maintained label, not a grant of access. Assignment requires the caregiver's registered family/professional type to match the assignment type; caregiver pathway reads/writes additionally require matching family/caregiver mode.
+
+The existing translate POST routes accept `?language=en|hi|ta|bn|or|te`. Browser language changes call them automatically and share requests between card/panel/editor views. Bundle responses include `language_status[language]` with `status`, `completed`, `total` and a sanitized error. Complete cached text appears immediately; initial processing updates progress through polling, with 1.5-second refresh for non-English views. Target text is swapped in as a complete version. Selected-language downloads return 409 until required text is available. Fixed care controls use `/api/care/labels`; patient names, drug names, identifiers and caregiver-authored notes remain source text. The caregiver portal's headings/navigation use the selected patient's language as well.
+
+Before a visit exists, `POST /api/care/patients/{patient_id}/translate-preview?language=ta` translates only the assigned doctor's derived preparation suggestions. The bundle supplies `suggestion_revision` and `suggestion_status`; neither reading nor translating this preview creates a visit/draft or exposes it to a caregiver. A source-hash-derived revision invalidates an earlier preview when analysis changes its source wording.
+
+| Route | Contract / access |
+|---|---|
+| `GET /admin/accounts?q=` | Admin; name, username, public or internal ID; safe profiles only |
+| `PATCH /admin/caregivers/{user_id}/availability` | Admin; `{availability: free|active}`; audited and mirrored |
+| `PATCH /admin/patients/{patient_id}/documents/{record_id}` | Admin; `{display_name, document_type, visit_date}`; source content unchanged, signed pathway type/date locked |
+| `POST /patients/{patient_id}/documents` | Existing upload contract plus optional `visit_id`; validates same-patient visit, otherwise binds active visit |
+| `GET /previous-patients?q=&on=YYYY-MM-DD` | Assigned doctor; no filters returns an empty list; returns patients, visits and own appointments |
+| `GET /patients/{patient_id}/historical-workspace?visit_id=` | Assigned doctor; `{patient, visit, visits, brief, snapshot_available, documents}` |
+
+The separate Previous patients menu/page has been removed; Records retains the existing history searches, dropdowns, collapses, dated visit detail and full searchable source workspace. Expanded appointment history can still open Patients in historical mode: source evidence and chat remain, while care editing, finding decisions and visit/analyze/upload controls are hidden. A signed visit uses its saved patient/brief and document membership when captured. Without a snapshot, the latest brief is labeled as current reference; no earlier brief is invented. Chat remains patient-wide and is explicitly labeled, rather than claiming a historical time boundary. The legacy `/previous-patients` API remains compatible but is not used by the navigation.
+
+The caregiver prompt uses dated measurement history and documented other conditions to produce everyday preparation reminders. It must not infer spikes, diagnoses, new monitoring schedules or treatment orders. When a brief exists but synthesis is unavailable, fallback tasks ask for older reports, current medicines, already-requested logs, and notes about new/returning symptoms. No brief means no generated tasks. Raw "Review the documented finding..." fallback tasks are retired; signed instructions and clinician edits are not rewritten. After an earlier signed plan, the next draft starts empty and preserves the prior plan/reports separately. Reanalysis never overwrites clinician-edited drafts or re-adds signed instructions.
+
+`PUT /care/visits/{visit_id}/checks/{item_id}` accepts `{completed: boolean}` for the owning doctor and an active saved checklist item. It audits and stores clinician preparation ticks separately in `care_visit_checks`, uniquely indexed by visit/item. Bundle responses include `draft.checks`. This does not increment text/translation revisions or create caregiver reports. Card, lower checklist and pathway checkbox views synchronize after successful saves/checks; their language choice is shared per patient in browser memory. Signed caregiver reports remain read-only for doctors, with report editing restricted to caregivers. The existing reset script includes the new check collection but is never run automatically.
+
+Repair regressions live in `tests/test_admin_repairs.py`; the browser fixture checks admin account/roster/history/directory interactions and doctor historical navigation alongside existing chart/citation and caregiver sign-off/reporting flows. It uses synthetic data and no live patient database.

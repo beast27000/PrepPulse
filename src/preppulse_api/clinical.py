@@ -118,12 +118,12 @@ def process_patient(
         chunks = [chunk for doc in docs for chunk in chunker.chunk_mongo_document(doc)]
         retriever = HybridEnsembleRetriever(chunks)
         dob = patient.get("dob")
-        age = date.today().year - int(dob[:4]) if dob and len(dob) >= 4 and dob[:4].isdigit() else 0
+        age = date.today().year - int(dob[:4]) if dob and len(dob) >= 4 and dob[:4].isdigit() else patient.get("age") or 0
         initial = {
             "patient_id": patient_id,
             "patient_name": patient["name"],
             "mrn": patient_id,
-            "age_sex": f"{age} years / {patient.get('sex', 'Unknown')}",
+            "age_sex": f"{age} years / {patient.get('sex') or 'Unknown'}",
             "age": age,
             "gender": patient.get("sex") or "Unknown",
             "diabetes_type": "",

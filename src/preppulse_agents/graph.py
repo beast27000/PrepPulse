@@ -484,11 +484,11 @@ def comorbidities_agent(state: AgentReviewState) -> dict[str, Any]:
     return {"comorbidity_findings": findings}
 
 
-# ---------- agent 6: dynamic caregiver prep with 6-language translations ----------
+# ---------- agent 6: caregiver source instructions; local care worker translates ----------
 
 
 def caregiver_prep_agent(state: AgentReviewState) -> dict[str, Any]:
-    # Generates 6-language Caregiver Handoff/Prep Sheet via caregiver_prep_agent.yaml
+    # Generates source instructions; care translations use the dedicated local worker.
     classification = state.get("classification")
     is_diabetic = classification and classification.category == "diabetic"
     patient_name = state.get("patient_name") or "Patient"
@@ -510,6 +510,13 @@ def caregiver_prep_agent(state: AgentReviewState) -> dict[str, Any]:
 
     mode = "handoff" if is_diabetic else "prep_sheet"
     stage_str = classification.stage if classification else "Pre-Diabetic"
+    measurement_history = " | ".join(
+        f"{series.metric_name}: " + "; ".join(
+            f"{point.date}: {point.value} {point.unit}"
+            for point in sorted(series.points, key=lambda p: p.date)[-8:]
+        )
+        for series in (state.get("metric_series") or [])[:8]
+    ) or "No dated measurement history supplied; do not infer changes."
 
     sys_msg, user_msg, params = format_agent_prompt(
         "caregiver_prep_agent",
@@ -522,6 +529,7 @@ def caregiver_prep_agent(state: AgentReviewState) -> dict[str, Any]:
         medications=med_text[:300],
         mismatches=mismatch_text,
         allergies=allergy_text[:200],
+        measurement_history=measurement_history,
     )
 
     checklist: list[ChecklistItem] = []
@@ -546,11 +554,11 @@ def caregiver_prep_agent(state: AgentReviewState) -> dict[str, Any]:
             checklist.append(ChecklistItem(
                 id=str(item_data.get("id", f"chk_{len(checklist)+1:02d}")),
                 text_en=text_en,
-                text_hi=str(item_data.get("text_hi") or item_data.get("hindi") or text_en).strip(),
-                text_ta=str(item_data.get("text_ta") or item_data.get("tamil") or text_en).strip(),
-                text_bn=str(item_data.get("text_bn") or item_data.get("bengali") or text_en).strip(),
-                text_or=str(item_data.get("text_or") or item_data.get("odia") or text_en).strip(),
-                text_te=str(item_data.get("text_te") or item_data.get("telugu") or text_en).strip(),
+                text_hi=str(item_data.get("text_hi") or item_data.get("hindi") or "").strip(),
+                text_ta=str(item_data.get("text_ta") or item_data.get("tamil") or "").strip(),
+                text_bn=str(item_data.get("text_bn") or item_data.get("bengali") or "").strip(),
+                text_or=str(item_data.get("text_or") or item_data.get("odia") or "").strip(),
+                text_te=str(item_data.get("text_te") or item_data.get("telugu") or "").strip(),
             ))
         if allergy_hits:
             for h in allergy_hits[:2]:

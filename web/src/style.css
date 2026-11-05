@@ -841,8 +841,9 @@ a {
   max-height: 520px;
 }
 .inline-expand {
-  align-self: flex-end;
-  margin-bottom: -12px;
+  display: block;
+  margin: 0 0 14px auto;
+  position: relative;
 }
 .proof-panel.expanded .proof-preview {
   max-height: 700px;
@@ -1291,6 +1292,35 @@ a {
 }
 .admin-form p {
   font-size: 12px;
+}
+.appointment-switcher {
+  display: flex;
+  width: 94%;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 4px;
+  border: 1px solid #dce5eb;
+  border-radius: 10px;
+  background: #f7fafb;
+}
+.appointment-switcher button {
+  flex: 1;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #587083;
+  padding: 10px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+.appointment-switcher button.active {
+  background: #fff;
+  color: #227f7c;
+  box-shadow: 0 1px 5px #203b4c1c;
+  font-weight: 700;
+}
+.appointment-date-filter {
+  margin: 0 0 14px;
 }
 .admin-form form,
 .login-card form,

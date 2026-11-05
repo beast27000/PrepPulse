@@ -1,0 +1,218 @@
+.care-workspace {
+  min-width: 0;
+}
+.care-workspace label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+.care-workspace input:not([type="checkbox"]),
+.care-workspace select,
+.care-workspace textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #dce5ed;
+  border-radius: 10px;
+  padding: 11px 13px;
+  min-height: 44px;
+  color: inherit;
+  background: #fff;
+  outline: none;
+}
+.care-workspace input:focus,
+.care-workspace select:focus,
+.care-workspace textarea:focus {
+  border-color: #2d8988;
+  box-shadow: 0 0 0 3px #2d898815;
+}
+.care-workspace input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #2d8988;
+  margin: 2px 0;
+}
+.care-workspace textarea {
+  min-height: 95px;
+}
+.care-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.care-row select {
+  width: auto;
+}
+.care-edit-item {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border, #dbe5ec);
+}
+.care-edit-item small {
+  display: block;
+}
+.care-error {
+  color: #a32c35;
+  background: #fff1f1;
+  padding: 12px;
+  border-radius: 10px;
+}
+.care-med {
+  border: 1px solid var(--border, #dbe5ec);
+  border-radius: 14px;
+  margin: 18px 0;
+  padding: 18px;
+  min-width: 0;
+}
+.care-notes,
+.care-note p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.care-note {
+  padding: 12px;
+  background: var(--page-bg, #f1f6f8);
+  border-radius: 10px;
+  margin: 12px 0;
+}
+.care-due {
+  color: #976012;
+}
+.care-table {
+  overflow-x: auto;
+}
+.care-table table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.care-table th,
+.care-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--border, #dbe5ec);
+  text-align: left;
+}
+.signed-plan {
+  margin-top: 24px;
+  border-top: 1px solid var(--border, #dbe5ec);
+  padding-top: 20px;
+}
+.collapsible-care {
+  min-width: 0;
+}
+.collapse-heading {
+  width: 100%;
+  text-align: left;
+  margin-bottom: 10px;
+}
+.care-compact {
+  padding: 22px;
+}
+.care-workspace .panel-heading select {
+  max-width: 140px;
+}
+.workspace-grid.rail-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.right-column[hidden] {
+  display: none;
+}
+.history-expanded {
+  position: fixed;
+  inset: 5vh 4vw;
+  z-index: 100;
+  overflow-y: auto;
+  box-shadow: 0 0 0 100vmax #15233799;
+}
+.patient-rail-toggle {
+  display: flex;
+  justify-content: flex-end;
+  margin: 12px 0;
+}
+.history-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0;
+}
+.history-tools input {
+  min-width: 140px;
+  flex: 1;
+}
+.visit-snapshot {
+  white-space: pre-wrap;
+}
+.care-compact .check-row input {
+  flex: 0 0 auto;
+}
+.care-workspace .check-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+}
+.care-workspace .check-row small {
+  display: block;
+}
+.care-workspace .form-actions {
+  flex-wrap: wrap;
+}
+.care-item-view {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.care-item-view .check-row {
+  flex: 1;
+  margin: 6px 0;
+  font-size: 16px;
+  line-height: 1.65;
+}
+.care-checklist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  margin-top: 18px;
+}
+.care-card-preview .check-row {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.care-card-preview .small-muted {
+  font-size: 11px;
+}
+.care-card-preview .care-checklist-actions {
+  margin-top: 12px;
+}
+.visit-records-panel > .panel-heading {
+  margin-bottom: 26px;
+}
+.visit-records-section {
+  padding: 20px 0;
+  border-top: 1px solid #dce5ed;
+}
+.visit-records-section > summary {
+  cursor: pointer;
+  padding: 4px 0;
+  font-size: 17px;
+  line-height: 1.6;
+}
+.visit-records-section[open] > summary {
+  margin-bottom: 18px;
+}
+.visit-records-panel .visit-section-title {
+  margin: 22px 0 12px;
+  font-size: 16px;
+}
+.visit-records-panel > .record-row {
+  padding: 18px 0;
+}
+.visit-records-panel > .record-row .text-button {
+  text-align: left;
+  line-height: 1.6;
+  font-size: 16px;
+  font-family: inherit;
+}

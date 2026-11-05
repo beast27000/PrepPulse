@@ -832,6 +832,14 @@
     max-height: 420px;
   }
 }
+.dictation-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 24px;
+  color: #287f80;
+  font-size: 13px;
+}
 @media (prefers-reduced-motion: reduce) {
   .process-orbit,
   .process-dots i {

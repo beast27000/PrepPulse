@@ -1,0 +1,131 @@
+.history-pair {
+  margin-top: 22px;
+  align-items: stretch;
+}
+.bottom-actions[hidden] {
+  display: none;
+}
+.finding-controls[hidden] {
+  display: none;
+}
+.history-pair > .panel {
+  min-height: 425px;
+  min-width: 0;
+}
+.admin-scroll-list {
+  max-height: 500px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 8px;
+}
+.accounts-grid .admin-scroll-list small {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.accounts-grid .admin-scroll-list code {
+  font-size: 14px;
+}
+.patient-card .directory-card-button small {
+  font-size: 13px;
+}
+.finding .finding-main p {
+  font-size: 14px;
+}
+.finding .source-link {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.finding .finding-controls button {
+  font-size: 12px;
+}
+.caregiver-roster .appointment-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  gap: 18px;
+}
+.caregiver-roster .appointment-row > div {
+  min-width: 0;
+}
+.caregiver-roster code {
+  display: block;
+  margin-top: 6px;
+}
+.history-search > label {
+  display: block;
+  margin: 14px 0;
+}
+.history-full-page .admin-scroll-list {
+  max-height: calc(100vh - 280px);
+}
+.appointment-history-results .appointment-row time {
+  font: 12px monospace;
+  min-width: 84px;
+  color: #477a80;
+}
+.previous-patient-card {
+  margin-top: 20px;
+}
+.directory-edit {
+  border: 1px solid #dbe5ec;
+  border-radius: 14px;
+  margin: 16px 0;
+}
+.directory-overview .history-tools label {
+  min-width: 240px;
+}
+.directory-overview select,
+.directory-overview input {
+  font: inherit;
+  border: 1px solid #dbe5ec;
+  padding: 12px;
+  border-radius: 9px;
+  background: #fff;
+  color: inherit;
+}
+.directory-overview .record-row > div {
+  min-width: 0;
+}
+.directory-overview .record-row strong,
+.admin-scroll-list code {
+  overflow-wrap: anywhere;
+}
+.history-tools label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+.history-tools {
+  align-items: end;
+}
+.api-version-notice {
+  position: sticky;
+  top: 0;
+  z-index: 110;
+  background: #fff3dc;
+  border-bottom: 1px solid #d8b86a;
+  color: #664512;
+  padding: 14px 24px;
+}
+.historical-banner {
+  background: #e7f6f4;
+  border: 1px solid #a5d5cc;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 20px;
+  color: #28615e;
+}
+[data-theme="dark"] .directory-overview select,
+[data-theme="dark"] .directory-overview input {
+  background: #182335;
+  color: #e4eaf1;
+  border-color: #40536e;
+}
+@media (max-width: 850px) {
+  .history-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .history-pair > .panel {
+    min-height: auto;
+  }
+}
