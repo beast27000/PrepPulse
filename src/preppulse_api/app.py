@@ -3,10 +3,9 @@ from __future__ import annotations
 import logging
 import os
 import secrets
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from pathlib import Path
-from threading import Lock
+from threading import BoundedSemaphore, Lock
 from typing import Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -15,6 +14,7 @@ from pwdlib import PasswordHash
 from pydantic import BaseModel, Field, ValidationError
 from pymongo.errors import DuplicateKeyError
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from preppulse_api.administration import register_administration_routes
 from preppulse_api.care import (
@@ -33,6 +33,8 @@ from preppulse_api.config import (
     TTS_MODEL_PATH,
 )
 from preppulse_api.folder_import import save_patient_folder
+from preppulse_api.jobs import enabled as durable_jobs
+from preppulse_api.jobs import executor, is_pending
 from preppulse_api.store import WorkspaceStore, new_id, now
 from preppulse_api.voice import ready as tts_ready
 from preppulse_api.voice import synthesize
@@ -41,10 +43,13 @@ if len(SESSION_SECRET) < 32:
     raise RuntimeError("Set PREPPULSE_SESSION_SECRET to a random value of at least 32 characters")
 
 app = FastAPI(title="PrepPulse local workspace API")
-workers = ThreadPoolExecutor(max_workers=2)
+if os.getenv("PREPPULSE_ENV") == "production":
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=[os.environ["PREPPULSE_HOSTNAME"], "localhost", "127.0.0.1", "api"])
+workers = executor(max_workers=2)
 active_chat_turns: set[str] = set()
 active_brief_jobs: set[str] = set()
 password_hash = PasswordHash.recommended()
+password_checks = BoundedSemaphore(4)
 _stt_model = None
 _schema_ready = False
 _schema_lock = Lock()
@@ -114,6 +119,10 @@ def patient_access(patient_id: str, current: dict, store: WorkspaceStore) -> dic
 
 @app.middleware("http")
 async def csrf(request: Request, call_next):
+    if os.getenv("PREPPULSE_ENV") == "production" and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        expected = "https://" + os.environ["PREPPULSE_HOSTNAME"]
+        if request.headers.get("origin") not in {None, expected}:
+            return Response("Origin not allowed", status_code=403)
     if (
         request.method in {"POST", "PUT", "PATCH", "DELETE"}
         and request.url.path != "/api/auth/login"
@@ -130,7 +139,7 @@ app.add_middleware(
     secret_key=SESSION_SECRET,
     session_cookie=os.getenv("PREPPULSE_SESSION_COOKIE", "preppulse_session"),
     same_site="strict",
-    https_only=False,
+    https_only=os.getenv("PREPPULSE_SECURE_COOKIES", "0") == "1",
     max_age=60 * 60 * 8,
 )
 
@@ -142,10 +151,20 @@ class Login(BaseModel):
 
 @app.post("/api/auth/login")
 def login(body: Login, request: Request, store: WorkspaceStore = Depends(db)):
+    import hashlib
+    from datetime import UTC, timedelta
+    identity = hashlib.sha256((body.username.lower().strip() + "|" +
+        (request.client.host if request.client else "unknown")).encode()).hexdigest()
+    since = (datetime.now(UTC) - timedelta(minutes=15)).isoformat()
+    if store.db.login_attempts.count_documents({"identity": identity, "at": {"$gte": since}}) >= 10:
+        raise HTTPException(429, "Too many sign-in attempts; try again in 15 minutes")
     found = store.db.users.find_one({"username": body.username.lower().strip()})
-    valid = password_hash.verify(body.password, found["password_hash"]) if found else False
+    with password_checks:
+        valid = password_hash.verify(body.password, found["password_hash"]) if found else False
     if not valid or found.get("disabled"):
+        store.db.login_attempts.insert_one({"identity": identity, "at": now()})
         raise HTTPException(401, "Invalid credentials")
+    store.db.login_attempts.delete_many({"identity": identity})
     request.session.clear()
     request.session["user_id"] = found["user_id"]
     request.session["csrf"] = secrets.token_urlsafe(24)
@@ -177,6 +196,26 @@ class AccountIn(BaseModel):
     password: str = Field(min_length=12)
     role: Literal["doctor", "admin", "caregiver"] = "doctor"
     caregiver_type: Literal["family", "professional"] | None = None
+
+
+class RoutingIn(BaseModel):
+    mode: Literal["auto", "azure", "sarvam", "disabled"]
+
+
+@app.get("/api/admin/ai-routing")
+def get_ai_routing(_: dict = Depends(admin)):
+    from preppulse_api.provider_settings import routing
+    return {"mode": routing(), "available": os.getenv("PREPPULSE_ENV") == "production"}
+
+
+@app.put("/api/admin/ai-routing")
+def update_ai_routing(body: RoutingIn, current: dict = Depends(admin), store: WorkspaceStore = Depends(db)):
+    from preppulse_api.provider_settings import save
+    if os.getenv("PREPPULSE_ENV") != "production":
+        raise HTTPException(400, "Routing controls are enabled in the deployed workspace")
+    save(body.mode)
+    store.audit(current, "ai_routing_changed", extra={"mode": body.mode})
+    return {"mode": body.mode, "available": True}
 
 
 @app.get("/api/admin/accounts")
@@ -696,6 +735,7 @@ def recover_brief_job(store: WorkspaceStore, job: dict | None) -> dict | None:
         job
         and job.get("status") in {"queued", "running"}
         and job["job_id"] not in active_brief_jobs
+        and not (durable_jobs() and is_pending(store, "_job", [job["job_id"], job["patient_id"]]))
     ):
         values = {
             "status": "failed",
@@ -1210,7 +1250,10 @@ def owned_chat_session(session_id: str, current: dict, store: WorkspaceStore) ->
         raise HTTPException(404, "Conversation not found")
     patient_access(session["patient_id"], current, store)
     active_id = session.get("active_turn_id")
-    if active_id and active_id not in active_chat_turns:
+    pending = store.db.chat_turns.find_one({"turn_id": active_id}) if active_id else None
+    queued = bool(durable_jobs() and pending and is_pending(store, "_chat_worker",
+                  [active_id, session_id, pending["query"]]))
+    if active_id and active_id not in active_chat_turns and not queued:
         store.db.chat_turns.update_one(
             {"turn_id": active_id, "status": {"$in": ["queued", "running"]}},
             {
@@ -1444,14 +1487,14 @@ def chat(body: QueryIn, current: dict = Depends(clinician), store: WorkspaceStor
 @app.get("/api/voice/capabilities")
 def voice_capabilities(_: dict = Depends(clinician)):
     available = tts_ready()
-    cloud = os.getenv("PREPPULSE_VOICE_PROVIDER") == "sarvam"
+    cloud = os.getenv("PREPPULSE_VOICE_PROVIDER") in {"sarvam", "azure"}
     return {
         "dictation": True,
         "tts_ready": available,
-        "tts_status": "Sarvam configured; audio verified on playback" if cloud and available else "Local audio endpoint verified"
+        "tts_status": "Cloud speech configured; audio verified on playback" if cloud and available else "Local audio endpoint verified"
         if available
         else "No compatible audio endpoint verified",
-        "tts_model": "bulbul:v3" if cloud else "mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF",
+        "tts_model": "Azure Speech" if os.getenv("PREPPULSE_VOICE_PROVIDER") == "azure" else "bulbul:v3" if cloud else "mradermacher/Qwen3-1.7B-Multilingual-TTS-GGUF",
         "tts_path_configured": bool(TTS_MODEL_PATH and Path(TTS_MODEL_PATH).is_file()),
     }
 
@@ -1486,6 +1529,15 @@ async def transcribe(
     data = await file.read(10 * 1024 * 1024 + 1)
     if len(data) > 10 * 1024 * 1024:
         raise HTTPException(413, "Audio exceeds 10 MB")
+    if os.getenv("PREPPULSE_VOICE_PROVIDER") == "azure":
+        from starlette.concurrency import run_in_threadpool
+
+        from preppulse_api.azure_services import with_fallback
+        try:
+            text = await run_in_threadpool(with_fallback, "transcribe", data, language)
+            return {"transcript": text, "review_required": True}
+        except Exception:
+            raise HTTPException(503, "Speech service unavailable; please retry or type") from None
     if os.getenv("PREPPULSE_VOICE_PROVIDER") == "sarvam":
         from preppulse_api.cloud_services import transcribe_sarvam
         try:

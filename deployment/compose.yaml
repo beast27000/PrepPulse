@@ -1,0 +1,91 @@
+services:
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    volumes:
+      - /data/mongo:/data/db
+    networks: [database]
+    mem_limit: 1g
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+  api:
+    image: preppulse:pilot
+    build: ..
+    env_file: /etc/preppulse/server.env
+    restart: unless-stopped
+    volumes:
+      - /data/private:/data/private
+      - /data/models:/data/models
+      - ../src:/app/src:ro
+      - ../scripts:/app/scripts:ro
+      - ../prompts:/app/prompts:ro
+    networks: [edge, database]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    mem_limit: 2g
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  worker:
+    image: preppulse:pilot
+    command: ["python", "-m", "preppulse_api.jobs"]
+    env_file: /etc/preppulse/server.env
+    environment:
+      PREPPULSE_WORKER_QUEUE: clinical
+    restart: unless-stopped
+    volumes:
+      - /data/private:/data/private
+      - /data/models:/data/models
+      - ../src:/app/src:ro
+      - ../scripts:/app/scripts:ro
+      - ../prompts:/app/prompts:ro
+    networks: [database, outbound]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    mem_limit: 4g
+    security_opt: ["no-new-privileges:true"]
+    stop_grace_period: 30s
+  care-worker:
+    image: preppulse:pilot
+    command: ["python", "-m", "preppulse_api.jobs"]
+    env_file: /etc/preppulse/server.env
+    environment:
+      PREPPULSE_WORKER_QUEUE: care
+    restart: unless-stopped
+    volumes:
+      - /data/private:/data/private
+      - ../src:/app/src:ro
+      - ../scripts:/app/scripts:ro
+      - ../prompts:/app/prompts:ro
+    networks: [database, outbound]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    mem_limit: 768m
+    security_opt: ["no-new-privileges:true"]
+  web:
+    image: caddy:2.10
+    env_file: /etc/preppulse/server.env
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../web/dist:/srv:ro
+      - /data/caddy:/data
+    networks: [edge]
+    depends_on: [api]
+    mem_limit: 256m
+networks:
+  edge:
+  outbound:
+  database:
+    internal: true

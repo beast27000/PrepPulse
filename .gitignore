@@ -38,3 +38,4 @@ docs/*
 !docs/FRONTEND_INTEGRATION_SPEC.md
 !docs/Architecutre_Digarams/
 !docs/Architecutre_Digarams/**
+.copilot-azure/

@@ -32,13 +32,28 @@ class RoutedChatModel(BaseChatModel):
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
         providers = [self.provider]
+        from preppulse_api.provider_settings import routing
+        mode = routing() if os.getenv("PREPPULSE_ENV") == "production" else "auto"
+        if mode == "disabled":
+            raise ProviderUnavailable("AI processing is disabled by the administrator")
+        if os.getenv("PREPPULSE_AI_ENABLED", "1") != "1":
+            raise ProviderUnavailable("AI processing is disabled; saved records remain available")
         if self.provider == "auto":
-            providers = ["sarvam"]
-            if os.getenv("PREPPULSE_GEMINI_ENABLED", "0") == "1":
+            configured = os.getenv("PREPPULSE_AI_PROVIDER_ORDER", "")
+            providers = [p.strip() for p in configured.split(",") if p.strip()] if configured else ["sarvam"]
+            if os.getenv("PREPPULSE_GEMINI_ENABLED", "0") == "1" and "gemini" not in providers:
                 providers.append("gemini")
-            providers.append("local")
+            if not configured and os.getenv("PREPPULSE_ALLOW_LOCAL_AI", "1") == "1":
+                providers.append("local")
+        if self.provider == "auto" and mode in {"azure", "sarvam"}:
+            providers = [mode]
         errors = []
         for provider in providers:
+            if provider not in {"azure", "sarvam", "gemini", "local"}:
+                errors.append("Unsupported provider configuration")
+                continue
+            if provider == "local" and os.getenv("PREPPULSE_ALLOW_LOCAL_AI", "1") != "1":
+                continue
             if provider == "gemini" and os.getenv("PREPPULSE_SYNTHETIC_ONLY", "0") != "1":
                 errors.append("gemini: synthetic-data mode required")
                 continue
@@ -47,6 +62,8 @@ class RoutedChatModel(BaseChatModel):
             ]
             if provider == "local":
                 accounts = [("LOCAL", "lm-studio")]
+            elif provider == "azure":
+                accounts = [("AZURE_CHAT", os.getenv("AZURE_OPENAI_API_KEY", ""))]
             for alias, key in accounts:
                 if not key:
                     continue
@@ -66,10 +83,14 @@ class RoutedChatModel(BaseChatModel):
             "sarvam": os.getenv("SARVAM_MODEL", "sarvam-105b"),
             "gemini": os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
             "local": os.getenv("LOCAL_CHAT_MODEL", "qwen/qwen3-4b-2507"),
+            "azure": os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-mini"),
         }[provider]
         urls = {"sarvam": os.getenv("SARVAM_BASE_URL", "https://api.sarvam.ai/v1"),
                 "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
                 "local": os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")}
+        if provider == "azure":
+            from preppulse_api.azure_services import chat_url
+            urls["azure"] = chat_url()
         wire = [{"role": {"human": "user", "ai": "assistant"}.get(m.type, m.type),
                  "content": m.content} for m in messages]
         # Reserve a deliberately conservative upper estimate, including tokenizer variation.
@@ -78,7 +99,9 @@ class RoutedChatModel(BaseChatModel):
         output_rate = float(os.getenv("SARVAM_OUTPUT_INR_PER_MILLION", "100"))
         output_limit = max(self.max_tokens, 2048) if provider != "local" else self.max_tokens
         cost = (input_estimate * input_rate + output_limit * output_rate) / 1_000_000
-        call_id = reserve(provider, alias, "chat", cost if provider == "sarvam" else 0)
+        azure_cost = (input_estimate * float(os.getenv("AZURE_INPUT_USD_PER_MILLION", "5"))
+                      + output_limit * float(os.getenv("AZURE_OUTPUT_USD_PER_MILLION", "20"))) / 1_000_000
+        call_id = reserve(provider, alias, "chat", cost if provider == "sarvam" else azure_cost if provider == "azure" else 0)
         payload = {"model": model, "messages": wire, "temperature": self.temperature,
                    "max_tokens": output_limit}
         if provider == "sarvam":
@@ -91,13 +114,17 @@ class RoutedChatModel(BaseChatModel):
             payload["stop"] = stop
         headers = {"api-subscription-key": key} if provider == "sarvam" else {
             "Authorization": "Bearer " + key}
+        if provider == "azure":
+            headers = {"api-key": key}
         started = time.monotonic()
         try:
             with httpx.Client(timeout=float(os.getenv("PREPPULSE_AI_TIMEOUT", "90")),
                               trust_env=False) as client:
-                response = client.post(urls[provider].rstrip("/") + "/chat/completions",
+                response = client.post(urls[provider] if provider == "azure" else urls[provider].rstrip("/") + "/chat/completions",
                                        headers=headers, json=payload)
             if response.status_code != 200:
+                if provider == "azure" and response.status_code in {401, 403, 404}:
+                    cooldown("AZURE_CHAT", 120)
                 if response.status_code == 402:
                     cooldown(alias, 3600)
                 elif response.status_code == 429:
@@ -113,6 +140,9 @@ class RoutedChatModel(BaseChatModel):
             prompt, completion = usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0)
             actual = ((prompt * input_rate + completion * output_rate) / 1_000_000
                       if provider == "sarvam" else 0)
+            if provider == "azure":
+                actual = (prompt * float(os.getenv("AZURE_INPUT_USD_PER_MILLION", "5"))
+                          + completion * float(os.getenv("AZURE_OUTPUT_USD_PER_MILLION", "20"))) / 1_000_000
             choices = data.get("choices") or [{}]
             text = (choices[0].get("message") or {}).get("content")
             if not isinstance(text, str) or not text.strip() or choices[0].get("finish_reason") == "length":

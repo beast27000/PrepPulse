@@ -60,6 +60,14 @@ def process_structured(store, mongo, patient_id, progress=None):
                     "model": os.getenv("SARVAM_MODEL") if settings.llm.provider == "sarvam" else
                     os.getenv("GEMINI_MODEL") if settings.llm.provider == "gemini" else os.getenv("LOCAL_CHAT_MODEL"),
                     "version": VERSION}
+        if settings.llm.provider in {"azure", "auto"}:
+            from preppulse_api.provider_settings import routing
+            identity["cloud_configuration"] = {
+                "azure_deployment": os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+                "azure_endpoint": os.getenv("AZURE_OPENAI_ENDPOINT"),
+                "order": os.getenv("PREPPULSE_AI_PROVIDER_ORDER"),
+                "sarvam_model": os.getenv("SARVAM_MODEL"), "mode": routing(),
+            }
         fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True, default=str).encode()).hexdigest()
         previous = doc.get("preprocessing", {})
         if previous.get("fingerprint") == fingerprint and previous.get("status") == "complete":

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import threading
 import time
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env", override=False)
+_ledger_initialization = threading.Lock()
 
 
 class BudgetExceeded(RuntimeError):
@@ -20,11 +22,24 @@ def ledger():
     root = Path(os.getenv("PREPPULSE_PRIVATE_ROOT", str(ROOT / "private_data")))
     root.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(root / "api_usage.sqlite3", timeout=30)
-    connection.execute("PRAGMA journal_mode=WAL")
-    connection.execute("CREATE TABLE IF NOT EXISTS calls (id INTEGER PRIMARY KEY, created REAL, "
-                       "provider TEXT, account TEXT, service TEXT, reserved REAL, actual REAL, "
-                       "status TEXT, input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0)")
-    connection.execute("CREATE TABLE IF NOT EXISTS cooldowns (account TEXT PRIMARY KEY, until REAL)")
+    # journal-mode changes can return SQLITE_BUSY immediately during concurrent
+    # first use, even with sqlite's busy timeout. Serialize threads and retry the
+    # bounded initialization across the API and worker processes.
+    with _ledger_initialization:
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                connection.execute("PRAGMA journal_mode=WAL")
+                connection.execute("CREATE TABLE IF NOT EXISTS calls (id INTEGER PRIMARY KEY, created REAL, "
+                                   "provider TEXT, account TEXT, service TEXT, reserved REAL, actual REAL, "
+                                   "status TEXT, input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0)")
+                connection.execute("CREATE TABLE IF NOT EXISTS cooldowns (account TEXT PRIMARY KEY, until REAL)")
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+                    connection.close()
+                    raise
+                time.sleep(.05)
     return connection
 
 
@@ -35,6 +50,8 @@ def reserve(provider, account, service, cost):
     An unknown balance remains unknown. Shared organisations can share a pool alias.
     """
     with ledger() as db:
+        if os.getenv("PREPPULSE_AI_ENABLED", "1") != "1":
+            raise BudgetExceeded("AI processing is disabled")
         db.execute("BEGIN IMMEDIATE")
         cooldown = db.execute("SELECT MAX(until) FROM cooldowns WHERE account IN (?,?)", (account, provider)).fetchone()
         if cooldown and cooldown[0] and cooldown[0] > time.time():
@@ -56,6 +73,9 @@ def reserve(provider, account, service, cost):
                                        f"FROM calls WHERE account IN ({marks})", aliases).fetchone()[0]
                     if min(balances) - spent - cost < 10:
                         raise BudgetExceeded("Estimated balance would fall below 10 credits")
+        elif provider == "azure":
+            if used + cost > float(os.getenv("PREPPULSE_AZURE_AI_BUDGET_USD", "50")):
+                raise BudgetExceeded("Azure AI spending ceiling reached")
         elif provider == "gemini":
             count = db.execute("SELECT COUNT(*) FROM calls WHERE provider='gemini'").fetchone()[0]
             if count >= int(os.getenv("PREPPULSE_GEMINI_REQUEST_LIMIT", "45")):
@@ -79,6 +99,8 @@ def cooldown(account, seconds):
 
 
 def sarvam_accounts():
+    if os.getenv("Main_Sarvam_AI_Credits"):
+        return [("HACKATHON_MAIN", os.environ["Main_Sarvam_AI_Credits"])]
     accounts = [(f"ACC_{i}", os.getenv(f"SARVAM_AI_CREDITS_ACC_{i}", "")) for i in range(1, 4)]
     if not any(key for _, key in accounts):
         accounts = [("LEGACY", os.getenv("SARVAM_API_KEY") or os.getenv("SARVAM_AI_CREDITS", ""))]

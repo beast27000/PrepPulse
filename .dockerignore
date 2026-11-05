@@ -1,0 +1,12 @@
+.git
+.venv
+.env*
+.tmp
+.copilot-azure
+private_data
+.local_models
+datasets
+web/node_modules
+web/dist
+**/__pycache__
+**/*.pyc

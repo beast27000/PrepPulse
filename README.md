@@ -1,25 +1,29 @@
 # PrepPulse
 
-## deployment branch - planning only
+## Deployment branch — Azure pilot
 
-This branch starts from tested `ui_testing` commit `4f280f2`. **No deployment implementation or cloud release has been performed.** The owner requested a documentation-only phase with no paid model calls or provisioning.
+**Live site:** https://preppulse-pilot-b8bc.centralindia.cloudapp.azure.com/
 
-### Proposed deployment stack
+This branch contains the deployed Azure implementation, approved by the owner on 5 November 2026. `UI` and `main` remain unchanged. The complete setup, operating guide, recovery instructions and known limits are in [deployment/README.md](deployment/README.md); actual verification results are in [deployment/VERIFICATION.md](deployment/VERIFICATION.md).
 
-| Layer | Proposed choice, subject to approval |
+### Deployed technology stack
+
+| Layer | Deployed implementation |
 | --- | --- |
-| Public website | Existing React/Vite UI and `/api` under one HTTPS origin, served by Caddy |
-| Application host | Eligible Oracle A1 VM; actual account/region capacity and Linux Arm compatibility must be checked |
-| API and jobs | FastAPI plus a separate Mongo-backed leased-job worker; worker changes are not implemented yet |
-| Database | MongoDB Atlas Free, within measured storage, connection and operation limits |
-| Private files | Persistent private VM volume, with encrypted independent backups; object-primary storage remains an optional implementation decision |
-| AI services | Sarvam primary; explicitly enabled synthetic-only Gemini fallback; no dependency on the developer PC |
-| CPU processing | Pinned Python embeddings, OCR, source rendering, charts and FHIR on the hosted server |
-| Credit exhaustion | Proposed AI-disabled/cached-output mode; no claim that unfunded inference remains available |
+| Browser | React/TypeScript/Vite, Caddy HTTPS, single-origin `/api` |
+| Host | Azure Ubuntu x64 VM, 2 vCPU / 8 GB, Docker Compose |
+| API and jobs | FastAPI, durable Mongo leases, separate clinical and care/translation workers |
+| Database/files | Private MongoDB 8 and 64 GB persistent managed data disk |
+| Clinical LLM | Sarvam `sarvam-105b` using `Main_Sarvam_AI_Credits` first |
+| LLM fallback | Azure OpenAI adapter; Azure model deployment blocked by subscription support review, so not yet a working second LLM |
+| Translation / voice | Working Azure AI Translator and Speech, Sarvam fallback; no LM Studio dependency |
+| Retrieval / clinical | Pinned multilingual E5-small CPU embeddings, hybrid retrieval, Tesseract/PyMuPDF OCR, eight-node LangGraph, source-linked charts and validated FHIR R4 |
+| Recovery / secrets | Encrypted Azure Blob backups, tested separate restore, Key Vault and VM managed identity |
+| Credits | Azure trial-credit consumption; application AI spending reservations and explicit failure states, not indefinitely free hosting |
 
-Read [the detailed deployment plan](deployment/DEPLOYMENT_PLAN.md) for current hosting limits, alternatives including Vercel/GitHub/Cloudflare, migration of all patient/visit/caregiver/FHIR data, security, backups, model routing, capacity, verification, rollout and rollback. Implementation, account provisioning, live API testing and public launch each have explicit approval gates. `UI`, `ui_testing` and `main` remain unchanged.
+The site was tested with a full 15-record Sarvam analysis, FHIR, cited chat, saved charts, all user roles, five translated pathway PDFs, caregiver follow-up, Azure speech, 100 login flows and encrypted restore. Azure OpenAI returned subscription restriction **715-123420**; the owner is contacting support. See the verification report for OCR limitations and legacy test exclusions. Login credentials are private in the operator's `.tmp/azure_pilot/pilot_access.json`, never in this repository.
 
-The following section documents the inherited local rehearsal; its ports, database clones and PowerShell launcher are **not** instructions for an already deployed website.
+The [original deployment proposal](deployment/DEPLOYMENT_PLAN.md) is retained as historical architecture research. The Azure guide above supersedes its Oracle/Atlas proposal. The following sections document inherited local rehearsals and the full application/agent design; their local ports and launchers are **not required to use the deployed website**.
 
 ---
 

@@ -21,5 +21,7 @@ class RoutedProvider(LLMClient):
 
     def health(self):
         from preppulse_rag.runtime import sarvam_accounts
+        if self.provider in {"azure", "auto"} and os.getenv("AZURE_OPENAI_API_KEY"):
+            return True
         return bool(sarvam_accounts()) if self.provider == "sarvam" else bool(
             os.getenv("Gemini_free_api_keys") or os.getenv("GEMINI_API_KEY"))

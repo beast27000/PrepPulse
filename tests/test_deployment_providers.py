@@ -16,6 +16,7 @@ from preppulse_rag.runtime import BudgetExceeded, finish, ledger, reserve
 
 @pytest.fixture
 def budget(monkeypatch, tmp_path):
+    monkeypatch.delenv("Main_Sarvam_AI_Credits", raising=False)
     monkeypatch.setenv("PREPPULSE_PRIVATE_ROOT", str(tmp_path))
     monkeypatch.setenv("SARVAM_AI_CREDITS_ACC_1", "test-key-one")
     monkeypatch.setenv("SARVAM_AI_CREDITS_ACC_2", "test-key-two")

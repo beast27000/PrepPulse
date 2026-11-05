@@ -7,12 +7,14 @@ import os
 import re
 import unicodedata
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
+from preppulse_api.jobs import enabled as durable_jobs
+from preppulse_api.jobs import executor as job_executor
 from preppulse_api.local_translation import MODEL_VERSION, translate_local
 
 TRANSLATION_MODEL_VERSION = (
+    "azure-translator-v3-protected-v1-sarvam-fallback" if os.getenv("PREPPULSE_TRANSLATION_PROVIDER") == "azure" else
     "sarvam-translate:v1-numeric-protected-repair-v3-fallback-" + MODEL_VERSION
     if os.getenv("PREPPULSE_TRANSLATION_PROVIDER") == "sarvam"
     else MODEL_VERSION
@@ -33,8 +35,8 @@ SCRIPTS = {
     "or": (0x0B00, 0x0B7F),
     "te": (0x0C00, 0x0C7F),
 }
-executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="care-language")
-WORKER_INSTANCE = uuid.uuid4().hex
+executor = job_executor(max_workers=2, thread_name_prefix="care-language")
+WORKER_INSTANCE = "durable" if durable_jobs() else uuid.uuid4().hex
 
 
 def source_locale(text):
@@ -92,7 +94,10 @@ def source_hash(plan):
 
 
 def translate_batch(batch, language):
-    if os.getenv("PREPPULSE_TRANSLATION_PROVIDER") == "sarvam":
+    if os.getenv("PREPPULSE_TRANSLATION_PROVIDER") == "azure":
+        from preppulse_api.azure_services import with_fallback
+        result = with_fallback("translate", batch, language)
+    elif os.getenv("PREPPULSE_TRANSLATION_PROVIDER") == "sarvam":
         from preppulse_api.cloud_services import translate_sarvam
         try:
             result = translate_sarvam(batch, language)

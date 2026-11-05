@@ -1,2 +1,7 @@
 # Preserve the vendored official schema's published SHA-256 on Windows checkouts.
 src/preppulse_preprocessing/schema/fhir-r4.schema.json text eol=lf
+# Deployment scripts/configuration must also run after Windows checkouts.
+deployment/*.sh text eol=lf
+deployment/*.yaml text eol=lf
+deployment/Caddyfile text eol=lf
+Dockerfile text eol=lf

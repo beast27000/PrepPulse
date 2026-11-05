@@ -13,7 +13,7 @@ __all__ = ["LLMClient", "LLMResponse", "LMStudioProvider", "MockProvider", "Olla
 def get_llm_provider(cfg: LLMConfig) -> LLMClient:
     """Return the configured provider. Add new backends here only."""
     provider = (cfg.provider or "ollama").lower()
-    if provider in {"sarvam", "gemini", "auto"}:
+    if provider in {"azure", "sarvam", "gemini", "auto"}:
         from preppulse_preprocessing.providers.routed_provider import RoutedProvider
         return RoutedProvider(cfg)
     if provider in ("lmstudio", "local", "openai"):

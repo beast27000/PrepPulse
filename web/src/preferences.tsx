@@ -1,4 +1,5 @@
-import type { User } from "./api";
+import { request, type User } from "./api";
+import { useEffect, useState } from "react";
 import "./preferences.css";
 
 export type Preferences = {
@@ -45,6 +46,7 @@ export function SettingsControls({
     onChange({ ...value, ...next });
   return (
     <div className="settings-grid">
+      {user.role === "admin" && <CloudRouting />}
       <section className="panel settings-section">
         <div className="eyebrow teal">APPEARANCE</div>
         <h3>Display preferences</h3>
@@ -126,8 +128,8 @@ export function SettingsControls({
             Show Read aloud action
           </label>
           <p>
-            Playback always requires a click and a compatible local audio
-            server. Review dictated text before sending.
+            Playback always requires a click and an available speech service.
+            Review dictated text before sending.
           </p>
         </section>
       ) : (
@@ -176,4 +178,37 @@ export function SettingsControls({
       </section>
     </div>
   );
+}
+
+function CloudRouting() {
+  const [mode, setMode] = useState("auto");
+  const [available, setAvailable] = useState(false);
+  const [status, setStatus] = useState("");
+  useEffect(() => {
+    request<{ mode: string; available: boolean }>("/admin/ai-routing")
+      .then((value) => { setMode(value.mode); setAvailable(value.available); })
+      .catch(() => {});
+  }, []);
+  if (!available) return null;
+  return <section className="panel settings-section">
+    <div className="eyebrow teal">CLOUD AI</div>
+    <h3>AI service preference</h3>
+    <label>Provider
+      <select value={mode} onChange={async (event) => {
+        const next = event.target.value;
+        setStatus("Saving...");
+        try {
+          await request("/admin/ai-routing", { method: "PUT", body: JSON.stringify({ mode: next }) });
+          setMode(next); setStatus("Saved. Applies to new AI requests.");
+        } catch (error) { setStatus(error instanceof Error ? error.message : "Could not save"); }
+      }}>
+        <option value="auto">Sarvam, then Azure fallback</option>
+        <option value="azure">Azure only</option>
+        <option value="sarvam">Sarvam only</option>
+        <option value="disabled">Pause new AI requests</option>
+      </select>
+    </label>
+    <p>Controls agents and chat. Translation and voice use Azure. Pausing AI stops all new AI requests; saved records remain accessible.</p>
+    <p role="status">{status}</p>
+  </section>;
 }

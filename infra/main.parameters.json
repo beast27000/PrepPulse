@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "centralindia" },
+    "environmentName": { "value": "preppulse-pilot-b8bc" },
+    "sessionId": { "value": "b8bcc939-16d7-4bb2-8a56-b41d36e00240" },
+    "deployedBy": { "value": "Beast Master" },
+    "createdAt": { "value": "2026-11-05T17:42:20.3883275+05:30" },
+    "vmSize": { "value": "Standard_D2s_v5" }
+  }
+}

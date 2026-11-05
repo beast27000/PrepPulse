@@ -108,7 +108,7 @@ class LLMFactory:
         else:
             resolved_provider = "mock"
 
-        if resolved_provider in {"sarvam", "gemini", "auto"}:
+        if resolved_provider in {"azure", "sarvam", "gemini", "auto"}:
             from preppulse_rag.cloud_provider import RoutedChatModel
             return RoutedChatModel(provider=resolved_provider, model_name=model_name,
                                    temperature=temperature, max_tokens=max_tokens)

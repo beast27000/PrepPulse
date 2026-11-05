@@ -33,6 +33,9 @@ def _wav(data: bytes) -> bool:
 
 
 def synthesize(text: str) -> bytes:
+    if os.getenv("PREPPULSE_VOICE_PROVIDER") == "azure":
+        from preppulse_api.azure_services import with_fallback
+        return with_fallback("speak", text)
     if os.getenv("PREPPULSE_VOICE_PROVIDER") == "sarvam":
         from preppulse_api.cloud_services import speak_sarvam
         try:
@@ -61,6 +64,8 @@ def synthesize(text: str) -> bytes:
 
 def ready() -> bool:
     global _last_probe, _probe_ok
+    if os.getenv("PREPPULSE_VOICE_PROVIDER") == "azure":
+        return bool(os.getenv("AZURE_SPEECH_KEY") and os.getenv("AZURE_SPEECH_REGION"))
     if os.getenv("PREPPULSE_VOICE_PROVIDER") == "sarvam":
         from preppulse_rag.runtime import sarvam_accounts
         return bool(sarvam_accounts())  # Credential configured; actual synthesis validates audio.

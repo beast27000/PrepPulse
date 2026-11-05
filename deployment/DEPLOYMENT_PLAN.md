@@ -1,6 +1,6 @@
 # PrepPulse deployment plan
 
-**Status: proposal only; implementation and deployment are not approved by this document.**
+**Historical proposal (4 November).** The owner subsequently approved implementation and Azure deployment on 5 November 2026. The actual deployed stack, Sarvam-first routing, setup, testing and remaining Azure OpenAI restriction are documented in [README.md](README.md) and [VERIFICATION.md](VERIFICATION.md). Those documents supersede this proposal's unimplemented Oracle/Atlas architecture and zero-spending phase. The remainder is retained as the original planning record.
 
 **Written:** 4 November 2026, Asia/Kolkata.
 

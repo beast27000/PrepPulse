@@ -24,7 +24,7 @@ def encoder():
     if not revision:
         raise RuntimeError("Set PREPPULSE_EMBED_REVISION to the verified model commit")
     return SentenceTransformer(MODEL, revision=revision, device="cpu",
-                               cache_folder=str(ROOT / ".local_models" / "embeddings"),
+                               cache_folder=os.getenv("PREPPULSE_EMBED_CACHE", str(ROOT / ".local_models" / "embeddings")),
                                trust_remote_code=False)
 
 

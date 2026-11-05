@@ -2,7 +2,26 @@
 
 Implementation status and backlog.
 
-## Deployment proposal - deployment branch (4 November 2026)
+## Azure pilot — deployment branch (5 November 2026)
+
+- [x] Owner approved full build, cloud deployment and live synthetic testing; latest routing instruction selects `Main_Sarvam_AI_Credits` first and Azure OpenAI second. `UI` and `main` remain unchanged.
+- [x] Provisioned Central India Ubuntu x64 VM (2 CPU / 8 GB), dedicated persistent data disk, private MongoDB, Caddy public HTTPS, Key Vault and private Blob backups. No Pay-As-You-Go subscription upgrade.
+- [x] Added Azure chat/Translator/Speech adapters, shared admin LLM routing, service-specific cooldowns, atomic spending reservations, protected-value translations and Azure auto-detect dictation. Azure translation/voice remain primary independently of the LLM choice.
+- [x] New hackathon Sarvam key verified with actual full 15-document OCR/extraction/FHIR/eight-node analysis, cited conversations and persistent chart artifacts. All 15 FHIR bundles validated; 422 chunks, 8 findings and 9 metric series generated in the full run.
+- [x] Durable Mongo clinical and care queues, leases/heartbeats/recovery, explicit exhausted-lease failure, persistent checkpoints and private model/cache storage. Remote inference is at-least-once and can incur repeated charges after interruption.
+- [x] Copied all six original patients and associated collection data into a separate cloud database; verified 68 private source/derived file hashes. Local source DB untouched. Added a labelled synthetic verification patient and demonstration doctor/caregiver accounts.
+- [x] Live all-role browser navigation, source highlighting, doctor/admin/caregiver authorization, CSRF/origin checks, caregiver prescription/checklist/note/report lifecycle, English archive and all five translated PDF downloads passed.
+- [x] Genuinely scanned upload passed OCR, glucose extraction/FHIR, evidence-box search and source-page rendering. The scan's HbA1c label was misread as HbAic and omitted from FHIR; this documented OCR limitation requires clinician source review, not fabricated correction.
+- [x] Azure TTS/STT round trip and public default-language auto-detection passed. Microphone recordings are not retained by the application.
+- [x] 100 live login/list/logout flows passed at 10 active flows: 13.72 seconds, p95 2.02 seconds. This does not establish 100 simultaneous clinical analyses or a completed five-day soak.
+- [x] Encrypted backup uploaded/downloaded with checksum verification; restored into a separate verification database: 32 collections, 7 patients, 6 users and 68 matching file hashes. Daily backup timer installed.
+- [x] 116 selected Python regression tests passed; frontend production build and live Playwright all-role workflow passed. Known legacy exclusions below remain excluded and are not claimed as passing.
+- [x] Deployment operating guide, setup/env example, verification report and branch-specific technology stack documented.
+- [ ] Azure OpenAI model deployment blocked by Azure restriction 715-123420. Owner contacting support. Adapter is tested with mocked responses; actual Azure LLM inference/fallback cannot be verified until an approved model deployment exists. Sarvam primary is working.
+- [ ] Complete five-day soak, fluent clinical translation review and real-patient operational/privacy/security review; no high-availability or 100-concurrent-AI guarantee.
+- [ ] Monitor actual Sarvam wallet/Azure costs; application estimates are not live provider balances or a subscription-wide spending guarantee. Export a backup outside the resource group before cleanup.
+
+## Historical deployment proposal — superseded by the Azure pilot above (4 November 2026)
 
 - [x] Created `deployment` from tested `ui_testing` commit `4f280f2`; no changes to `UI`, `ui_testing` or `main`.
 - [x] Added `deployment/DEPLOYMENT_PLAN.md`: current official hosting/database limits, stack alternatives, single-origin architecture, model/credit policy, durable jobs, patient/FHIR/file migration, security, backup/restore, capacity and five-day pilot gates.
