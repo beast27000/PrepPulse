@@ -76,6 +76,7 @@ type Page =
   | "My care plans"
   | "Chat workspace"
   | "Record workspace";
+type NavEntry = Page | "Logout";
 const doctorPages: Page[] = [
   "Today",
   "Patients",
@@ -103,6 +104,7 @@ const navIcons: Record<string, typeof Activity> = {
   Accounts: ShieldCheck,
   Caregivers: HeartPulse,
   "My care plans": ClipboardCheck,
+  Logout: LogOut,
 };
 const labels: Record<string, string> = {
   en: "English",
@@ -462,12 +464,13 @@ export default function App() {
     (v) =>
       !historical && v.status === "active" && v.doctor_id === user?.user_id,
   );
-  const nav: Page[] =
+  const roleNav: Page[] =
     user?.role === "admin"
       ? adminPages
       : user?.role === "caregiver"
         ? ["My care plans"]
         : doctorPages;
+  const nav: NavEntry[] = [...roleNav, "Logout"];
   async function setPage(next: Page) {
     if (await flushCareDrafts()) {
       commitPage(next);
@@ -826,6 +829,10 @@ export default function App() {
                 aria-label={portalLabel(item)}
                 className={"nav-item " + (page === item ? "active" : "")}
                 onClick={async () => {
+                  if (item === "Logout") {
+                    await logout();
+                    return;
+                  }
                   if (!(await setPage(item))) return;
                   if (item === "Patients") {
                     historicalRef.current = null;

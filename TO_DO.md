@@ -2,6 +2,12 @@
 
 Implementation status and backlog.
 
+## Logout navigation access (6 November 2026)
+
+- [x] Added a Logout menu action after Settings for doctor/admin navigation and after My care plans for caregiver navigation; it calls the existing logout flow and preserves the bottom sign-out button.
+- [x] Deployment verification: production build passed; mocked phone-portrait doctor/admin logout returns to login; desktop retains both menu Logout and bottom sign-out.
+- [ ] Phone landscape layout remains separate follow-up work.
+
 ## Appointment view update (5 November 2026)
 
 - [x] Owner approved Today / Upcoming appointments with date filtering and slightly narrower tabs.
