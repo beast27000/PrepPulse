@@ -6,7 +6,7 @@ Implementation status and backlog.
 
 - [x] Added a Logout menu action after Settings for doctor/admin navigation and after My care plans for caregiver navigation; it calls the existing logout flow and preserves the bottom sign-out button.
 - [x] Verified the action at desktop and phone portrait sizes with mocked API responses; existing desktop sign-out remains visible.
-- [ ] Carry the same change to the deployment branch and verify its production build.
+- [x] Applied the same minimal navigation change to the deployment branch and verified its production build plus mocked desktop/phone-portrait sign-out flows.
 - [ ] Landscape phone layout remains separate follow-up work.
 
 ## Model-provider documentation and branch promotion (6 November 2026)
