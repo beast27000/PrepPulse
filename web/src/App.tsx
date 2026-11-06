@@ -699,7 +699,7 @@ export default function App() {
       setNotice(
         "Complete and save the current care draft before changing patients.",
       );
-      return;
+      return false;
     }
     historicalRef.current = null;
     setHistorical(null);
@@ -709,6 +709,7 @@ export default function App() {
     setShowSearch(false);
     setPage("Patients");
     setChatFullscreen(false);
+    return true;
   }
   async function startVisit() {
     if (!selected) return;
@@ -789,6 +790,7 @@ export default function App() {
       historicalRef.current = null;
       setHistorical(null);
       setSelected(p);
+      setPreviewDay("");
     } else
       setNotice(
         "Complete and save the current care draft before changing patients.",
@@ -1628,7 +1630,7 @@ export default function App() {
                                 (x) => x.patient_id === a.patient_id,
                               );
                               if (!p) p = (await request<Patient[]>(`/patients?q=${encodeURIComponent(a.patient_id)}`))[0];
-                              if (p) { await pick(p); setPreviewDay(a.date); }
+                              if (p && await pick(p)) setPreviewDay(a.date);
                             }}
                           >
                             <span className="card-time">{a.time}</span>
