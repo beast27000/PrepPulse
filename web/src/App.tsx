@@ -1953,6 +1953,7 @@ function PatientCarousel({
 }
 
 function UploadModal({
+  admin = false,
   visitId,
   initialDate,
   patient,
@@ -1960,6 +1961,7 @@ function UploadModal({
   onUploaded,
 }: {
   patient: Patient;
+  admin?: boolean;
   visitId?: string;
   initialDate?: string;
   onClose: () => void;
@@ -2132,7 +2134,7 @@ function UploadModal({
               unchanged · {result.documents_queued} documents queued
             </p>
             {!result.files_saved && <p>No new files. Existing processing status is shown below.</p>}
-            <IngestionStatus job={result.job} patientId={patient.patient_id} onRetry={job => setResult({ ...result, job })} />
+            <IngestionStatus job={result.job} patientId={patient.patient_id} admin={admin} onRetry={job => setResult({ ...result, job })} />
           </div>
         )}
       </section>
@@ -2639,6 +2641,7 @@ function AdminPages({
           )}
           {directoryPatient && directoryUpload && (
             <UploadModal
+              admin
               patient={directoryPatient}
               onClose={() => setDirectoryUpload(null)}
               onUploaded={reloadPatients}

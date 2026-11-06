@@ -258,7 +258,9 @@ def patient(patient_id: str, current: dict = Depends(user), store: WorkspaceStor
 def admin_patient_overview(
     patient_id: str, current: dict = Depends(admin), store: WorkspaceStore = Depends(db)
 ):
-    found = patient_access(patient_id, current, store)
+    found = store.patient(patient_id)
+    if not found:
+        raise HTTPException(404, "Patient not found")
     assigned = list(store.db.patient_access.find({"patient_id": patient_id}, {"_id": 0}))
     doctors = []
     for link in assigned:

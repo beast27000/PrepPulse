@@ -4,9 +4,9 @@ Implementation status and backlog.
 
 ## Processing recovery and administration update (6 November 2026)
 
-Implemented accurate waiting states, queue observations, unchanged upload status, administrator retry, pulsing ingestion progress, bounded transient provider retries, staff provider tests, doctor Upcoming appointments, server date restrictions, inline suggestions and administrator patient/source deletion with confirmations and worker fencing.
+Implemented waiting states, unchanged upload status, administrator retry, pulsing ingestion progress, local model health tests, doctor Upcoming appointments, server date restrictions, inline suggestions and administrator patient/source deletion with confirmations and worker fencing. This branch retains the existing local model configuration and thread pool. Cloud retries and the durable queue remain deployment features.
 
-Verification in progress: focused API/provider/deletion/caregiver regressions and frontend build passed. Browser and live PP006 verification, cleanup and publication are pending. Azure model deployment remains unavailable and cannot be repaired by application fallback logic alone.
+Local API/deletion/caregiver regressions, production frontend build and desktop/phone browser checks passed. The deployed PP006 test completed 12 OCR documents and 12 FHIR bundles in 85.27 seconds, with cited chat, a chart and five Tamil checklist translations. Both deployed PP006 test entries and private copies were removed. See documentation/RELEASE_VERIFICATION_2026_11_06.md for scope and limits.
 
 ## Composite measurement extraction recovery (6 November 2026)
 

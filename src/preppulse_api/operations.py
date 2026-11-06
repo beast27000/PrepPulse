@@ -95,8 +95,7 @@ def local_probe():
     with httpx.Client(timeout=15, trust_env=False) as connection:
         models = connection.get(endpoint + "/models")
         models.raise_for_status()
-        names = [m["id"] for m in models.json().get("data", []) if "embed" not in m["id"].lower()]
-        model = os.getenv("LOCAL_CHAT_MODEL") or (names[0] if names else "")
+        model = os.getenv("LOCAL_CHAT_MODEL", "qwen/qwen3-4b-2507")
         response = connection.post(endpoint + "/chat/completions", json={"model": model,
             "messages": [{"role": "user", "content": "Reply with OK. Connectivity test; no patient data."}], "max_tokens": 32})
         response.raise_for_status()

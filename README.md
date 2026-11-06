@@ -4,6 +4,8 @@
 
 Processing progress, provider availability checks, Upcoming appointments and administrator deletion are described in [Processing and maintenance](documentation/PROCESSING_AND_MAINTENANCE.md).
 
+The latest [release verification](documentation/RELEASE_VERIFICATION_2026_11_06.md) records the local regression checks and the deployed PP006 ingestion, chart, translation and cleanup test.
+
 PrepPulse is a physician assistance application that brings a patient’s longitudinal record into one review workspace. Instead of opening documents one by one across a long history, a doctor can see dated measurements, consultations, admissions, medication context and other documented events together, then open the source record behind each item.
 
 The application uses OCR and patient scoped retrieval to organize information from uploaded records. Its review agents prepare a structured consultation brief, highlight changes and possible gaps, and help the doctor ask questions across the patient’s history. Supported measurements can be plotted from dated OCR evidence. Every available citation links back to the original page, where the doctor can inspect the document and the recognized source region.

@@ -15,6 +15,7 @@ from preppulse_agents.schemas import ConsultationBrief
 from preppulse_api.config import DATASET_ROOT, MONGO_URI, PRIVATE_ROOT
 from preppulse_api.evidence_catalog import build_catalog, enrich_history
 from preppulse_api.store import WorkspaceStore, now
+from preppulse_api.operations import assert_available
 from preppulse_db.ingest import map_parsed_doc_to_mongo
 from preppulse_db.mongo_store import MongoStore
 from preppulse_ocr.engine import DocumentMetadata, DocumentType, OcrPipeline
@@ -70,7 +71,6 @@ def process_patient(
     mongo = MongoStore(uri=MONGO_URI, db_name=store.db.name)
     try:
         for rec in store.db.workspace_documents.find({"patient_id": patient_id}):
-            from preppulse_api.operations import assert_available
             assert_available(store, patient_id)
             store.db.jobs.update_many({"patient_id": patient_id, "status": "running"},
                                      {"$set": {"current_file": rec["filename"]}})
@@ -95,6 +95,7 @@ def process_patient(
             )
             try:
                 parsed = OcrPipeline().parse(path, meta)
+                assert_available(store, patient_id)
                 mongo_doc = map_parsed_doc_to_mongo(
                     parsed,
                     patient_id,
@@ -160,6 +161,7 @@ def process_patient(
             progress(agent_names[0])
         for update in workflow.stream(initial, stream_mode="updates"):
             for node, values in update.items():
+                assert_available(store, patient_id)
                 if values:
                     state.update(values)
                 if (
@@ -275,6 +277,7 @@ def process_patient(
                         "citation": record["citation"],
                     }
                 )
+        assert_available(store, patient_id)
         store.db.briefs.update_one(
             {"patient_id": patient_id},
             {"$set": {"patient_id": patient_id, "brief": checked, "generated_at": now()}},
