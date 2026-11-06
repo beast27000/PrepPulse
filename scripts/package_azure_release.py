@@ -10,7 +10,7 @@ if __name__ == "__main__":
         raise SystemExit("Run npm ci and npm run build in web first")
     with tarfile.open(output, "w:gz") as archive:
         for name in ["src", "scripts", "prompts", "deployment", "infra", "web/dist",
-                     "Dockerfile", "pyproject.toml", "requirements.txt", "README.md", "TO_DO.md"]:
+                     "Dockerfile", "pyproject.toml", "requirements.txt", "README.md", "TO_DO.md", "documentation"]:
             archive.add(root / name, arcname=name, filter=lambda item: None if
                         "__pycache__" in item.name or item.name.endswith(".pyc") else item)
     print("Private release artifact prepared: " + str(output))

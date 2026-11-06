@@ -2,6 +2,8 @@
 
 Processing progress, provider availability checks, Upcoming appointments and administrator deletion are described in [Processing and maintenance](documentation/PROCESSING_AND_MAINTENANCE.md).
 
+The latest [release verification](documentation/RELEASE_VERIFICATION_2026_11_06.md) records the fresh patient ingestion, chat, chart, translation and cleanup checks and the current Azure fallback limitation.
+
 **Use the deployed PrepPulse website:** [Open PrepPulse](https://preppulse-pilot-b8bc.centralindia.cloudapp.azure.com/)
 
 PrepPulse is a physician assistance workspace for reviewing a patient's longitudinal health record. It brings years of uploaded reports, laboratory results, consultations, admissions, appointments and signed care plans into a connected view. The doctor can orient quickly with a structured summary, follow a dated history, inspect supported measurements, ask evidence-based questions and open the original page behind a cited finding.

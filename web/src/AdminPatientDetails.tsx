@@ -137,6 +137,7 @@ export default function AdminPatientDetails({
               </strong>
             </div>
           </div>
+          {data.patient.maintenance && <p className="care-error" role="status">Patient cleanup is pending. Retry Delete patient or the selected record deletion to finish cleanup.</p>}
           {data.latest_job && <IngestionStatus job={data.latest_job} patientId={patient.patient_id} admin onRetry={job => setData({ ...data, latest_job: job })} />}
           <div className="patient-maintenance-actions"><button
             className="secondary"

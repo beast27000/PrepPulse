@@ -1,0 +1,55 @@
+import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+test.skip(process.env.PREPPULSE_OPERATIONS_LIVE !== "1", "Owner-authorized PP006 live verification only");
+test("live PP006 autocomplete, future preview, charts, OCR and provider controls", async ({ page }, info) => {
+  const access = JSON.parse(readFileSync(resolve("../.tmp/azure_pilot/pilot_access.json"), "utf8"));
+  const report = JSON.parse(readFileSync(resolve("../.tmp/azure_pilot/operations-live-results.json"), "utf8"));
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  async function login(role: string) {
+    await page.context().clearCookies(); await page.goto("/");
+    await page.getByLabel("Username", { exact: true }).fill(access[role].username);
+    await page.getByLabel("Password", { exact: true }).fill(access[role].password);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+  }
+  await login("admin");
+  await page.getByRole("button", { name: "Patient appointments", exact: true }).click();
+  await page.getByRole("combobox", { name: "Find appointment patient" }).fill("Subh");
+  await page.getByRole("option").filter({ has: page.locator("strong") }).filter({ hasText: "Subhajit" }).click();
+  await expect(page.getByRole("combobox", { name: "Patient", exact: true })).toHaveValue(report.patient_id);
+  await page.getByRole("button", { name: "Patient directory", exact: true }).click();
+  await page.getByRole("combobox", { name: "Search patient directory" }).fill("PP006");
+  await page.getByRole("option").filter({ has: page.locator("strong") }).first().click();
+  await expect(page.getByText("Processing completed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Delete patient", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("12 records");
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Test providers", exact: true }).click();
+  await expect(page.getByText("sarvam: healthy", { exact: true })).toBeVisible({ timeout: 45000 });
+  await expect(page.getByText("azure: unavailable", { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("provider-health.png") });
+  await login("doctor");
+  await page.getByRole("button", { name: "Upcoming appointments", exact: true }).click();
+  await page.getByLabel("Appointment date", { exact: true }).fill(report.appointment.date);
+  await page.getByRole("button").filter({ hasText: "Subhajit Chatterjee" }).filter({ has: page.locator(".patient-avatar") }).click();
+  await expect(page.getByText(/Appointment preview/)).toBeVisible();
+  page.once("dialog", async dialog => { expect(dialog.message()).toContain(report.appointment.date); await dialog.accept(); });
+  await page.getByRole("button", { name: "Start visit", exact: true }).click();
+  await page.getByRole("button", { name: "Open full chat workspace", exact: true }).click();
+  await expect(page.locator(".message-artifacts button").last()).toBeVisible();
+  await page.locator(".message-artifacts button").last().click();
+  await expect(page.locator(".conversation-chart")).toBeVisible();
+  await expect(page.locator(".artifact-series svg").first()).toBeVisible();
+  await page.locator(".inline-citation").first().click();
+  await expect(page.locator(".proof-highlight").first()).toBeVisible();
+  await page.screenshot({ path: info.outputPath("live-pp006-chart-source.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Upcoming appointments", exact: true }).click();
+  await expect(page.getByLabel("Appointment date", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  expect(errors).toEqual([]);
+});

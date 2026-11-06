@@ -87,6 +87,25 @@ def test_record_removal_invalidates_mutable_outputs_and_protects_signed_plans(wo
     assert not workspace.db.patient_documents.count_documents({"document_id": "DOC-X"})
 
 
+def test_full_cleanup_can_resume_after_storage_failure(workspace, monkeypatch, tmp_path):
+    admin, ah, _, _, _, _, patient, _ = setup_people(workspace)
+    pid = patient["patient_id"]
+    root = tmp_path / pid
+    root.mkdir()
+    (root / "private.pdf").write_bytes(b"private")
+    operations = importlib.import_module("preppulse_api.operations")
+    actual = operations.shutil.rmtree
+    monkeypatch.setattr(operations.shutil, "rmtree", lambda *args: (_ for _ in ()).throw(OSError("Storage temporarily unavailable")))
+    with pytest.raises(OSError):
+        admin.request("DELETE", f"/api/admin/patients/{pid}", headers=ah, json={"confirm_id": pid})
+    assert workspace.patient(pid)["maintenance"]
+    assert workspace.db.patient_deletions.find_one({"patient_id": pid})
+    assert admin.get(f"/api/admin/patients/{pid}/overview").status_code == 200
+    monkeypatch.setattr(operations.shutil, "rmtree", actual)
+    result = admin.request("DELETE", f"/api/admin/patients/{pid}", headers=ah, json={"confirm_id": pid})
+    assert result.status_code == 200 and not root.exists() and not workspace.patient(pid)
+
+
 def test_queue_reports_waiting_and_position(workspace, monkeypatch):
     monkeypatch.setenv("PREPPULSE_DURABLE_JOBS", "1")
     workspace.db.worker_tasks.insert_one({"function": "_job", "status": "running", "created_at": "2026-01-01"})
@@ -97,14 +116,26 @@ def test_queue_reports_waiting_and_position(workspace, monkeypatch):
 def test_provider_probe_is_staff_only_and_contains_no_patient_data(workspace, monkeypatch):
     admin, ah, doctor, dh, caregiver, ch, _, _ = setup_people(workspace)
     calls = []
-    def invoke(self, text):
-        calls.append(text)
-        return type("Reply", (), {"content": "OK"})()
-    monkeypatch.setattr("preppulse_rag.cloud_provider.RoutedChatModel.invoke", invoke)
+    monkeypatch.setattr("preppulse_api.operations.local_probe", lambda: calls.append("nonclinical probe"))
     assert doctor.get("/api/ai/status").status_code == 200
     result = doctor.post("/api/ai/test", headers=dh)
     assert result.status_code == 200, result.text
     assert result.json()["providers"][0]["status"] == "healthy"
-    assert calls == ["Reply with OK. Connectivity test; no patient data."]
+    assert calls == ["nonclinical probe"]
     assert caregiver.post("/api/ai/test", headers=ch).status_code == 403
     assert admin.post("/api/ai/test").status_code == 403
+
+
+def test_durable_recovery_uses_queue_even_if_api_has_stale_local_tracking(workspace, monkeypatch):
+    api = importlib.import_module("preppulse_api.app")
+    if not hasattr(api, "durable_jobs"):
+        pytest.skip("Local UI uses its in-process executor")
+    monkeypatch.setenv("PREPPULSE_DURABLE_JOBS", "1")
+    job = {"job_id": "JOB-STOPPED", "patient_id": "PRP-TEST", "status": "running"}
+    workspace.db.jobs.insert_one(dict(job))
+    api.active_brief_jobs.add(job["job_id"])
+    try:
+        recovered = api.recover_brief_job(workspace, job)
+        assert recovered["status"] == "failed"
+    finally:
+        api.active_brief_jobs.discard(job["job_id"])

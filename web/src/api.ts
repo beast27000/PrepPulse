@@ -11,6 +11,7 @@ export type User = {
   username: string;
 };
 export type Patient = {
+  maintenance?: boolean;
   patient_id: string;
   name: string;
   dob?: string;

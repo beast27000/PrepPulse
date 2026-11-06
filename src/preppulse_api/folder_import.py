@@ -152,6 +152,8 @@ async def save_patient_folder(
             else (store.patient(existing_folder["patient_id"]) if existing_folder else None)
         )
         created = False
+        if patient_id and not patient:
+            raise HTTPException(409, "Patient was removed during upload. Select a registered patient again.")
         if not patient:
             patient_id = new_id("PRP")
             dob = manifest.get("dob")

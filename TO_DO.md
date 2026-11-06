@@ -6,7 +6,7 @@ Implementation status and backlog.
 
 Implemented accurate waiting states, queue observations, unchanged upload status, administrator retry, pulsing ingestion progress, bounded transient provider retries, staff provider tests, doctor Upcoming appointments, server date restrictions, inline suggestions and administrator patient/source deletion with confirmations and worker fencing.
 
-Verification in progress: focused API/provider/deletion/caregiver regressions and frontend build passed. Browser and live PP006 verification, cleanup and publication are pending. Azure model deployment remains unavailable and cannot be repaired by application fallback logic alone.
+Verified API, provider, deletion and caregiver regressions, frontend builds, browser interactions and the live PP006 workflow. Fresh ingestion completed in 85.27 seconds with 12 OCR documents, 12 FHIR bundles, 139 evidence chunks and four findings. Cited chat, a saved chart, OCR highlight and five Tamil checklist translations passed. Both PP006 test identities and private copies were removed; original dataset files and existing accounts remain. Azure chat still returns HTTP 404. Full evidence and limits are in documentation/RELEASE_VERIFICATION_2026_11_06.md.
 
 ## Composite measurement extraction recovery (6 November 2026)
 

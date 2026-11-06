@@ -307,7 +307,9 @@ def patient(patient_id: str, current: dict = Depends(user), store: WorkspaceStor
 def admin_patient_overview(
     patient_id: str, current: dict = Depends(admin), store: WorkspaceStore = Depends(db)
 ):
-    found = patient_access(patient_id, current, store)
+    found = store.patient(patient_id)
+    if not found:
+        raise HTTPException(404, "Patient not found")
     assigned = list(store.db.patient_access.find({"patient_id": patient_id}, {"_id": 0}))
     doctors = []
     for link in assigned:
@@ -746,8 +748,8 @@ def recover_brief_job(store: WorkspaceStore, job: dict | None) -> dict | None:
     if (
         job
         and job.get("status") in {"queued", "running"}
-        and job["job_id"] not in active_brief_jobs
-        and not (durable_jobs() and is_pending(store, "_job", [job["job_id"], job["patient_id"]]))
+        and (not is_pending(store, "_job", [job["job_id"], job["patient_id"]])
+             if durable_jobs() else job["job_id"] not in active_brief_jobs)
     ):
         values = {
             "status": "failed",
@@ -777,7 +779,8 @@ def queue_brief_job(store: WorkspaceStore, patient_id: str) -> dict:
         "documents_total": store.db.workspace_documents.count_documents({"patient_id": patient_id}),
         "documents_ready": store.db.workspace_documents.count_documents({"patient_id": patient_id, "status": "ready"}),
     }
-    active_brief_jobs.add(job["job_id"])
+    if not durable_jobs():
+        active_brief_jobs.add(job["job_id"])
     try:
         store.db.jobs.insert_one(job)
         workers.submit(_job, job["job_id"], patient_id)
@@ -1289,7 +1292,7 @@ def owned_chat_session(session_id: str, current: dict, store: WorkspaceStore) ->
     pending = store.db.chat_turns.find_one({"turn_id": active_id}) if active_id else None
     queued = bool(durable_jobs() and pending and is_pending(store, "_chat_worker",
                   [active_id, session_id, pending["query"]]))
-    if active_id and active_id not in active_chat_turns and not queued:
+    if active_id and (not queued if durable_jobs() else active_id not in active_chat_turns):
         store.db.chat_turns.update_one(
             {"turn_id": active_id, "status": {"$in": ["queued", "running"]}},
             {
@@ -1454,7 +1457,8 @@ def send_chat_turn(
     turn_id = new_id("TURN")
     # Register before publishing the ID so a concurrent poll cannot mistake it for
     # an orphan from a previous server process.
-    active_chat_turns.add(turn_id)
+    if not durable_jobs():
+        active_chat_turns.add(turn_id)
     try:
         claimed = store.db.chat_sessions.update_one(
             {"session_id": session_id, "active_turn_id": None},

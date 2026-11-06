@@ -82,6 +82,7 @@ def process_structured(store, mongo, patient_id, progress=None):
             progress("structured_extraction")
         try:
             result = pipeline.process_document(doc, persist=False)
+            assert_available(store, patient_id)
             result["stage_2"]["patient"] = {key: (store.patient(patient_id) or {}).get(key)
                                            for key in ("name", "dob", "sex")}
             result["stage_2"] = reconcile(doc, result["stage_2"], catalog)

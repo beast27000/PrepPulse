@@ -39,7 +39,7 @@ test("live cloud pages, sessions, charts and evidence", async ({ page }, info) =
     await expect(page.locator("main")).toBeVisible();
     await page.screenshot({ path: info.outputPath(`admin-${name.replaceAll(" ", "-")}.png`), fullPage: false });
   }
-  await expect(page.getByRole("heading", { name: "AI service preference" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Provider availability" })).toBeVisible();
   await login("caregiver");
   await expect(page.getByRole("button", { name: "My care plans", exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("caregiver-portal.png"), fullPage: false });

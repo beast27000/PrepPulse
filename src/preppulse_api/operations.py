@@ -89,6 +89,20 @@ class DeleteIn(BaseModel):
     confirm_id: str
 
 
+def local_probe():
+    import httpx
+    endpoint = os.getenv("LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1").rstrip("/")
+    with httpx.Client(timeout=15, trust_env=False) as connection:
+        models = connection.get(endpoint + "/models")
+        models.raise_for_status()
+        model = os.getenv("LOCAL_CHAT_MODEL", "qwen/qwen3-4b-2507")
+        response = connection.post(endpoint + "/chat/completions", json={"model": model,
+            "messages": [{"role": "user", "content": "Reply with OK. Connectivity test; no patient data."}], "max_tokens": 32})
+        response.raise_for_status()
+        if not (response.json().get("choices") or [{}])[0].get("message", {}).get("content"):
+            raise ValueError("No inference response")
+
+
 def install(app, db, admin, clinician, patient_access, queue_brief_job):
     # Both staff roles can inspect/test; changing shared routing remains admin-only.
     from preppulse_api.app import user
@@ -100,14 +114,17 @@ def install(app, db, admin, clinician, patient_access, queue_brief_job):
 
     @app.get("/api/ai/status")
     def status(current=Depends(operator)):
-        from preppulse_api.provider_settings import routing
-        return {"mode": routing(), "cloud": os.getenv("PREPPULSE_ENV") == "production"}
+        cloud = os.getenv("PREPPULSE_ENV") == "production"
+        if cloud:
+            from preppulse_api.provider_settings import routing
+        return {"mode": routing() if cloud else "local", "cloud": cloud}
 
     @app.post("/api/ai/test")
     def test(current=Depends(operator), store=Depends(db)):
-        from preppulse_rag.cloud_provider import RoutedChatModel
-        from preppulse_rag.runtime import sarvam_accounts
         cloud = os.getenv("PREPPULSE_ENV") == "production"
+        if cloud:
+            from preppulse_rag.cloud_provider import RoutedChatModel
+            from preppulse_rag.runtime import sarvam_accounts
         results = []
         for provider in (["sarvam", "azure"] if cloud else ["local"]):
             configured = provider == "local" or (bool(sarvam_accounts()) if provider == "sarvam"
@@ -116,7 +133,10 @@ def install(app, db, admin, clinician, patient_access, queue_brief_job):
             state, detail = "not_configured", "Provider is not configured"
             if configured:
                 try:
-                    RoutedChatModel(provider=provider, max_tokens=16, request_timeout=15, transient_retries=0).invoke("Reply with OK. Connectivity test; no patient data.")
+                    if cloud:
+                        RoutedChatModel(provider=provider, max_tokens=16, request_timeout=15, transient_retries=0).invoke("Reply with OK. Connectivity test; no patient data.")
+                    else:
+                        local_probe()
                     state, detail = "healthy", "Inference request succeeded"
                 except Exception as exc:
                     state = "unavailable"
