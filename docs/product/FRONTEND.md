@@ -40,6 +40,8 @@ flowchart LR
 
 **New patient intake** registers a person and supports first or later document intake. **Patient appointments** provides scheduling, Today and Upcoming views, date filtering and previous-appointment search. **Patient directory** supports demographic and assignment management plus patient-associated records. **Accounts** manages doctors, administrators and caregivers, caregiver type and patient access. Administrative screens do not expose clinical brief content by default.
 
+The new-appointment form finds patients by name, permanent PrepPulse ID or external folder alias, including records beyond the first directory page. It selects a unique match automatically and requires an explicit dropdown choice for ambiguous matches. The patient directory has the same API-backed search. Caregivers can search their assigned care-plan cards by name or ID; the patient-scoped API does not expose other patients.
+
 ## Caregiver portal
 
 The caregiver sees the signed plans assigned to their account, chooses an available language, reviews instructions and prescription schedules, marks daily checklist work and shares a note. Reported completion and notes are persisted for the doctor to review. The caregiver cannot access the doctor's unrestricted patient workspace.

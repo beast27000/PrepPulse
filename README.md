@@ -10,6 +10,8 @@ PrepPulse helps reduce the effort of reading a large record. It does not hide th
 
 An administrator registers patients and accounts, assigns doctors and caregivers, and manages appointments. Doctors work from Today and Patients, analyze records, inspect cited findings, review prior visits, ask questions in a saved patient conversation, and prepare a clinician-reviewed family or caregiver plan. Caregivers can see only plans assigned to them, report checklist completion and share notes. Patient records, appointment history, conversation artifacts, source files and signed plans persist in the deployed database and private storage.
 
+Administrators can search the patient directory and find patients by name, permanent ID or folder alias when scheduling appointments. Caregivers can search their assigned care plans by patient name or ID.
+
 The web client is served over HTTPS from the Azure-hosted application. It calls the authenticated FastAPI service through the same site origin. The service stores structured records and durable work in MongoDB, stores private files on persistent storage, and runs clinical and care processing in separate workers.
 
 ## Deployed technology stack

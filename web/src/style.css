@@ -1290,6 +1290,44 @@ a {
   grid-template-columns: 1fr 1fr;
   gap: 20px;
 }
+.appointment-grid > .panel {
+  min-height: 560px;
+}
+.patient-directory-search {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(100%, 430px);
+  margin: 0 0 24px;
+  color: #58697b;
+  font-size: 12px;
+  font-weight: 700;
+}
+.patient-search-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 1px solid #dce5eb;
+  border-radius: 10px;
+  background: #fff;
+  color: #718499;
+}
+.patient-search-field:focus-within {
+  border-color: #52a7a0;
+  box-shadow: 0 0 0 3px #b4e2dd66;
+}
+.patient-search-field input {
+  min-width: 0;
+  width: 100%;
+  padding: 13px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #35435b;
+  font: inherit;
+  font-weight: 400;
+}
 .admin-form p {
   font-size: 12px;
 }
@@ -1591,6 +1629,9 @@ a {
   }
   .admin-grid {
     grid-template-columns: 1fr;
+  }
+  .appointment-grid > .panel {
+    min-height: 0;
   }
 }
 @media (max-width: 720px) {
