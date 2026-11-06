@@ -45,7 +45,7 @@ _INSTRUCTIONS = """Extract clinical facts from the document section below into t
   "diagnoses": [
     {"description": str, "anchor_text": "the exact source substring"}
   ],
-  "vitals": [ {"name": str, "value": str} ],
+  "vitals": [ {"name": str, "value": str, "anchor_text": "exact source substring", "source_page": integer} ],
   "advice": str|null
 }
 
@@ -53,7 +53,11 @@ Rules:
 - Copy values verbatim. Do NOT convert units or round.
 - anchor_text MUST be an exact substring of the section text (used for provenance).
 - Omit anything not clearly stated. Never guess a dose, value, or code.
+- A lab value must be one number or null. Put combined blood pressure readings
+  (such as 114/72 mmHg) and pulse rates in vitals, not labs; never squeeze
+  multiple measurements or unit text into one lab value.
 - Return ONLY the JSON object, no commentary.
+- When SOURCE PAGE markers are supplied, include source_page (that page's integer) on every lab, medication and diagnosis.
 
 <<<CHUNK_TEXT>>>
 """
@@ -75,7 +79,7 @@ def _parse_json(text: str) -> dict[str, Any]:
         obj = json.loads(text)
         return obj if isinstance(obj, dict) else {}
     except json.JSONDecodeError:
-        return {}
+        raise ValueError("Structured extraction returned malformed JSON") from None
 
 
 def extract_from_chunk(chunk: dict[str, Any], llm: LLMClient) -> dict[str, list[dict[str, Any]]]:
@@ -99,7 +103,7 @@ def extract_from_chunk(chunk: dict[str, Any], llm: LLMClient) -> dict[str, list[
             "reference_range": lab.get("reference_range"),
             "flag": lab.get("flag"),
             "visit_date": visit_date,
-            "source_page": page,
+            "source_page": lab.get("source_page", page),
             "anchor_text": lab.get("anchor_text"),
             "confidence": 1.0,  # provisional; ground.py sets the real value
         })
@@ -113,9 +117,9 @@ def extract_from_chunk(chunk: dict[str, Any], llm: LLMClient) -> dict[str, list[
             "rxnorm_code": terminology.rxnorm_for(med.get("name")),
             "dosage": med.get("dosage"),
             "frequency": med.get("frequency"),
-            "route": med.get("route") or "oral",
+            "route": med.get("route"),
             "prescribed_date": visit_date,
-            "source_page": page,
+            "source_page": med.get("source_page", page),
             "anchor_text": med.get("anchor_text"),
             "confidence": 1.0,
         })
@@ -128,7 +132,7 @@ def extract_from_chunk(chunk: dict[str, Any], llm: LLMClient) -> dict[str, list[
             "description": dx["description"],
             "icd10_code": terminology.icd10_for(dx.get("description")),
             "recorded_date": visit_date,
-            "source_page": page,
+            "source_page": dx.get("source_page", page),
             "anchor_text": dx.get("anchor_text"),
             "confidence": 1.0,
         })
@@ -142,6 +146,10 @@ def extract_from_chunk(chunk: dict[str, Any], llm: LLMClient) -> dict[str, list[
 
 def extract_document(chunks: list[dict[str, Any]], llm: LLMClient) -> dict[str, Any]:
     """Aggregate extraction across all chunks of a document."""
+    if getattr(llm, "batch_pages", False) and chunks:
+        # One document per request retains page markers and avoids one call per heading.
+        chunks = [{**chunks[0], "chunk_text": "\n\n".join(
+            f"SOURCE PAGE {ch['source_page']}\n{ch['chunk_text']}" for ch in chunks)}]
     agg: dict[str, list[Any]] = {"labs": [], "medications": [], "diagnoses": [], "vitals": [], "advice": []}
     for ch in chunks:
         part = extract_from_chunk(ch, llm)

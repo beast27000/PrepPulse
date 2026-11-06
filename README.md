@@ -8,6 +8,8 @@ The application uses OCR and patient scoped retrieval to organize information fr
 
 The source record remains available throughout the workflow. PrepPulse helps reduce the effort of finding and comparing information; it does not replace review of the original records, clinician judgment, or the doctor’s responsibility for decisions.
 
+When structured extraction encounters a combined or nonnumeric lab reading, it retains that source-linked fact for review and continues processing valid findings. It does not turn a combined blood-pressure and pulse reading into a lab number.
+
 ## Product workflow
 
 1. An administrator registers or selects a patient, records demographics, assigns a doctor and uploads documents.

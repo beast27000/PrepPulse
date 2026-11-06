@@ -61,6 +61,8 @@ This allows a citation to align with the page at different display sizes. A boun
 
 The repository also contains a Stage 2/3 preprocessing pipeline. It performs section-aware chunking, LLM-based fact extraction, terminology mapping, source grounding, review-queue handling, and FHIR-oriented output generation.
 
+If a model places a combined blood-pressure and pulse reading into a numeric lab field, grounding keeps it as a source-linked review item and allows valid facts to continue. It does not coerce the combined text into a clinical number.
+
 **Theory.** Structured extraction converts prose into entities such as measurements, medicines, diagnoses, vitals, and advice. Grounding then checks these proposed facts against source text and coordinates. Items that cannot be adequately grounded need human review rather than silent acceptance.
 
 **Clinical review use.** Structured facts can support searches, comparisons, and interoperability experiments while preserving the clinician's ability to inspect the original wording.
