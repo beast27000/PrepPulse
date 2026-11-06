@@ -135,6 +135,9 @@ class WorkspaceStore:
         return self.db.patients.find_one({"patient_id": patient_id}, {"_id": 0})
 
     def allowed(self, user: dict, patient_id: str) -> bool:
+        patient = self.patient(patient_id)
+        if not patient or patient.get("maintenance"):
+            return False
         if user["role"] == "admin":
             return True
         if user["role"] == "caregiver":

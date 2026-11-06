@@ -46,6 +46,8 @@ import UnifiedIntake from "./UnifiedIntake";
 import CaregiverAdmin from "./CaregiverAdmin";
 import AccountsAdmin from "./AccountsAdmin";
 import AdminPatientDetails from "./AdminPatientDetails";
+import SearchSuggestions from "./SearchSuggestions";
+import IngestionStatus from "./IngestionStatus";
 import CareChecklist, { CareCardHeading } from "./CareChecklist";
 import { useCareLanguage, useCareLabels } from "./careView";
 import "./administration.css";
@@ -63,6 +65,7 @@ import {
 type Page =
   | "Appointment history"
   | "Today"
+  | "Upcoming appointments"
   | "Patients"
   | "Records"
   | "Care pathways"
@@ -78,6 +81,7 @@ type Page =
 type NavEntry = Page | "Logout";
 const doctorPages: Page[] = [
   "Today",
+  "Upcoming appointments",
   "Patients",
   "Records",
   "Care pathways",
@@ -93,6 +97,7 @@ const adminPages: Page[] = [
 ];
 const navIcons: Record<string, typeof Activity> = {
   Today: CalendarDays,
+  "Upcoming appointments": CalendarDays,
   Patients: HeartPulse,
   Records: FolderOpen,
   "Care pathways": ClipboardCheck,
@@ -442,6 +447,8 @@ export default function App() {
   const [carePatientChoices, setCarePatientChoices] = useState<Patient[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [scheduleDate, setScheduleDate] = useState(today());
+  const [previewDay, setPreviewDay] = useState("");
   const [documents, setDocuments] = useState<Doc[]>([]);
   const [brief, setBrief] = useState<Brief | null>(null);
   const [job, setJob] = useState<ProcessingJob | null>(null);
@@ -469,7 +476,7 @@ export default function App() {
   const [accounts, setAccounts] = useState<User[]>([]);
   const activeVisit = visits.find(
     (v) =>
-      !historical && v.status === "active" && v.doctor_id === user?.user_id,
+      !historical && previewDay <= today() && v.status === "active" && v.doctor_id === user?.user_id,
   );
   const roleNav: Page[] =
     user?.role === "admin"
@@ -697,6 +704,7 @@ export default function App() {
     historicalRef.current = null;
     setHistorical(null);
     setSelected(p);
+    setPreviewDay("");
     setSearch("");
     setShowSearch(false);
     setPage("Patients");
@@ -704,6 +712,7 @@ export default function App() {
   }
   async function startVisit() {
     if (!selected) return;
+    if (previewDay > today()) { window.alert(`This patient visit cannot be started until ${previewDay}.`); return; }
     await run(
       () => post<Visit>(`/patients/${selected.patient_id}/visits`, {}),
       "Visit started",
@@ -1021,6 +1030,7 @@ export default function App() {
               )}
               {page === "Patients" && !chatFullscreen && (
                 <>
+                  {previewDay > today() && <div className="historical-banner">Appointment preview · Visit and caregiver editing become available on {shortDate(previewDay)}. Records, analysis, chat and charts are available now.</div>}
                   {historical && (
                     <div className="historical-banner">
                       <strong>
@@ -1589,32 +1599,36 @@ export default function App() {
                   )}
                 </>
               )}
-              {page === "Today" && (
+              {(page === "Today" || page === "Upcoming appointments") && (
                 <>
                   <PageHeading
                     eyebrow="YOUR SCHEDULE"
-                    title="Today’s patients"
-                    text={`Appointments for ${shortDate(today())}. Select a card to open the patient workspace.`}
+                    title={page === "Today" ? "Today’s patients" : "Upcoming appointments"}
+                    text={`Appointments for ${shortDate(page === "Today" ? today() : scheduleDate)}. Select a card to review the patient workspace.`}
                   />
+                  {page === "Upcoming appointments" && <label className="schedule-date">Appointment date
+                    <input type="date" min={today()} value={scheduleDate} onChange={e => setScheduleDate(e.target.value || today())} />
+                  </label>}
                   <div className="card-carousel">
                     {appointments
                       .filter(
-                        (a) => a.date === today() && a.status === "scheduled",
+                        (a) => a.date === (page === "Today" ? today() : scheduleDate) && ["scheduled", "in_progress"].includes(a.status),
                       )
                       .length ? (
                       appointments
                         .filter(
-                          (a) => a.date === today() && a.status === "scheduled",
+                          (a) => a.date === (page === "Today" ? today() : scheduleDate) && ["scheduled", "in_progress"].includes(a.status),
                         )
                         .map((a) => (
                           <button
                             className="patient-card"
                             key={a.appointment_id}
-                            onClick={() => {
-                              const p = patients.find(
+                            onClick={async () => {
+                              let p = patients.find(
                                 (x) => x.patient_id === a.patient_id,
                               );
-                              if (p) pick(p);
+                              if (!p) p = (await request<Patient[]>(`/patients?q=${encodeURIComponent(a.patient_id)}`))[0];
+                              if (p) { await pick(p); setPreviewDay(a.date); }
                             }}
                           >
                             <span className="card-time">{a.time}</span>
@@ -1635,7 +1649,7 @@ export default function App() {
                         ))
                     ) : (
                       <div className="panel empty-page">
-                        No scheduled appointments for today.
+                        No scheduled appointments for this date.
                       </div>
                     )}
                   </div>
@@ -1706,6 +1720,7 @@ export default function App() {
                         key={selected.patient_id}
                         patient={selected}
                         role="doctor"
+                        historyOnly={previewDay > today()}
                         onStart={startVisit}
                         onAdmission={setAdmission}
                         onEnded={() => {
@@ -2116,12 +2131,8 @@ function UploadModal({
               {result.files_saved} files saved · {result.files_unchanged}{" "}
               unchanged · {result.documents_queued} documents queued
             </p>
-            <p>
-              {result.job?.stage || result.job?.status} ·{" "}
-              {result.job?.documents_ready || 0}/
-              {result.job?.documents_total || result.documents_queued} processed
-            </p>
-            {result.job?.error && <p className="error">{result.job.error}</p>}
+            {!result.files_saved && <p>No new files. Existing processing status is shown below.</p>}
+            <IngestionStatus job={result.job} patientId={patient.patient_id} onRetry={job => setResult({ ...result, job })} />
           </div>
         )}
       </section>
@@ -2324,12 +2335,12 @@ function AdminPages({
               <form onSubmit={addAppointment}>
                 <label>
                   Find patient by name or ID
-                  <input
-                    type="search"
-                    placeholder="Name, PrepPulse ID or folder ID"
+                  <SearchSuggestions
+                    label="Find appointment patient" placeholder="Name, PrepPulse ID or folder ID"
                     value={appointmentPatientQuery}
-                    onChange={(e) => {
-                      const query = e.target.value;
+                    options={appointmentChoices.map(p => ({ id: p.patient_id, name: p.name, detail: `${p.patient_id} · ${(p.external_aliases || []).join(" · ")}` }))}
+                    onSelect={setAppointmentPatient}
+                    onChange={(query) => {
                       setAppointmentPatientQuery(query);
                       setAppointmentPatient("");
                       setAppointmentChoices(patients.filter((p) => matchesPatient(p, query)));
@@ -2545,14 +2556,15 @@ function AdminPages({
             Search patients
             <span className="patient-search-field">
               <Search size={17} aria-hidden="true" />
-              <input
-                type="search"
-                aria-label="Search patient directory"
+              <SearchSuggestions
+                label="Search patient directory"
                 placeholder="Name, PrepPulse ID or folder ID"
                 value={directoryQuery}
-                onChange={(e) => {
-                  setDirectoryQuery(e.target.value);
-                  setDirectoryChoices(patients.filter((p) => matchesPatient(p, e.target.value)));
+                options={directoryChoices.map(p => ({ id: p.patient_id, name: p.name, detail: `${p.patient_id} · ${(p.external_aliases || []).join(" · ")}` }))}
+                onSelect={id => setDirectoryPatient(directoryChoices.find(p => p.patient_id === id) || null)}
+                onChange={(q) => {
+                  setDirectoryQuery(q);
+                  setDirectoryChoices(patients.filter((p) => matchesPatient(p, q)));
                 }}
               />
             </span>

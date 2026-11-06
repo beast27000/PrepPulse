@@ -36,6 +36,7 @@ from preppulse_api.folder_import import save_patient_folder
 from preppulse_api.jobs import enabled as durable_jobs
 from preppulse_api.jobs import executor, is_pending
 from preppulse_api.store import WorkspaceStore, new_id, now
+from preppulse_api.operations import assert_available, job_status
 from preppulse_api.voice import ready as tts_ready
 from preppulse_api.voice import synthesize
 
@@ -112,6 +113,8 @@ def patient_access(patient_id: str, current: dict, store: WorkspaceStore) -> dic
     patient = store.patient(patient_id)
     if not patient:
         raise HTTPException(404, "Patient not found")
+    if patient.get("maintenance"):
+        raise HTTPException(409, "Patient cleanup is in progress")
     if not store.allowed(current, patient_id):
         raise HTTPException(403, "Patient access denied")
     return patient
@@ -335,7 +338,7 @@ def admin_patient_overview(
         "visits": visits,
         "appointments": appointments,
         "stored_files": store.db.workspace_files.count_documents({"patient_id": patient_id}),
-        "latest_job": job,
+        "latest_job": job_status(store, recover_brief_job(store, job)),
     }
 
 
@@ -420,6 +423,9 @@ async def import_folder(
     )
     if result["documents_queued"]:
         result["job"] = queue_brief_job(store, result["patient_id"])
+    else:
+        result["job"] = job_status(store, recover_brief_job(store, store.db.jobs.find_one(
+            {"patient_id": result["patient_id"]}, {"_id": 0}, sort=[("created_at", -1)])))
     store.audit(
         current,
         "folder_imported",
@@ -484,6 +490,9 @@ async def append_folder(
     result = await save_patient_folder(store, doctor_id, files, paths, patient_id=patient_id)
     if result["documents_queued"]:
         result["job"] = queue_brief_job(store, patient_id)
+    else:
+        result["job"] = job_status(store, recover_brief_job(store, store.db.jobs.find_one(
+            {"patient_id": patient_id}, {"_id": 0}, sort=[("created_at", -1)])))
     store.audit(current, "folder_appended", patient_id, {"files_saved": result["files_saved"]})
     return result
 
@@ -674,14 +683,16 @@ def document_page(
 def _job(job_id: str, patient_id: str):
     store = WorkspaceStore()
     try:
+        assert_available(store, patient_id)
         store.db.jobs.update_one(
-            {"job_id": job_id}, {"$set": {"status": "running", "stage": "ocr", "updated_at": now()}}
+            {"job_id": job_id}, {"$set": {"status": "running", "stage": "ocr", "started_at": now(), "updated_at": now()}}
         )
         total = store.db.workspace_documents.count_documents({"patient_id": patient_id})
         last_stage = None
 
         def progress(stage: str = "ocr") -> None:
             nonlocal last_stage
+            assert_available(store, patient_id)
             ready = store.db.workspace_documents.count_documents(
                 {"patient_id": patient_id, "status": "ready"}
             )
@@ -697,6 +708,7 @@ def _job(job_id: str, patient_id: str):
                         "documents_failed": failed,
                         "stage": stage,
                         "updated_at": now(),
+                        "current_file": (store.db.jobs.find_one({"job_id": job_id}) or {}).get("current_file"),
                     }
                 },
             )
@@ -749,6 +761,7 @@ def recover_brief_job(store: WorkspaceStore, job: dict | None) -> dict | None:
 
 
 def queue_brief_job(store: WorkspaceStore, patient_id: str) -> dict:
+    assert_available(store, patient_id)
     running = store.db.jobs.find_one(
         {"patient_id": patient_id, "status": {"$in": ["queued", "running"]}}, {"_id": 0}
     )
@@ -759,8 +772,10 @@ def queue_brief_job(store: WorkspaceStore, patient_id: str) -> dict:
         "job_id": new_id("JOB"),
         "patient_id": patient_id,
         "status": "queued",
-        "stage": "ocr",
+        "stage": "Waiting for processing",
         "created_at": now(),
+        "documents_total": store.db.workspace_documents.count_documents({"patient_id": patient_id}),
+        "documents_ready": store.db.workspace_documents.count_documents({"patient_id": patient_id, "status": "ready"}),
     }
     active_brief_jobs.add(job["job_id"])
     try:
@@ -787,10 +802,10 @@ def latest_job(
     patient_id: str, current: dict = Depends(clinician), store: WorkspaceStore = Depends(db)
 ):
     patient_access(patient_id, current, store)
-    return recover_brief_job(
+    return job_status(store, recover_brief_job(
         store,
         store.db.jobs.find_one({"patient_id": patient_id}, {"_id": 0}, sort=[("created_at", -1)]),
-    )
+    ))
 
 
 @app.get("/api/patients/{patient_id}/brief")
@@ -936,6 +951,7 @@ def start_visit(
     patient_id: str, current: dict = Depends(clinician), store: WorkspaceStore = Depends(db)
 ):
     patient_access(patient_id, current, store)
+    assert_visit_day(store, patient_id, current["user_id"])
     active = store.db.visits.find_one(
         {"patient_id": patient_id, "doctor_id": current["user_id"], "status": "active"}, {"_id": 0}
     )
@@ -970,6 +986,17 @@ def start_visit(
     return {k: v for k, v in row.items() if k != "_id"}
 
 
+def assert_visit_day(store, patient_id, doctor_id):
+    day = local_day().isoformat()
+    query = {"patient_id": patient_id, "doctor_id": doctor_id,
+             "status": {"$in": ["scheduled", "in_progress"]}}
+    if store.db.appointments.find_one({**query, "date": day}):
+        return
+    future = store.db.appointments.find_one({**query, "date": {"$gt": day}}, sort=[("date", 1)])
+    if future:
+        raise HTTPException(409, f"This patient visit cannot be started, changed or ended until {future['date']}.")
+
+
 def own_visit(visit_id: str, current: dict, store: WorkspaceStore) -> dict:
     visit = store.db.visits.find_one(
         {"visit_id": visit_id, "doctor_id": current["user_id"], "status": "active"}
@@ -977,6 +1004,7 @@ def own_visit(visit_id: str, current: dict, store: WorkspaceStore) -> dict:
     if not visit:
         raise HTTPException(404, "Active visit not found")
     patient_access(visit["patient_id"], current, store)
+    assert_visit_day(store, visit["patient_id"], current["user_id"])
     return visit
 
 
@@ -1343,8 +1371,12 @@ def _chat_worker(turn_id: str, session_id: str, question: str):
     store = WorkspaceStore()
     try:
         session = store.db.chat_sessions.find_one({"session_id": session_id}, {"_id": 0})
+        if not session:
+            raise ValueError("Chat session unavailable")
+        assert_available(store, session["patient_id"])
 
         def progress(label: str, step: str):
+            assert_available(store, session["patient_id"])
             store.db.chat_turns.update_one(
                 {"turn_id": turn_id},
                 {
@@ -1364,6 +1396,7 @@ def _chat_worker(turn_id: str, session_id: str, question: str):
             ).sort("created_at", 1)
         )
         result = run_chat_turn(store, session, question, previous, progress)
+        assert_available(store, session["patient_id"])
         for artifact in result.pop("artifacts", []):
             store.db.chat_artifacts.insert_one(
                 {**artifact, "user_id": session["user_id"], "turn_id": turn_id}
@@ -1596,3 +1629,7 @@ def document_fhir(patient_id: str, record_id: str, current: dict = Depends(clini
     store.audit(current, "fhir_viewed", patient_id, {"record_id": record_id})
     return Response(__import__("json").dumps(doc["stage_3_fhir_output"]),
                     media_type="application/fhir+json", headers={"Cache-Control": "no-store"})
+
+
+from preppulse_api.operations import install as install_operations
+install_operations(app, db, admin, clinician, patient_access, queue_brief_job)

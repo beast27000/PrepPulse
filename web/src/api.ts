@@ -45,6 +45,12 @@ export type Doc = {
   page_count?: number;
 };
 export type ProcessingJob = {
+  patient_id?: string;
+  created_at?: string;
+  started_at?: string;
+  updated_at?: string;
+  queue_position?: number;
+  current_file?: string;
   job_id: string;
   status: string;
   stage?: string;
@@ -279,6 +285,7 @@ export async function request<T>(
           )
           .join("; ")
       : data?.detail;
+    if (res.status === 409 && typeof detail === "string" && detail.startsWith("This patient visit cannot")) window.alert(detail);
     throw new Error(detail || `${res.status}: ${res.statusText}`);
   }
   return res.json() as Promise<T>;

@@ -108,6 +108,10 @@ def run_worker(stop=None):
                 completed = bool(collection.find_one({field: task["args"][0], "status": "complete"}))
             if not completed:
                 function(*task["args"])
+            if task["function"] in {"_job", "_chat_worker"}:
+                operation = collection.find_one({field: task["args"][0]})
+                if operation and operation.get("status") == "failed":
+                    status, error = "failed", operation.get("error", "Operation failed; retry in PrepPulse")
         except Exception:
             logging.getLogger(__name__).exception("Worker task failed: %s", task["_id"])
             status, error = "failed", "Worker operation failed; retry the action in PrepPulse"

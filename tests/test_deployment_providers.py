@@ -16,6 +16,7 @@ from preppulse_rag.runtime import BudgetExceeded, finish, ledger, reserve
 
 @pytest.fixture
 def budget(monkeypatch, tmp_path):
+    monkeypatch.setenv("PREPPULSE_AI_TRANSIENT_RETRIES", "0")
     monkeypatch.delenv("Main_Sarvam_AI_Credits", raising=False)
     monkeypatch.setenv("PREPPULSE_PRIVATE_ROOT", str(tmp_path))
     monkeypatch.setenv("SARVAM_AI_CREDITS_ACC_1", "test-key-one")
@@ -43,6 +44,32 @@ def test_exhausted_key_rotates_without_exposing_credentials(budget, monkeypatch)
     with ledger() as db:
         serialized = json.dumps(db.execute("SELECT * FROM calls").fetchall())
     assert "test-key" not in serialized and "Synthetic evidence" not in serialized
+
+
+def test_transport_and_server_errors_retry_but_configuration_errors_do_not(budget, monkeypatch):
+    monkeypatch.setenv("PREPPULSE_AI_TRANSIENT_RETRIES", "2")
+    monkeypatch.setattr("preppulse_rag.cloud_provider.time.sleep", lambda _: None)
+    attempts = []
+
+    def temporary(self, url, **kwargs):
+        attempts.append(url)
+        if len(attempts) == 1:
+            raise httpx.ConnectError("temporary connection failure")
+        return response(503) if len(attempts) == 2 else response(200, "OK")
+
+    monkeypatch.setattr(httpx.Client, "post", temporary)
+    assert RoutedChatModel(provider="sarvam").invoke("Connectivity test").content == "OK"
+    assert len(attempts) == 3
+    attempts.clear()
+
+    def unavailable(self, url, **kwargs):
+        attempts.append(url)
+        return response(404)
+
+    monkeypatch.setattr(httpx.Client, "post", unavailable)
+    with pytest.raises(ProviderUnavailable):
+        RoutedChatModel(provider="sarvam").invoke("Connectivity test")
+    assert len(attempts) == 2  # One attempt per eligible account; no transient retry for 404.
 
 
 def test_rate_limit_does_not_rotate_sarvam_keys(budget, monkeypatch):

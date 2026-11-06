@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { FolderImportResult, Patient, User, post, request } from "./api";
+import IngestionStatus from "./IngestionStatus";
 
 export default function UnifiedIntake({
   patients,
@@ -312,17 +313,8 @@ export default function UnifiedIntake({
             {result.files_unchanged} unchanged · {result.documents_queued}{" "}
             documents queued
           </p>
-          <p>
-            {result.job?.stage || result.job?.status} ·{" "}
-            {result.job?.documents_ready || 0}/
-            {result.job?.documents_total || result.documents_queued} processed
-            {result.job?.documents_failed
-              ? ` · ${result.job.documents_failed} failed`
-              : ""}
-          </p>
-          {result.job?.error && (
-            <p className="care-error">{result.job.error}</p>
-          )}
+          {!result.files_saved && <p>No new files. Existing processing status is shown below.</p>}
+          <IngestionStatus job={result.job} patientId={result.patient_id} admin onRetry={job => setResult({ ...result, job })} />
         </div>
       )}
       {target && !result && (

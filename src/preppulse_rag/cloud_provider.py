@@ -20,11 +20,17 @@ class ProviderRateLimited(ProviderUnavailable):
     pass
 
 
+class TransientProviderFailure(ProviderUnavailable):
+    pass
+
+
 class RoutedChatModel(BaseChatModel):
     provider: str = "sarvam"
     model_name: str | None = None
     temperature: float = 0
     max_tokens: int = 2048
+    request_timeout: float | None = None
+    transient_retries: int | None = None
 
     @property
     def _llm_type(self):
@@ -79,6 +85,17 @@ class RoutedChatModel(BaseChatModel):
         raise ProviderUnavailable("; ".join(errors) or "No configured provider credential")
 
     def _request(self, provider, alias, key, messages, stop, kwargs):
+        attempts = min(2, max(0, self.transient_retries if self.transient_retries is not None
+                              else int(os.getenv("PREPPULSE_AI_TRANSIENT_RETRIES", "2"))))
+        for attempt in range(attempts + 1):
+            try:
+                return self._request_once(provider, alias, key, messages, stop, kwargs)
+            except TransientProviderFailure:
+                if attempt == attempts:
+                    raise
+                time.sleep(1.5 * (2 ** attempt))
+
+    def _request_once(self, provider, alias, key, messages, stop, kwargs):
         model = self.model_name or {
             "sarvam": os.getenv("SARVAM_MODEL", "sarvam-105b"),
             "gemini": os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
@@ -118,7 +135,7 @@ class RoutedChatModel(BaseChatModel):
             headers = {"api-key": key}
         started = time.monotonic()
         try:
-            with httpx.Client(timeout=float(os.getenv("PREPPULSE_AI_TIMEOUT", "90")),
+            with httpx.Client(timeout=self.request_timeout or float(os.getenv("PREPPULSE_AI_TIMEOUT", "90")),
                               trust_env=False) as client:
                 response = client.post(urls[provider] if provider == "azure" else urls[provider].rstrip("/") + "/chat/completions",
                                        headers=headers, json=payload)
@@ -134,6 +151,8 @@ class RoutedChatModel(BaseChatModel):
                     finish(call_id, "http_429")
                     raise ProviderRateLimited("Provider rate limit; retry after cooldown")
                 finish(call_id, f"http_{response.status_code}")
+                if response.status_code in {408, 500, 502, 503, 504}:
+                    raise TransientProviderFailure(f"HTTP {response.status_code}; temporary provider failure")
                 raise ProviderUnavailable(f"HTTP {response.status_code}")
             data = response.json()
             usage = data.get("usage") or {}
@@ -153,4 +172,4 @@ class RoutedChatModel(BaseChatModel):
                           "usage": usage, "elapsed_seconds": round(time.monotonic() - started, 3)}
         except (httpx.HTTPError, ValueError):
             finish(call_id, "transport_or_json_error")
-            raise ProviderUnavailable("Transport or response decoding failed") from None
+            raise TransientProviderFailure("Transport or response decoding failed") from None

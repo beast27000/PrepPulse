@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Patient, User, patch, post, request } from "./api";
+import SearchSuggestions from "./SearchSuggestions";
 
 export default function CaregiverAdmin({
   patients,
@@ -150,11 +151,12 @@ export default function CaregiverAdmin({
             </label>
             <label>
               Find caregiver
-              <input
-                aria-label="Find caregiver"
+              <SearchSuggestions
+                label="Find caregiver"
                 placeholder="Name, username or caregiver ID"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                options={choices.map(x => ({ id: x.user_id, name: x.name, detail: `${x.username} · ${x.account_id || x.user_id}` }))}
+                onSelect={setCaregiver} onChange={setQuery}
               />
             </label>
             <label>
@@ -182,11 +184,12 @@ export default function CaregiverAdmin({
             </label>
             <label>
               Find patient
-              <input
-                aria-label="Find patient"
+              <SearchSuggestions
+                label="Find patient"
                 placeholder="Patient name or ID"
                 value={patientQuery}
-                onChange={(e) => setPatientQuery(e.target.value)}
+                options={rows.map(x => ({ id: x.patient_id, name: x.name, detail: `${x.patient_id} · ${(x.external_aliases || []).join(" · ")}` }))}
+                onSelect={setPatient} onChange={setPatientQuery}
               />
             </label>
             <label>

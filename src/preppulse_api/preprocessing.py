@@ -56,6 +56,10 @@ def process_structured(store, mongo, patient_id, progress=None):
     catalog = build_catalog(store, patient_id)
     counts = {"complete": 0, "failed": 0, "review_items": 0}
     for doc in mongo.get_patient_documents(patient_id):
+        from preppulse_api.operations import assert_available
+        assert_available(store, patient_id)
+        store.db.jobs.update_many({"patient_id": patient_id, "status": "running"},
+            {"$set": {"current_file": doc.get("document_name", doc.get("filename", doc["document_id"]))}})
         identity = {"stage1": doc.get("stage_1_raw_ocr"), "provider": settings.llm.provider,
                     "model": os.getenv("SARVAM_MODEL") if settings.llm.provider == "sarvam" else
                     os.getenv("GEMINI_MODEL") if settings.llm.provider == "gemini" else os.getenv("LOCAL_CHAT_MODEL"),

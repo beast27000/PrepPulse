@@ -180,6 +180,8 @@ async def save_patient_folder(
                 ) from None
             created = True
         patient_id = patient["patient_id"]
+        if patient.get("maintenance"):
+            raise HTTPException(409, "Patient cleanup is in progress")
         if not created:
             for alias in (external_id, folder):
                 store.db.patient_aliases.update_one(

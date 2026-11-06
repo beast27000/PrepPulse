@@ -44,7 +44,7 @@ export function SettingsControls({
     onChange({ ...value, ...next });
   return (
     <div className="settings-grid">
-      {user.role === "admin" && <CloudRouting />}
+      <CloudRouting admin={user.role === "admin"} />
       <section className="panel settings-section">
         <div className="eyebrow teal">APPEARANCE</div>
         <h3>Display preferences</h3>
@@ -168,20 +168,21 @@ export function SettingsControls({
   );
 }
 
-function CloudRouting() {
+function CloudRouting({ admin }: { admin: boolean }) {
   const [mode, setMode] = useState("auto");
   const [available, setAvailable] = useState(false);
   const [status, setStatus] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [checks, setChecks] = useState<{ checked_at: string; providers: { provider: string; status: string; detail: string; elapsed_seconds: number }[] } | null>(null);
   useEffect(() => {
-    request<{ mode: string; available: boolean }>("/admin/ai-routing")
-      .then((value) => { setMode(value.mode); setAvailable(value.available); })
+    request<{ mode: string; cloud: boolean }>("/ai/status")
+      .then((value) => { setMode(value.mode); setAvailable(value.cloud); })
       .catch(() => {});
   }, []);
-  if (!available) return null;
   return <section className="panel settings-section">
-    <div className="eyebrow teal">CLOUD AI</div>
-    <h3>AI service preference</h3>
-    <label>Provider
+    <div className="eyebrow teal">AI SERVICES</div>
+    <h3>Provider availability</h3>
+    {available && admin ? <label>Shared provider route
       <select value={mode} onChange={async (event) => {
         const next = event.target.value;
         setStatus("Saving...");
@@ -195,8 +196,16 @@ function CloudRouting() {
         <option value="sarvam">Sarvam only</option>
         <option value="disabled">Pause new AI requests</option>
       </select>
-    </label>
-    <p>Controls agents and chat. Translation and voice use Azure. Pausing AI stops all new AI requests; saved records remain accessible.</p>
+    </label> : <p>{available ? `Active route: ${mode === "auto" ? "Sarvam, then Azure fallback" : mode}. The administrator manages the shared route.` : "Local model configuration"}</p>}
+    <p>{available ? "These tests check chat and agent inference. Translation and dictation use their separately configured services." : "Checks the locally configured model server."}</p>
+    <button className="secondary" disabled={testing} onClick={async () => {
+      setTesting(true); setStatus("Testing providers…");
+      try { setChecks(await request("/ai/test", { method: "POST" })); setStatus(""); }
+      catch (e) { setStatus((e as Error).message); } finally { setTesting(false); }
+    }}>{testing ? "Testing…" : "Test providers"}</button>
+    {checks && <div aria-live="polite"><p>Checked {new Date(checks.checked_at).toLocaleString()}</p>
+      {checks.providers.map(x => <p key={x.provider}><strong>{x.provider}: {x.status.replaceAll("_", " ")}</strong><br />{x.detail} · {x.elapsed_seconds}s</p>)}
+    </div>}
     <p role="status">{status}</p>
   </section>;
 }

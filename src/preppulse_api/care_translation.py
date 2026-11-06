@@ -285,6 +285,8 @@ def run_language_job(kind, identity, revision, language):
             plan = store.db.pathways.find_one({"pathway_id": identity})
         if not plan:
             return
+        from preppulse_api.operations import assert_not_deleting
+        assert_not_deleting(store, plan["patient_id"])
         key = cache_key(plan, kind, identity, revision, language)
         row = store.db.care_language_cache.find_one(key) or {}
         originals = {segment: (text, source) for segment, text, source in segments(plan)}
@@ -308,6 +310,7 @@ def run_language_job(kind, identity, revision, language):
             except Exception as exc:  # noqa: BLE001 - preserve successful batches on provider failure
                 failures.append(str(exc)[:200])
                 continue
+            assert_not_deleting(store, plan["patient_id"])
             for segment, source_text, source_language in batch:
                 value = data.get(segment)
                 if usable(value, source_text, language, source_language):
@@ -356,6 +359,7 @@ def run_language_job(kind, identity, revision, language):
             and plan.get("patient_id")
             and plan.get("approved_at")
         ):
+            assert_not_deleting(store, plan["patient_id"])
             from preppulse_api.care import archive_pdf
 
             archive_pdf(store, overlay(store, plan, kind, identity, revision))

@@ -2,6 +2,12 @@
 
 Implementation status and backlog.
 
+## Processing recovery and administration update (6 November 2026)
+
+Implemented accurate waiting states, queue observations, unchanged upload status, administrator retry, pulsing ingestion progress, bounded transient provider retries, staff provider tests, doctor Upcoming appointments, server date restrictions, inline suggestions and administrator patient/source deletion with confirmations and worker fencing.
+
+Verification in progress: focused API/provider/deletion/caregiver regressions and frontend build passed. Browser and live PP006 verification, cleanup and publication are pending. Azure model deployment remains unavailable and cannot be repaired by application fallback logic alone.
+
 ## Composite measurement extraction recovery (6 November 2026)
 
 - [x] Quarantine nonnumeric or combined lab values in the source-linked review queue so one malformed blood-pressure/pulse reading cannot fail the patient's whole Stage 2 document batch.
