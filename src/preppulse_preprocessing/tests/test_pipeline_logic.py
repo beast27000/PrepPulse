@@ -12,6 +12,7 @@ from preppulse_preprocessing.config import GroundingConfig, LLMConfig
 from preppulse_preprocessing.extract import extract_document
 from preppulse_preprocessing.fhir import to_fhir_bundle
 from preppulse_preprocessing.ground import ground_entities
+from preppulse_preprocessing.models import Stage2StructuredEntities
 from preppulse_preprocessing.providers.mock_provider import MockProvider
 
 
@@ -85,6 +86,27 @@ def test_grounding_is_fail_closed():
     assert 12.5 not in kept_lab_values           # hallucinated value quarantined
     assert grounded["medications"] == []          # fabricated drug quarantined
     assert len(grounded["review_queue"]) == 2
+
+
+def test_composite_lab_value_is_reviewed_without_blocking_valid_facts():
+    """A model's BP/pulse text cannot abort the whole document's Stage 2 validation."""
+    text = "HbA1c 8.3 percent Blood pressure 114/72 mmHg pulse 80 per minute"
+    tokens = [{"text": word, "bbox": [i * 40, 0, i * 40 + 38, 20], "confidence": 1.0}
+              for i, word in enumerate(text.split())]
+    doc = {"stage_1_raw_ocr": {"pages": [{"page_number": 1, "full_text": text,
+                                            "tokens": tokens}]}}
+    entities = {"labs": [
+        {"test_name": "HbA1c", "value": 8.3, "source_page": 1,
+         "anchor_text": "HbA1c 8.3 percent"},
+        {"test_name": "Blood pressure", "value": "114/72 mmHg / 80 per minute",
+         "source_page": 1, "anchor_text": "Blood pressure 114/72 mmHg pulse 80 per minute"},
+    ]}
+    grounded = ground_entities(entities, doc, GroundingConfig())
+    assert [lab["value"] for lab in grounded["labs"]] == [8.3]
+    assert len(grounded["review_queue"]) == 1
+    assert grounded["review_queue"][0]["reason"] == "invalid_numeric_value"
+    stage2 = Stage2StructuredEntities(labs=grounded["labs"], review_queue=grounded["review_queue"])
+    assert stage2.labs[0].value == 8.3
 
 
 def test_fhir_bundle_shape(lab_document):

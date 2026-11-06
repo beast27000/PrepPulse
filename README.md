@@ -6,6 +6,8 @@ PrepPulse is a physician assistance workspace for reviewing a patient's longitud
 
 PrepPulse helps reduce the effort of reading a large record. It does not hide the record, make a diagnosis, or replace a clinician's judgment. Generated summaries and suggestions remain assistive. Findings link back to patient-scoped evidence so the doctor can verify them in context.
 
+Structured extraction keeps a source-linked review queue for model output that cannot be safely interpreted as a single numeric result. A malformed reading does not stop the rest of a patient's uploaded documents from being processed.
+
 ## Product at a glance
 
 An administrator registers patients and accounts, assigns doctors and caregivers, and manages appointments. Doctors work from Today and Patients, analyze records, inspect cited findings, review prior visits, ask questions in a saved patient conversation, and prepare a clinician-reviewed family or caregiver plan. Caregivers can see only plans assigned to them, report checklist completion and share notes. Patient records, appointment history, conversation artifacts, source files and signed plans persist in the deployed database and private storage.

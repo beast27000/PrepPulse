@@ -53,6 +53,9 @@ Rules:
 - Copy values verbatim. Do NOT convert units or round.
 - anchor_text MUST be an exact substring of the section text (used for provenance).
 - Omit anything not clearly stated. Never guess a dose, value, or code.
+- A lab value must be one number or null. Put combined blood pressure readings
+  (such as 114/72 mmHg) and pulse rates in vitals, not labs; never squeeze
+  multiple measurements or unit text into one lab value.
 - Return ONLY the JSON object, no commentary.
 - When SOURCE PAGE markers are supplied, include source_page (that page's integer) on every lab, medication and diagnosis.
 

@@ -22,6 +22,7 @@ passed through as truth.
 from __future__ import annotations
 
 import difflib
+import math
 import re
 from typing import Any
 
@@ -133,6 +134,22 @@ def ground_entities(entities: dict[str, Any], doc: dict[str, Any], cfg: Groundin
         for fact in items:
             page = pages.get(fact.get("source_page", 1), {})
             checked = _verify_fact(fact, page, cfg)
+            if kind == "lab" and checked.get("value") is not None:
+                try:
+                    valid_number = not isinstance(checked["value"], bool) and math.isfinite(
+                        float(checked["value"])
+                    )
+                except (TypeError, ValueError):
+                    valid_number = False
+                if not valid_number:
+                    review.append({
+                        "kind": kind,
+                        "fact": {k: v for k, v in checked.items() if not k.startswith("_")},
+                        "reason": "invalid_numeric_value",
+                        "match_ratio": checked["_match_ratio"],
+                        "confidence": checked["confidence"],
+                    })
+                    continue
             if checked["_verified"] and checked["confidence"] >= cfg.review_threshold:
                 # strip internal markers before keeping
                 for k in ("_verified", "_match_ratio", "_numeric_ok"):

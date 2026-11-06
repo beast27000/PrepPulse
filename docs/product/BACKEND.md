@@ -14,6 +14,8 @@ The API validates incoming structured data and authorizes the patient scope befo
 
 Long OCR, clinical analysis and translation work is not held open inside an ordinary page request. The API creates durable Mongo work items. A clinical worker handles document processing, extraction, FHIR, retrieval and the review graph. A separate care worker handles translation and care-plan tasks. Leases and heartbeats identify abandoned work; retries and terminal failures are visible to the application. Analysis checkpoints reduce repeated work after interruption.
 
+If a language model places a combined blood-pressure and pulse reading into a numeric lab field, the grounding pass retains it as a source-linked review item and processes the remaining valid facts and documents. It does not coerce the composite text into a clinical number.
+
 Remote provider calls may be repeated after a worker crash between provider response and persisted completion. Thus remote calls are at-least-once and retries can consume additional provider credits. Application reservations and provider dashboards should both be monitored.
 
 ## Mongo data and FHIR

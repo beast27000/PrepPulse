@@ -2,6 +2,12 @@
 
 Implementation status and backlog.
 
+## Composite measurement extraction recovery (6 November 2026)
+
+- [x] Quarantine nonnumeric or combined lab values in the source-linked review queue so one malformed blood-pressure/pulse reading cannot fail the patient's whole Stage 2 document batch.
+- [x] Clarified the extraction prompt that blood pressure and pulse belong in vitals, and validated a mixed valid/composite example through the Stage 2 model.
+- [ ] Confirm the affected patient's failed document completes after retrying processing in the application; no patient job is retried automatically by this code change.
+
 ## Patient search and navigation controls (6 November 2026)
 
 - [x] Added API-backed name, PrepPulse ID and folder-alias search to the admin patient directory and new-appointment patient selector; ambiguous appointment matches require an explicit choice.
