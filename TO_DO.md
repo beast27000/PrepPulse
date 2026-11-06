@@ -2,6 +2,12 @@
 
 Implementation status and backlog.
 
+## Patient search and navigation controls (6 November 2026)
+
+- [x] Added API-backed name, PrepPulse ID and folder-alias search to the admin patient directory and new-appointment patient selector; ambiguous appointment matches require an explicit choice.
+- [x] Added name/ID search to assigned caregiver care-plan cards, with localized search labels.
+- [x] Removed the inactive notification bell and aligned the top appointment panels after adding the search field.
+
 ## Repository documentation cleanup (6 November 2026)
 
 - [x] Removed obsolete frontend handoff and Stage 2/3 specification documents, replacing their current guidance with the focused product documentation.

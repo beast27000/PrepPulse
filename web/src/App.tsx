@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
-  Bell,
   CalendarDays,
   Check,
   ChevronRight,
@@ -127,6 +126,12 @@ const shortDate = (date?: string) =>
     : "Date unavailable";
 const alias = (p: Patient) =>
   p.external_aliases?.find((x) => /^PP\d+$/.test(x)) || "";
+const matchesPatient = (p: Patient, query: string) => {
+  const term = query.trim().toLocaleLowerCase();
+  return !term || [p.name, p.patient_id, ...(p.external_aliases || [])].some(
+    (value) => value.toLocaleLowerCase().includes(term),
+  );
+};
 
 function Login({ onLogin }: { onLogin: (u: User) => void }) {
   const [username, setUsername] = useState("");
@@ -433,6 +438,8 @@ export default function App() {
   const selectedPatientRef = useRef<string | null>(null);
   selectedPatientRef.current = selected?.patient_id || null;
   const [search, setSearch] = useState("");
+  const [carePatientQuery, setCarePatientQuery] = useState("");
+  const [carePatientChoices, setCarePatientChoices] = useState<Patient[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [documents, setDocuments] = useState<Doc[]>([]);
@@ -534,6 +541,21 @@ export default function App() {
     },
     [user, selected],
   );
+  useEffect(() => {
+    if (user?.role !== "caregiver") return;
+    const query = carePatientQuery.trim();
+    if (!query) {
+      setCarePatientChoices(patients);
+      return;
+    }
+    let active = true;
+    const timer = setTimeout(() => {
+      request<Patient[]>(`/patients?q=${encodeURIComponent(query)}`)
+        .then((rows) => { if (active) setCarePatientChoices(rows); })
+        .catch((error) => { if (active) setNotice((error as Error).message); });
+    }, 200);
+    return () => { active = false; clearTimeout(timer); };
+  }, [carePatientQuery, patients, user?.role]);
   const loadSelected = useCallback(async () => {
     if (!selected || user?.role !== "doctor") return;
     const id = selected.patient_id;
@@ -952,9 +974,6 @@ export default function App() {
                 </div>
               </>
             )}
-            <button className="icon-button" title="Notifications">
-              <Bell size={18} />
-            </button>
             <div className="top-avatar">
               {user.name.slice(0, 2).toUpperCase()}
             </div>
@@ -1759,12 +1778,31 @@ export default function App() {
                   "Your assigned patients, signed instructions, daily tasks and notes for the doctor.",
                 )}
               />
+              {!!patients.length && (
+                <label className="patient-directory-search">
+                  {careLabel("Search patients")}
+                  <span className="patient-search-field">
+                    <Search size={17} aria-hidden="true" />
+                    <input
+                      type="search"
+                      aria-label={careLabel("Search patients")}
+                      placeholder={careLabel("Name or patient ID")}
+                      value={carePatientQuery}
+                      onChange={(e) => setCarePatientQuery(e.target.value)}
+                    />
+                  </span>
+                </label>
+              )}
               <PatientCarousel
-                patients={patients}
+                patients={carePatientChoices}
                 selected={selected}
                 onPick={choosePatient}
                 label={careLabel}
               />
+              {!!patients.length && carePatientQuery &&
+                !carePatientChoices.length && (
+                  <p role="status">{careLabel("No matching patients")}</p>
+                )}
               {selected ? (
                 <section className="panel pathway-panel">
                   <CareWorkspace
@@ -2127,6 +2165,12 @@ function AdminPages({
   );
   const [doctor, setDoctor] = useState("");
   const [appointmentPatient, setAppointmentPatient] = useState("");
+  const [appointmentPatientQuery, setAppointmentPatientQuery] = useState("");
+  const [directoryQuery, setDirectoryQuery] = useState("");
+  const [appointmentChoices, setAppointmentChoices] = useState<Patient[]>(patients);
+  const [directoryChoices, setDirectoryChoices] = useState<Patient[]>(patients);
+  const [appointmentSearchError, setAppointmentSearchError] = useState("");
+  const [directorySearchError, setDirectorySearchError] = useState("");
   const [appointmentDate, setAppointmentDate] = useState(today());
   const [appointmentTime, setAppointmentTime] = useState(
     preferences.appointmentTime,
@@ -2143,6 +2187,64 @@ function AdminPages({
     day?: string;
   } | null>(null);
   const selectedDoctor = doctor || doctors[0]?.user_id || "";
+  useEffect(() => {
+    const query = appointmentPatientQuery.trim();
+    if (!query) {
+      setAppointmentChoices(patients);
+      setAppointmentSearchError("");
+      return;
+    }
+    let active = true;
+    const timer = setTimeout(() => {
+      request<Patient[]>(`/patients?q=${encodeURIComponent(query)}`)
+        .then((rows) => {
+          if (!active) return;
+          setAppointmentChoices(rows);
+          setAppointmentSearchError("");
+          const exact = rows.filter((p) =>
+            [p.name, p.patient_id, ...(p.external_aliases || [])].some(
+              (value) => value.toLocaleLowerCase() === query.toLocaleLowerCase(),
+            ),
+          );
+          setAppointmentPatient(
+            exact.length === 1 ? exact[0].patient_id :
+            rows.length === 1 ? rows[0].patient_id : "",
+          );
+        })
+        .catch((error) => {
+          if (active) {
+            setAppointmentChoices([]);
+            setAppointmentSearchError((error as Error).message);
+          }
+        });
+    }, 200);
+    return () => { active = false; clearTimeout(timer); };
+  }, [appointmentPatientQuery, patients]);
+  useEffect(() => {
+    const query = directoryQuery.trim();
+    if (!query) {
+      setDirectoryChoices(patients);
+      setDirectorySearchError("");
+      return;
+    }
+    let active = true;
+    const timer = setTimeout(() => {
+      request<Patient[]>(`/patients?q=${encodeURIComponent(query)}`)
+        .then((rows) => {
+          if (active) {
+            setDirectoryChoices(rows);
+            setDirectorySearchError("");
+          }
+        })
+        .catch((error) => {
+          if (active) {
+            setDirectoryChoices([]);
+            setDirectorySearchError((error as Error).message);
+          }
+        });
+    }, 200);
+    return () => { active = false; clearTimeout(timer); };
+  }, [directoryQuery, patients]);
   const [appointmentView, setAppointmentView] = useState<"today" | "upcoming">("today");
   const [appointmentDateFilter, setAppointmentDateFilter] = useState("");
   const todayAppointments = appointments.filter((a) => a.date === today());
@@ -2178,6 +2280,7 @@ function AdminPages({
   function chooseAppointment(a: Appointment) {
     setEditAppointment(a);
     setAppointmentPatient(a.patient_id);
+    setAppointmentPatientQuery(a.patient_id);
     setDoctor(a.doctor_id);
     setAppointmentDate(a.date);
     setAppointmentTime(a.time);
@@ -2213,27 +2316,53 @@ function AdminPages({
             title="Patient appointments"
             text="Schedule visits for assigned doctors. Their Today page refreshes automatically."
           />
-          <div className="admin-grid">
+          <div className="admin-grid appointment-grid">
             <section className="panel admin-form">
               <h3>
                 {editAppointment ? "Edit appointment" : "New appointment"}
               </h3>
               <form onSubmit={addAppointment}>
                 <label>
+                  Find patient by name or ID
+                  <input
+                    type="search"
+                    placeholder="Name, PrepPulse ID or folder ID"
+                    value={appointmentPatientQuery}
+                    onChange={(e) => {
+                      const query = e.target.value;
+                      setAppointmentPatientQuery(query);
+                      setAppointmentPatient("");
+                      setAppointmentChoices(patients.filter((p) => matchesPatient(p, query)));
+                    }}
+                  />
+                </label>
+                <label>
                   Patient
                   <select
                     value={appointmentPatient}
-                    onChange={(e) => setAppointmentPatient(e.target.value)}
+                    onChange={(e) => {
+                      setAppointmentPatient(e.target.value);
+                      if (e.target.value) setAppointmentPatientQuery(e.target.value);
+                    }}
                     required
                   >
                     <option value="">Select a patient</option>
-                    {patients.map((p) => (
+                    {appointmentChoices.map((p) => (
                       <option key={p.patient_id} value={p.patient_id}>
                         {p.name} · {p.patient_id}
                       </option>
                     ))}
                   </select>
                 </label>
+                {appointmentPatientQuery && !appointmentChoices.length && !appointmentSearchError && (
+                  <small role="status">No matching patient found.</small>
+                )}
+                {appointmentSearchError && (
+                  <small role="alert">Patient search failed: {appointmentSearchError}</small>
+                )}
+                {appointmentPatientQuery && appointmentChoices.length > 1 && !appointmentPatient && (
+                  <small role="status">Choose the correct patient from the matching list.</small>
+                )}
                 <label>
                   Doctor
                   <select
@@ -2412,8 +2541,24 @@ function AdminPages({
             title="Patient directory"
             text="Search patients by name, PrepPulse ID, or existing dataset alias."
           />
+          <label className="patient-directory-search">
+            Search patients
+            <span className="patient-search-field">
+              <Search size={17} aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search patient directory"
+                placeholder="Name, PrepPulse ID or folder ID"
+                value={directoryQuery}
+                onChange={(e) => {
+                  setDirectoryQuery(e.target.value);
+                  setDirectoryChoices(patients.filter((p) => matchesPatient(p, e.target.value)));
+                }}
+              />
+            </span>
+          </label>
           <div className="card-carousel compact">
-            {patients.map((p) => (
+            {directoryChoices.map((p) => (
               <div
                 key={p.patient_id}
                 className={
@@ -2464,6 +2609,12 @@ function AdminPages({
               </div>
             ))}
           </div>
+          {!directoryChoices.length && !directorySearchError && (
+            <p role="status">No patients match this search.</p>
+          )}
+          {directorySearchError && (
+            <p role="alert">Patient search failed: {directorySearchError}</p>
+          )}
           {directoryPatient && (
             <AdminPatientDetails
               key={directoryPatient.patient_id}

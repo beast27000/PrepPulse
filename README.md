@@ -16,6 +16,8 @@ The source record remains available throughout the workflow. PrepPulse helps red
 4. The doctor can ask questions about the patient’s records. Responses link to retrieved source evidence, and chart requests use dated measurements rather than values invented by a language model.
 5. The doctor reviews and signs a care pathway when appropriate. The signed version remains attached to the patient; caregivers can report checklist completion and share notes through their restricted portal.
 
+Administrators can search the patient directory and find patients by name, permanent ID or folder alias when scheduling appointments. Caregivers can search their assigned care plans by patient name or ID.
+
 ## Technology at a glance
 
 1. Browser: React 18, TypeScript, Vite, Recharts and React Markdown.

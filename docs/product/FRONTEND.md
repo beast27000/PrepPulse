@@ -133,11 +133,15 @@ Name/ID search can be combined with an exact date, or used without one. Date-onl
 
 Admins can create, edit, or cancel scheduling entries through the active scheduling controls. The historical list remains a review view without edit/delete actions.
 
+The new-appointment form accepts a patient name, permanent PrepPulse ID or external folder alias. Matching registered patients appear in the existing selector. A unique match resolves automatically; ambiguous names require an explicit selection. The search queries the API, so it can find patients beyond the first directory page.
+
 Starting a consultation can link the matching appointment; completing/signing the visit completes that linked appointment. Unscheduled visits still retain a visit ID.
 
 ### Patient directory
 
 The directory presents patient cards and retains doctor-assignment controls. Opening a card displays administrative details, document states, appointments, and visit context.
+
+A search field filters cards by patient name, permanent PrepPulse ID or external folder alias through the patient API. The selected patient's details remain available while the card list changes.
 
 Administrators can edit demographics, browse all records by default, filter by visit/date, add records, preview files, and edit document metadata. Display-title changes do not replace original source bytes or filenames. Signed pathway dates/types remain immutable.
 
@@ -182,6 +186,8 @@ Database configuration and model connection secrets are not editable patient-fac
 ### My care plans
 
 A caregiver signs into the same PrepPulse address and receives a single-page **My care plans** workspace. Access is limited to patients assigned by an administrator.
+
+Caregivers can search their assigned patient cards by name or ID. The search uses the same patient-scoped API as the rest of their portal and does not expose unassigned patients.
 
 Family caregivers see only signed family pathways; in-hospital caregivers see only signed caregiver pathways. The server checks both patient assignment and account/pathway type for listing, reading, translation requests, downloads, completion reports and notes. Neither type obtains access to the other's pathway merely by knowing its ID.
 
