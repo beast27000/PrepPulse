@@ -70,6 +70,12 @@ def process_patient(
     mongo = MongoStore(uri=MONGO_URI, db_name=store.db.name)
     try:
         for rec in store.db.workspace_documents.find({"patient_id": patient_id}):
+            from preppulse_api.operations import assert_available
+            assert_available(store, patient_id)
+            store.db.jobs.update_many({"patient_id": patient_id, "status": "running"},
+                                     {"$set": {"current_file": rec["filename"]}})
+            if progress:
+                progress("ocr")
             if mongo.get_document(rec["record_id"]):
                 continue
             path = source_path(rec)

@@ -7,6 +7,7 @@ import {
   patch,
   request,
 } from "./api";
+import IngestionStatus from "./IngestionStatus";
 
 export default function AdminPatientDetails({
   patient,
@@ -36,6 +37,19 @@ export default function AdminPatientDetails({
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState("");
   const [recordDay, setRecordDay] = useState("");
+  const [deleting, setDeleting] = useState<"patient" | "record" | null>(null);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [confirmation, setConfirmation] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  async function confirmDelete(kind: "patient" | "record") {
+    setDeleteError(""); setConfirmation("");
+    if (kind === "patient") {
+      try { setCounts((await request<{ counts: Record<string, number> }>(`/admin/patients/${patient.patient_id}/deletion-preview`)).counts); }
+      catch (e) { setError((e as Error).message); return; }
+    }
+    setDeleting(kind);
+  }
   async function load() {
     try {
       const value = await request<AdminPatientOverview>(
@@ -123,7 +137,8 @@ export default function AdminPatientDetails({
               </strong>
             </div>
           </div>
-          <button
+          {data.latest_job && <IngestionStatus job={data.latest_job} patientId={patient.patient_id} admin onRetry={job => setData({ ...data, latest_job: job })} />}
+          <div className="patient-maintenance-actions"><button
             className="secondary"
             onClick={() => {
               setEditing(!editing);
@@ -136,6 +151,7 @@ export default function AdminPatientDetails({
           >
             Edit patient details
           </button>
+          <button className="danger-button" onClick={() => confirmDelete("patient")}>Delete patient</button></div>
           {editing && (
             <form
               className="admin-form directory-edit"
@@ -349,6 +365,7 @@ export default function AdminPatientDetails({
                 </label>
               </div>
               <button className="primary">Save record metadata</button>
+              {record.document_type !== "care_pathway" && <button type="button" className="danger-button" onClick={() => confirmDelete("record")}>Delete record</button>}
               <button
                 type="button"
                 className="secondary"
@@ -392,6 +409,32 @@ export default function AdminPatientDetails({
         </>
       )}
       {!data && !error && <p>Loading patient details…</p>}
+      {deleting && <div className="modal-backdrop"><section className="panel deletion-dialog" role="dialog" aria-modal="true" aria-label={deleting === "patient" ? "Delete patient confirmation" : "Delete record confirmation"}>
+        <h3>{deleting === "patient" ? "Delete all patient information?" : "Delete this source record?"}</h3>
+        <p><strong>{patient.name}</strong> · {patient.patient_id}</p>
+        {deleting === "patient" ? <>
+          <p>{counts.workspace_documents || 0} records · {counts.workspace_files || 0} uploaded files · {counts.visits || 0} visits · {counts.appointments || 0} appointments · {counts.pathways || 0} signed pathways</p>
+          <p>This permanently removes this patient's imported files, aliases, extracted data, appointments, visits, conversations and caregiver data from the active workspace. Existing backups follow their retention schedule. Original dataset folders are retained.</p>
+          <label>Type {patient.patient_id} to confirm<input autoFocus value={confirmation} onChange={e => setConfirmation(e.target.value)} /></label>
+        </> : <>
+          <p>{record?.display_name || record?.filename} · {record?.visit_date || "Undated"} · {record?.document_type}</p>
+          <p>The imported source and extracted data will be removed. Current AI briefs and saved conversations/charts will be cleared because they may quote this source. Signed plans remain historical records. Analyze records again afterwards.</p>
+        </>}
+        {deleteError && <p className="care-error" role="alert">{deleteError}</p>}
+        <div className="form-actions">
+          <button className="secondary" disabled={deleteBusy} onClick={() => setDeleting(null)}>Cancel</button>
+          <button className="danger-button" disabled={deleteBusy || (deleting === "patient" && confirmation !== patient.patient_id)} onClick={async () => {
+            setDeleteBusy(true); setDeleteError("");
+            try {
+              await request(`/admin/patients/${patient.patient_id}${deleting === "record" ? `/documents/${record!.record_id}` : ""}`, { method: "DELETE", body: JSON.stringify({ confirm_id: deleting === "patient" ? confirmation : record!.record_id }) });
+              const full = deleting === "patient";
+              setDeleting(null); setRecord(null); setPreview(null);
+              if (full) { onClose(); onUpdated(); } else { setStatus("Record removed. Analyze records to rebuild patient insights."); await load(); onUpdated(); }
+            } catch (e) { setDeleteError((e as Error).message); }
+            finally { setDeleteBusy(false); }
+          }}>{deleteBusy ? "Deleting…" : deleting === "patient" ? "Permanently delete patient" : "Delete record"}</button>
+        </div>
+      </section></div>}
     </section>
   );
 }
