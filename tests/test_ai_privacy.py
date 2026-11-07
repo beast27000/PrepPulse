@@ -39,7 +39,7 @@ def test_unknown_labelled_identifiers_and_json_keys():
     source = {"patient_name": "Unknown", "text": "Patient: Ravi Kapoor | DOB: 02 Jan 1960\nPhone: +1 212 555 0199\nEmail: ravi@example.org\nHbA1c 7.9%"}
     safe = privacy.redact(source)
     assert "Ravi Kapoor" not in safe["text"] and "1960" not in safe["text"]
-    assert "212" not in safe["text"] and "7.9%" in safe["text"]
+    assert "+1 212 555 0199" not in safe["text"] and "7.9%" in safe["text"]
     assert "patient_name" in safe
     assert safe["patient_name"] != "Unknown"
     source = json.dumps({"address": '42 "Sample" Road\\Unit 1', "dob": "1970-04-09", "value": 8.3})

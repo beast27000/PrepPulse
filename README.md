@@ -2,6 +2,8 @@
 
 Patient privacy: external text AI requests pseudonymize registered identifiers before transmission; the deployed disks and backups are encrypted. Read the [privacy controls, verification and limits](documentation/PATIENT_PRIVACY.md), including the cloud dictation exception and local storage requirements.
 
+The [7 November privacy verification](documentation/PRIVACY_VERIFICATION_2026_11_07.md) records the encrypted restore, 15 document real provider rehearsal, outgoing payload checks and live browser test.
+
 Processing progress, provider availability checks, Upcoming appointments and administrator deletion are described in [Processing and maintenance](documentation/PROCESSING_AND_MAINTENANCE.md).
 
 The latest [release verification](documentation/RELEASE_VERIFICATION_2026_11_06.md) records the fresh patient ingestion, chat, chart, translation and cleanup checks and the current Azure fallback limitation.

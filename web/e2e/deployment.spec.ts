@@ -13,6 +13,16 @@ test("live cloud pages, sessions, charts and evidence", async ({ page }, info) =
   });
   async function login(role: string) {
     await page.context().clearCookies();
+    if (role === "caregiver" && process.env.PREPPULSE_CAREGIVER_SESSION_FILE) {
+      // An operator can supply a short-lived session for an existing account
+      // without resetting its password or creating a demonstration account.
+      const session = JSON.parse(readFileSync(process.env.PREPPULSE_CAREGIVER_SESSION_FILE, "utf8"));
+      await page.context().addCookies([{ name: session.name || "preppulse_session", value: session.cookie,
+        url: process.env.PREPPULSE_E2E_URL!, secure: true, httpOnly: true, sameSite: "Strict" }]);
+      await page.goto("/");
+      await expect(page.getByRole("button", { name: "My care plans", exact: true })).toBeVisible();
+      return;
+    }
     await page.goto("/");
     await page.getByLabel("Username", { exact: true }).fill(access[role].username);
     await page.getByLabel("Password", { exact: true }).fill(access[role].password);
