@@ -115,7 +115,7 @@ class LLMFactory:
 
         if resolved_provider in ("local", "lmstudio"):
             try:
-                from langchain_openai import ChatOpenAI
+                from preppulse_rag.private_openai import PrivateChatOpenAI as ChatOpenAI
 
                 resolved_model = model_name or os.getenv("LOCAL_CHAT_MODEL", "qwen/qwen3-4b-2507")
                 resolved_base_url = base_url or os.getenv(
@@ -172,7 +172,7 @@ class LLMFactory:
 
         if resolved_provider in ("local", "lmstudio"):
             try:
-                from langchain_openai import OpenAIEmbeddings
+                from preppulse_rag.private_openai import PrivateOpenAIEmbeddings as OpenAIEmbeddings
 
                 resolved_model = model_name or os.getenv(
                     "LOCAL_EMBED_MODEL", "text-embedding-qwen3-embedding-0.6b"

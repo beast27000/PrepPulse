@@ -25,6 +25,11 @@ class LMStudioProvider(LLMClient):
 
     def _post(self, path: str, payload: dict) -> dict:
         url = f"{self.base_url}{path}"
+        from preppulse_rag.privacy import PrivacyFilter, local_endpoint
+        privacy = None if local_endpoint(url) else PrivacyFilter()
+        if privacy:
+            payload = {**payload, "messages": [
+                {**message, "content": privacy.redact(message["content"])} for message in payload["messages"]]}
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(
             url,
@@ -35,7 +40,11 @@ class LMStudioProvider(LLMClient):
             },
         )
         with urllib.request.urlopen(req, timeout=self.cfg.request_timeout_s) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            result = json.loads(resp.read().decode("utf-8"))
+            if privacy:
+                for choice in result.get("choices", []):
+                    choice["message"]["content"] = privacy.restore(choice["message"].get("content", ""))
+            return result
 
     def complete_json(self, system: str, user: str) -> LLMResponse:
         payload = {

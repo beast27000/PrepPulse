@@ -343,3 +343,11 @@ The owner approved a React browser UI on the `UI` branch in place of the earlier
 - **Elimination of Middleman Verifier Agent (Latency Optimization)**:
   - Adding a secondary LLM reflection/verifier hop introduces prohibitive 2–4s latency per query.
   - Instead of a middleman agent, verification is enforced deterministically via Pydantic schema validation and immutable `SourceProofCitation` bounding boxes tied directly to Stage 1 OCR ground truth.
+
+## Patient privacy release (7 November 2026)
+
+1. Added request privacy protection for external text LLM requests and translation without changing original records or UI identities.
+2. Preserved clinical measurements, clinical dates, source identifiers through request scoped restoration and original OCR coordinates.
+3. Verified deployed OS and data disk encryption, scheduled encrypted backups, and a fresh isolated restore with matching collection counts and 68 source file hashes.
+4. Added outbound payload, fail closed, JSON escaping and translation regression checks. Release verification records final test and deployment outcomes.
+5. Documented limitations: cloud dictation receives audio; pattern matching is pseudonymization rather than complete anonymity; Windows disk encryption remains machine specific.
