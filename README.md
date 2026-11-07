@@ -4,6 +4,8 @@
 
 External text AI requests through the supported adapters pseudonymize registered patient identifiers before transmission. Private local model requests stay local. Read the [privacy controls, verification and limits](documentation/PATIENT_PRIVACY.md), including the separate Azure storage protections and local disk requirements.
 
+The [7 November privacy verification](documentation/PRIVACY_VERIFICATION_2026_11_07.md) records local regression results and the separate hosted privacy and encrypted backup checks.
+
 Processing progress, provider availability checks, Upcoming appointments and administrator deletion are described in [Processing and maintenance](documentation/PROCESSING_AND_MAINTENANCE.md).
 
 The latest [release verification](documentation/RELEASE_VERIFICATION_2026_11_06.md) records the local regression checks and the deployed PP006 ingestion, chart, translation and cleanup test.
