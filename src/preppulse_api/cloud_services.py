@@ -44,7 +44,7 @@ def sarvam_request(path, *, cost, json=None, files=None, data=None):
 
 
 PROTECTED = re.compile(
-    r"https?://\S+|(?<![A-Za-z])(?:HbA1c|eGFR|LDL|HDL|ACR)(?![A-Za-z])"
+    r"PPPRIV[A-Z]+[A-F0-9]{16}END|https?://\S+|(?<![A-Za-z])(?:HbA1c|eGFR|LDL|HDL|ACR)(?![A-Za-z])"
     r"|\d+(?:[.,:/-]\d+)*(?:\s*(?:mg/dL|mg/g|mmol/L|mL/min|mmHg|mcg|mg|mL|kg|IU|U))?%?",
     re.IGNORECASE,
 )
@@ -52,6 +52,8 @@ PROTECTED = re.compile(
 
 def translate_sarvam(batch, language):
     from preppulse_api.care_translation import usable
+    from preppulse_rag.privacy import PrivacyFilter
+    privacy = PrivacyFilter()
     result = {}
     for identity, text, source in batch:
         if source == language:
@@ -69,7 +71,7 @@ def translate_sarvam(batch, language):
             entities[key] = match[0]
             return key
 
-        encoded = PROTECTED.sub(protect, text)
+        encoded = PROTECTED.sub(protect, privacy.redact(text))
         # Translate short, complete segments; never truncate a long clinical instruction.
         parts = re.split(r"(?<=[.!?])\s+|\n", encoded) if len(encoded) > 1800 else [encoded]
         translated = []
@@ -85,6 +87,7 @@ def translate_sarvam(batch, language):
         intact = all(output.count(key) == 1 for key in entities)
         for key, original in entities.items():
             output = output.replace(key, original)
+        output = privacy.restore(output)
         if not intact or not usable(output, text, language, source):
             # Dedicated translation can drop a marker in complex clinical units.
             # One source-only repair attempt stays with the same approved provider;
@@ -107,6 +110,8 @@ def translate_sarvam(batch, language):
 
 
 def speak_sarvam(text, language="en"):
+    from preppulse_rag.privacy import PrivacyFilter
+    text = PrivacyFilter().redact(text)
     if len(text) > 2400:
         raise ValueError("Read-aloud text exceeds the service segment limit")
     result = sarvam_request("text-to-speech", cost=len(text) * 3 / 1000, json={

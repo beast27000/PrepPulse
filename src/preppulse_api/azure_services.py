@@ -56,6 +56,8 @@ def request(url, *, service, cost, key_name, region=None, **kwargs):
 def translate_azure(batch, language):
     from preppulse_api.care_translation import usable
     from preppulse_api.cloud_services import PROTECTED
+    from preppulse_rag.privacy import PrivacyFilter
+    privacy = PrivacyFilter()
     result = {}
     for identity, text, source in batch:
         if source == language:
@@ -70,7 +72,7 @@ def translate_azure(batch, language):
             entities[marker] = match[0]
             return '<span class="notranslate">' + marker + '</span>'
 
-        encoded = PROTECTED.sub(protect, html.escape(text))
+        encoded = PROTECTED.sub(protect, html.escape(privacy.redact(text)))
         # All-or-nothing complete segments; no truncation of medical instructions.
         if len(encoded) > 40000:
             raise ValueError("Translation instruction exceeds the supported size")
@@ -85,6 +87,7 @@ def translate_azure(batch, language):
             raise ValueError("Translation lost a protected value")
         for marker, value in entities.items():
             output = output.replace(marker, value)
+        output = privacy.restore(output)
         if not usable(output, text, language, source):
             raise ValueError("Translation changed a measurement or target language")
         result[identity] = output
@@ -92,6 +95,8 @@ def translate_azure(batch, language):
 
 
 def speak_azure(text, language="en"):
+    from preppulse_rag.privacy import PrivacyFilter
+    text = PrivacyFilter().redact(text)
     if language not in LOCALES or len(text) > 2400:
         raise ValueError("Unsupported read-aloud language or length")
     region = os.environ["AZURE_SPEECH_REGION"]

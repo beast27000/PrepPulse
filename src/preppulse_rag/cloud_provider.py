@@ -110,6 +110,15 @@ class RoutedChatModel(BaseChatModel):
             urls["azure"] = chat_url()
         wire = [{"role": {"human": "user", "ai": "assistant"}.get(m.type, m.type),
                  "content": m.content} for m in messages]
+        from preppulse_rag.privacy import PrivacyFilter, local_endpoint
+        privacy = None
+        if provider != "local" or not local_endpoint(urls[provider]):
+            privacy = PrivacyFilter()
+            wire = [{**message, "content": privacy.redact(message["content"])} for message in wire]
+            if wire and wire[0]["role"] == "system" and isinstance(wire[0]["content"], str):
+                wire[0]["content"] += ("\nPrivacy tokens beginning PPPRIV replace personal identifiers. "
+                    "Preserve these tokens exactly when copying a source anchor, filename or identity field. "
+                    "Never infer or invent the hidden identity. Clinical values and citations remain unchanged.")
         # Reserve a deliberately conservative upper estimate, including tokenizer variation.
         input_estimate = sum(len(str(m["content"]).encode()) for m in wire) + 1024
         input_rate = float(os.getenv("SARVAM_INPUT_INR_PER_MILLION", "30"))
@@ -168,7 +177,8 @@ class RoutedChatModel(BaseChatModel):
                 finish(call_id, "incomplete", actual, prompt, completion)
                 raise ProviderUnavailable("Empty or truncated response")
             finish(call_id, "ok", actual, prompt, completion)
-            return text, {"provider": provider, "model": model, "account": alias,
+            return privacy.restore(text) if privacy else text, {"provider": provider, "model": model, "account": alias,
+                          "privacy": "pseudonymized" if privacy else "local",
                           "usage": usage, "elapsed_seconds": round(time.monotonic() - started, 3)}
         except (httpx.HTTPError, ValueError):
             finish(call_id, "transport_or_json_error")

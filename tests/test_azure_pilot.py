@@ -15,6 +15,7 @@ from preppulse_rag.runtime import BudgetExceeded, reserve
 
 @pytest.fixture
 def config(monkeypatch, tmp_path):
+    monkeypatch.setattr("preppulse_rag.privacy.load_identifiers", lambda: [])
     monkeypatch.delenv("Main_Sarvam_AI_Credits", raising=False)
     monkeypatch.setenv("PREPPULSE_PRIVATE_ROOT", str(tmp_path))
     monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com")

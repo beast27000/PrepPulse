@@ -16,6 +16,7 @@ from preppulse_rag.runtime import BudgetExceeded, finish, ledger, reserve
 
 @pytest.fixture
 def budget(monkeypatch, tmp_path):
+    monkeypatch.setattr("preppulse_rag.privacy.load_identifiers", lambda: [])
     monkeypatch.setenv("PREPPULSE_AI_TRANSIENT_RETRIES", "0")
     monkeypatch.delenv("Main_Sarvam_AI_Credits", raising=False)
     monkeypatch.setenv("PREPPULSE_PRIVATE_ROOT", str(tmp_path))
